@@ -64,6 +64,15 @@ export function repairJson(json: string): string {
 					index += 5;
 					continue;
 				}
+				// (B12) A malformed \u escape (not exactly 4 hex digits) must be
+				// treated as invalid here, not fall through to the generic
+				// VALID_JSON_ESCAPES check below — that set contains "u" (it's a
+				// valid escape *character*, just not with these digits), so
+				// falling through re-emitted "\u" verbatim unrepaired, leaving
+				// repairedJson === json and defeating the whole repair path for
+				// exactly the malformed-\u case it exists to handle.
+				repaired += "\\\\";
+				continue;
 			}
 
 			if (VALID_JSON_ESCAPES.has(nextChar)) {

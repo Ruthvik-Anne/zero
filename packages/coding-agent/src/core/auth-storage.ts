@@ -4,6 +4,13 @@
  *
  * Uses file locking to prevent race conditions when multiple pi instances
  * try to refresh tokens simultaneously.
+ *
+ * (B7) Every `chmodSync(this.authPath, 0o600)` call below only toggles the
+ * Windows read-only attribute, not an owner-only ACL — auth.json sits at
+ * whatever ACL its parent directory inherits on Windows. Not a regression
+ * (there's no direct POSIX-mode equivalent to retrofit), but the protection
+ * these calls imply doesn't actually exist on that platform; a real fix would
+ * need an `icacls`-based ACL restriction, out of scope for this pass.
  */
 
 import { createHash } from "node:crypto";
@@ -139,10 +146,16 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 					throw error;
 				}
 				lastError = error;
-				const start = Date.now();
-				while (Date.now() - start < delayMs) {
-					// Sleep synchronously to avoid changing callers to async.
-				}
+				// (B8) Was a `while (Date.now() - start < delayMs) {}` busy-spin —
+				// burned a full CPU core for the entire wait instead of actually
+				// blocking. Atomics.wait is a real OS-level wait (no polling), still
+				// synchronous (this method's contract, withLock<T>(): T, can't
+				// become async without breaking every existing sync caller —
+				// withLockAsync already exists as the async alternative for callers
+				// that can tolerate one). This still blocks the event loop for
+				// delayMs either way; Atomics.wait only removes the CPU-spin, it
+				// doesn't make the wait non-blocking.
+				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
 			}
 		}
 

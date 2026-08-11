@@ -243,39 +243,61 @@ export class FileSettingsStorage implements SettingsStorage {
 					throw error;
 				}
 				lastError = error;
-				const start = Date.now();
-				while (Date.now() - start < delayMs) {
-					// Sleep synchronously to avoid changing callers to async.
-				}
+				// (B8) Same fix as auth-storage.ts's identical busy-spin: a real
+				// OS-level wait instead of pegging a CPU core for the whole retry
+				// window. Still synchronous/blocking by design (this method's
+				// contract) — just no longer wasteful while blocked.
+				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
 			}
 		}
 
 		throw (lastError as Error) ?? new Error("Failed to acquire settings lock");
 	}
 
+	// (B9) Was: lock only acquired if the file already existed at entry, and
+	// even then only right before the write — so on a fresh install (no
+	// settings.json yet), the read-modify computation for EVERY writer ran
+	// with no lock held at all. Two processes racing there both compute `next`
+	// from `current === undefined`, then whichever's lazy write-time lock
+	// acquisition loses last-writer-wins over the other's already-written
+	// content.
+	//
+	// Fixed with an optimistic-read / verify-under-lock pattern rather than
+	// locking (and creating the directory) unconditionally up front — a pure
+	// read call (fn always returns undefined) must NOT create the settings
+	// directory as a side effect (existing, intentional behavior, guarded by
+	// its own tests). Only once we know we're about to write do we take the
+	// lock and re-read; if another process wrote in between, recompute `next`
+	// from the fresh state instead of blindly overwriting it.
 	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void {
 		const path = scope === "global" ? this.globalSettingsPath : this.projectSettingsPath;
 		const dir = dirname(path);
 
+		const fileExistedAtEntry = existsSync(path);
 		let release: (() => void) | undefined;
 		try {
-			// Only create directory and lock if file exists or we need to write
-			const fileExists = existsSync(path);
-			if (fileExists) {
+			if (fileExistedAtEntry) {
 				release = this.acquireLockSyncWithRetry(path);
 			}
-			const current = fileExists ? readFileSync(path, "utf-8") : undefined;
-			const next = fn(current);
-			if (next !== undefined) {
-				// Only create directory when we actually need to write
-				if (!existsSync(dir)) {
-					mkdirSync(dir, { recursive: true });
-				}
-				if (!release) {
-					release = this.acquireLockSyncWithRetry(path);
-				}
-				writeFileSync(path, next, "utf-8");
+			const current = fileExistedAtEntry ? readFileSync(path, "utf-8") : undefined;
+			let next = fn(current);
+			if (next === undefined) {
+				return;
 			}
+			if (!existsSync(dir)) {
+				mkdirSync(dir, { recursive: true });
+			}
+			if (!release) {
+				release = this.acquireLockSyncWithRetry(path);
+				const freshCurrent = existsSync(path) ? readFileSync(path, "utf-8") : undefined;
+				if (freshCurrent !== current) {
+					next = fn(freshCurrent);
+					if (next === undefined) {
+						return;
+					}
+				}
+			}
+			writeFileSync(path, next, "utf-8");
 		} finally {
 			if (release) {
 				release();

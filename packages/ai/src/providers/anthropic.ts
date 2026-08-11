@@ -1273,7 +1273,15 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
 			return "error";
 		default:
-			// Handle unknown stop reasons gracefully (API may add new values)
-			throw new Error(`Unhandled stop reason: ${reason}`);
+			// (B12) Was `throw` — contradicted this very comment's own intent
+			// ("handle unknown stop reasons gracefully"). Anthropic has added
+			// pause_turn/refusal/sensitive over time; three cases in this switch
+			// are retrofits for exactly that pattern. The throw was caught by the
+			// outer handler and turned a fully-successful response with all
+			// content already accumulated into a bare {type:"error"} the next
+			// time the API adds a value. The raw reason is preserved separately
+			// via output.stopReasonRaw at the call site, so mapping to "stop"
+			// here loses no information.
+			return "stop";
 	}
 }

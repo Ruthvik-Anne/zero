@@ -525,7 +525,12 @@ export class IpythonKernelProvisioner {
 				}
 			} catch (error) {
 				// Never leak the kernel's ZMQ sockets / temp dir if startup fails after spawn.
-				void m.dispose();
+				// (B11) Was `void m.dispose()` — not awaiting it defeated that stated
+				// intent: startKernel rejected while socket close, SIGTERM, and
+				// rmSync(tempDir) were still in flight, and the caller's memo-clear
+				// on rejection let the very next call spawn a new kernel racing the
+				// old one's still-in-progress teardown (temp dir reuse, port reuse).
+				await m.dispose();
 				throw error;
 			}
 			// Only tell the model what was revived once the kernel is actually usable —

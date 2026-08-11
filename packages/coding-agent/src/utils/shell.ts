@@ -191,9 +191,19 @@ export function killProcessTree(pid: number): void {
 	if (process.platform === "win32") {
 		// Use taskkill on Windows to kill process tree
 		try {
-			spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
+			const taskkill = spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
 				stdio: "ignore",
 				detached: true,
+			});
+			// (B7) A spawn failure (e.g. a PATH without System32) arrives as an
+			// async "error" event, not a throw — the try/catch above only ever
+			// caught a synchronous spawn() throw, which doesn't happen for this
+			// class of failure. With no "error" listener, Node rethrows it as an
+			// uncaught exception, and this runs during shutdown, so cleanup itself
+			// became the crash. Matches the POSIX branch below, which is already
+			// fully guarded by its own try/catch around process.kill.
+			taskkill.on("error", () => {
+				// Ignore errors if taskkill fails to spawn
 			});
 		} catch {
 			// Ignore errors if taskkill fails

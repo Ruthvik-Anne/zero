@@ -126,12 +126,29 @@ export function setBedrockProviderModule(module: BedrockProviderModule): void {
 	};
 }
 
-function forwardStream(target: AssistantMessageEventStream, source: AsyncIterable<AssistantMessageEvent>): void {
+// (B12) Had no try/catch: if `source` threw mid-iteration, `target.end()` never
+// ran — every consumer awaiting `target`'s completion hung forever, and the
+// thrown error (this IIFE's own promise rejecting, unawaited by any caller)
+// became an unhandled rejection on top of that. Mirrors the createLazyStream/
+// createLazySimpleStream .catch() below, which already builds a proper error
+// message via createLazyLoadErrorMessage for the "loadModule() itself failed"
+// case — this closes the identical gap for "the loaded stream failed midway".
+function forwardStream<TApi extends Api>(
+	target: AssistantMessageEventStream,
+	source: AsyncIterable<AssistantMessageEvent>,
+	model: Model<TApi>,
+): void {
 	(async () => {
-		for await (const event of source) {
-			target.push(event);
+		try {
+			for await (const event of source) {
+				target.push(event);
+			}
+			target.end();
+		} catch (error) {
+			const message = createLazyLoadErrorMessage(model, error);
+			target.push({ type: "error", reason: "error", error: message });
+			target.end(message);
 		}
-		target.end();
 	})();
 }
 
@@ -165,7 +182,7 @@ function createLazyStream<TApi extends Api, TOptions extends StreamOptions, TSim
 		loadModule()
 			.then((module) => {
 				const inner = module.stream(model, context, options);
-				forwardStream(outer, inner);
+				forwardStream(outer, inner, model);
 			})
 			.catch((error) => {
 				const message = createLazyLoadErrorMessage(model, error);
@@ -188,7 +205,7 @@ function createLazySimpleStream<
 		loadModule()
 			.then((module) => {
 				const inner = module.streamSimple(model, context, options);
-				forwardStream(outer, inner);
+				forwardStream(outer, inner, model);
 			})
 			.catch((error) => {
 				const message = createLazyLoadErrorMessage(model, error);
