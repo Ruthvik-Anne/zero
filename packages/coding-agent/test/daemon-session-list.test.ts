@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import { describe, expect, it } from "vitest";
 import type { AgentCronJob } from "../src/core/cron-jobs.js";
 import type { SessionInfo } from "../src/core/session-manager.js";

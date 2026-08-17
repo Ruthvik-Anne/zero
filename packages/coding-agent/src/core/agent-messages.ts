@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import type { HostRequestHandler } from "./kernel/index.js";
 import type { CustomMessage } from "./messages.js";
 import { canonicalSessionPath } from "./session-lease.js";

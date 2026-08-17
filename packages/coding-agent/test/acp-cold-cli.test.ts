@@ -2,9 +2,10 @@ import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.js";
+import { DaemonClient } from "../src/modes/daemon/daemon-client.js";
 
 /**
  * Cold real-CLI ACP coverage.
@@ -19,6 +20,17 @@ import { ENV_AGENT_DIR } from "../src/config.js";
 const cliPath = resolve(__dirname, "../src/cli.ts");
 const tsxPath = resolve(__dirname, "../../../node_modules/tsx/dist/cli.mjs");
 
+// (task #23) A raw filesystem path isn't a supported net.Server .listen()
+// target on Windows (EACCES) — the real CLI's own daemon supervisor start
+// throws on it just like the test-only sockets fixed elsewhere (tasks #17,
+// #22). Use a Windows named pipe path on win32, matching how
+// defaultDaemonSocketPath() already picks one in production.
+function testDaemonSocketPath(tempRoot: string): string {
+	// tempRoot's own basename already starts with "pi-acp-cold-" (its mkdtemp
+	// prefix); don't double it up in the pipe name.
+	return process.platform === "win32" ? `\\\\.\\pipe\\${basename(tempRoot)}` : join(tempRoot, "d.sock");
+}
+
 const tempDirs: string[] = [];
 const servers: Server[] = [];
 
@@ -27,9 +39,48 @@ afterEach(async () => {
 		await new Promise<void>((done) => server.close(() => done()));
 	}
 	for (const dir of tempDirs.splice(0)) {
-		rmSync(dir, { recursive: true, force: true });
+		// A just-killed real cold CLI process (spawned with this dir's project
+		// subdirectory as its cwd, plus a daemon/kernel it may have started) can
+		// leave it transiently undeletable on Windows even after the process
+		// exit is awaited above — retry, and tolerate a leftover if it still
+		// hasn't released by then; this is a cleanup artifact, not a
+		// test-correctness problem. Mirrors test/suite/harness.ts's identical fix.
+		try {
+			rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+				throw error;
+			}
+		}
 	}
 });
+
+/**
+ * (task #34) The ACP CLI child spawns its daemon supervisor detached, so it
+ * deliberately outlives the child — that's fine when the child exits
+ * gracefully (it unwinds its own children on stdin EOF first), but if the
+ * child crashes before that happens (e.g. its own 30s daemon-create timeout
+ * throws), the detached supervisor is orphaned forever: it never shares this
+ * test's socket name with anything else, so nothing can ever find and kill
+ * it again. Confirmed via `Get-CimInstance Win32_Process` — repeated runs of
+ * this test each leaked one `--mode daemon` node.exe process that piled up
+ * indefinitely. Shut it down directly, independent of whether the child
+ * unwound it itself, mirroring 4606-update-restart-coordinator.test.ts's own
+ * stopDaemon() helper.
+ */
+async function stopDaemon(socketPath: string): Promise<void> {
+	const client = new DaemonClient(socketPath);
+	try {
+		await client.connect(500);
+		await client.waitForHello(2000);
+		await client.request({ type: "shutdown", force: true }, 5000).catch(() => undefined);
+	} catch {
+		return;
+	} finally {
+		client.close();
+	}
+}
 
 /** A provider endpoint that always rejects, so the turn fails for a real reason. */
 async function startRejectingProvider(): Promise<string> {
@@ -71,6 +122,7 @@ async function driveAcpTurn(baseUrl: string): Promise<AcpResult> {
 		"utf-8",
 	);
 
+	const socketPath = testDaemonSocketPath(tempRoot);
 	const child = spawn(
 		process.execPath,
 		[
@@ -85,7 +137,7 @@ async function driveAcpTurn(baseUrl: string): Promise<AcpResult> {
 			"--no-session",
 			"--offline",
 			"--daemon-socket",
-			join(tempRoot, "d.sock"),
+			socketPath,
 		],
 		{
 			cwd: projectDir,
@@ -96,6 +148,7 @@ async function driveAcpTurn(baseUrl: string): Promise<AcpResult> {
 				TSX_TSCONFIG_PATH: resolve(__dirname, "../../../tsconfig.json"),
 			},
 			stdio: ["pipe", "pipe", "pipe"],
+			windowsHide: true,
 		},
 	);
 
@@ -154,8 +207,15 @@ async function driveAcpTurn(baseUrl: string): Promise<AcpResult> {
 	});
 
 	try {
+		const childDied = new Promise<never>((_, reject) => {
+			child.once("exit", (code, signal) => {
+				reject(new Error(`ACP CLI child exited before completing the turn (code=${code}, signal=${signal})`));
+			});
+			child.once("error", reject);
+		});
 		await Promise.race([
 			done,
+			childDied,
 			new Promise<void>((_, reject) => setTimeout(() => reject(new Error("ACP turn timed out")), 150_000)),
 		]);
 	} finally {
@@ -181,6 +241,7 @@ async function driveAcpTurn(baseUrl: string): Promise<AcpResult> {
 			]);
 			if (!stoppedInTime) child.kill("SIGKILL");
 		}
+		await stopDaemon(socketPath);
 	}
 	return { responses, updates };
 }

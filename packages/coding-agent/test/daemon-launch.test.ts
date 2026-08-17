@@ -139,7 +139,7 @@ const server = createServer((socket) => {
 server.listen(socketPath, () => process.stdout.write("ready\\n"));`,
 			socketPath,
 		],
-		{ stdio: ["ignore", "pipe", "ignore"] },
+		{ stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
 	);
 	await new Promise<void>((resolve, reject) => {
 		child.stdout?.once("data", () => resolve());

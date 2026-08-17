@@ -1,0 +1,2110 @@
+{
+	"metadata": {
+		"date": "2026-08-08",
+		"methodology": {
+			"codingWeight": "50%",
+			"reasoningWeight": "40% (importance rises B→SS)",
+			"instructionFollowingWeight": "10%",
+			"gradingMethod": "Relative percentile-based binning (histogram). Each model's grade (0-10) is determined by its percentile position in the actual distribution of verified scores.",
+			"demotionRule": "If coding grade exceeds reasoning grade by ≥2 points, model is demoted one class.",
+			"dataSources": [
+				"benchlm.ai",
+				"tbench.ai (Terminal-Bench 2.1)",
+				"lmarena.ai",
+				"codingfleet.com",
+				"artificialanalysis.ai",
+				"pricepertoken.com"
+			],
+			"notation": "(v)=verified third-party harness; (sr)=provider self-reported; (2.0)=Terminal-Bench 2.0 vendor-reported"
+		}
+	},
+	"models": [
+		{
+			"name": "Claude Opus 5",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API",
+			"class": "SS",
+			"className": "Apex",
+			"coding": {
+				"relativeGrade": 10,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 89.1,
+					"SWE-bench_Verified": 96
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 64.7,
+					"FrontierBench_v0.1": 43.5
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1580
+			},
+			"pricing": {
+				"inputPer1m": 5,
+				"outputPer1m": 25
+			},
+			"rationale": "Rank #1 SWE-bench Verified, #1 HLE, #1 FrontierBench. Apex on all axes.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Claude Mythos 5",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API (restricted)",
+			"class": "SS",
+			"className": "Apex",
+			"coding": {
+				"relativeGrade": 9,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 88,
+					"SWE-bench_Verified": 95.5
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 9,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 64.5,
+					"GPQA_Diamond": 94.6
+				}
+			},
+			"pricing": {
+				"inputPer1m": 10,
+				"outputPer1m": 50,
+				"notes": "Restricted availability"
+			},
+			"rationale": "#2 SWE-bench Verified, #2 HLE. GPQA 94.6% matches highest reported science-reasoning score.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Claude Fable 5",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API",
+			"class": "SS",
+			"className": "Apex",
+			"coding": {
+				"relativeGrade": 9,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 88,
+					"SWE-bench_Verified": 95
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 55.5,
+					"FrontierBench_v0.1": 31.7
+				}
+			},
+			"pricing": {
+				"inputPer1m": 10,
+				"outputPer1m": 50
+			},
+			"rationale": "#3 SWE-bench Verified. HLE 55.5% top-tier. Retained in Apex due to combined coding + agentic dominance.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.6 Sol",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 9,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 88.8
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 49.5,
+					"FrontierBench_v0.1": 32.7,
+					"Agents_Last_Exam": 53.6
+				}
+			},
+			"pricing": {
+				"inputPer1m": 5,
+				"outputPer1m": 30
+			},
+			"rationale": "TB 88.8% (#2) is Apex-tier coding, but HLE 49.5% and FrontierBench 32.7% are Prime-tier reasoning. Demoted from Apex per coding>reasoning rule.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Kimi K3",
+			"provider": "Moonshot AI",
+			"parameters": "2.8T/104B MoE",
+			"weightsType": "open (K3 License)",
+			"hostedBy": "Moonshot / Together / Fireworks",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 88.3
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"GPQA_Diamond": 93.5,
+					"Artificial_Analysis_Intelligence_Index": 57.1
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1516,
+				"Frontend_Code_Arena": 1679
+			},
+			"pricing": {
+				"inputPer1m": 3,
+				"outputPer1m": 15,
+				"notes": "Cache hit $0.30/M"
+			},
+			"rationale": "Highest open-weight on AAII (#4 overall). TB 88.3% Apex-tier coding; GPQA 93.5% Prime-tier reasoning.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Claude Opus 4.8",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 82.7,
+					"SWE-bench_Pro": 69.2
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 3,
+				"benchmarks": {
+					"Artificial_Analysis_Intelligence_Index": 61.4
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1580
+			},
+			"pricing": {
+				"inputPer1m": 5,
+				"outputPer1m": 25
+			},
+			"rationale": "LMSYS Elo 1580 was #1 overall. TB 82.7% Prime-tier. Superseded by Opus 5 on raw benchmarks.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GLM-5.2",
+			"provider": "Z.ai",
+			"parameters": "743B/40B MoE",
+			"weightsType": "open (MIT)",
+			"hostedBy": "Z.ai / Fireworks / Together",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 6,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 81,
+					"SWE-bench_Verified": 80,
+					"SWE-bench_Pro": 62.1
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 50.4,
+					"GPQA_Diamond": 91.2,
+					"Artificial_Analysis_Intelligence_Index": 51.1
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.68,
+				"outputPer1m": 2.14,
+				"notes": "Provider-dependent: $0.68/$2.14 (StreamLake) to $1.40/$4.40 (Z.ai)"
+			},
+			"rationale": "Strongest open-weight benchmark profile on Fireworks. All metrics sit in Prime tier.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.6 Terra",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 87.4
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Agents_Last_Exam": 50.4
+				}
+			},
+			"pricing": {
+				"inputPer1m": 2,
+				"outputPer1m": 12
+			},
+			"rationale": "TB 87.4% is Prime/upper-Apex coding. Agents' Last Exam 50.4% is Prime-tier reasoning. OpenAI balanced tier.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.5",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 83.1,
+					"SWE-bench_Verified": 80
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1551
+			},
+			"pricing": {
+				"inputPer1m": 5,
+				"outputPer1m": 30
+			},
+			"rationale": "TB 83.1% and LMSYS 1551 are Prime-tier. Preceded GPT-5.6 family.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Grok 4.5",
+			"provider": "xAI",
+			"parameters": "1.5T MoE",
+			"weightsType": "closed",
+			"hostedBy": "xAI API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 83.3,
+					"SWE-bench_Pro": 64.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"Artificial_Analysis_Intelligence_Index": 54
+				}
+			},
+			"pricing": {
+				"inputPer1m": 2,
+				"outputPer1m": 6
+			},
+			"rationale": "TB 83.3% Prime-tier coding. AAII 54.0% Prime-tier. xAI flagship at time of release.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Muse Spark 1.1",
+			"provider": "Meta",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Meta API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 76.2
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 3,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 62.1
+				}
+			},
+			"pricing": {
+				"inputPer1m": 1.25,
+				"outputPer1m": 4.25
+			},
+			"rationale": "HLE 62.1% is #3 overall (S-tier reasoning). TB 76.2% is A-tier coding. Retained in Prime due to exceptional reasoning.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Sakana Fugu-Ultra",
+			"provider": "Sakana AI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Sakana API",
+			"class": "S",
+			"className": "Prime",
+			"coding": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 82.1
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 10,
+				"benchmarks": {
+					"GPQA_Diamond": 95.5,
+					"LiveCodeBench_Pro": 90.8
+				}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "GPQA 95.5% is the highest verified science-reasoning score. TB 82.1% Prime-tier coding. Limited benchmark coverage otherwise.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "DeepSeek V4 Flash",
+			"provider": "DeepSeek",
+			"parameters": "284B/13B MoE",
+			"weightsType": "open (MIT)",
+			"hostedBy": "DeepSeek API / Together / Fireworks",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 82.7,
+					"SWE-bench_Verified": 79
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 6,
+				"benchmarks": {
+					"GPQA_Diamond": 89.4,
+					"Artificial_Analysis_Intelligence_Index": 40.3
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.14,
+				"outputPer1m": 0.28,
+				"notes": "Cache hit $0.0028/M"
+			},
+			"rationale": "TB 82.7% is Prime-tier coding, but AAII 40.3% and lack of HLE data place reasoning in Superior tier. Cost-optimized variant.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "MiniMax M3",
+			"provider": "MiniMax",
+			"parameters": "428B/23B MoE",
+			"weightsType": "open (custom)",
+			"hostedBy": "MiniMax API / OpenRouter",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 6,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 66,
+					"SWE-bench_Verified": 80.5
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"GPQA_Diamond": 93,
+					"Artificial_Analysis_Intelligence_Index": 44.4
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.3,
+				"outputPer1m": 1.2,
+				"notes": "Standard tier, ≤512k input. Priority tier 1.5x"
+			},
+			"rationale": "GPQA 93.0% is Prime-tier reasoning, but TB 66.0% is Superior-tier coding. Balanced profile lands in Superior.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Gemini 3.1 Pro",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google AI Studio / Vertex AI",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 3,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 70.7,
+					"SWE-bench_Verified": 74
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 9,
+				"benchmarks": {
+					"GPQA_Diamond": 94.3,
+					"HLE": 58,
+					"ARC_AGI_2": 77.1
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1538
+			},
+			"pricing": {
+				"inputPer1m": 2,
+				"outputPer1m": 12,
+				"notes": "$4/$18 above 200k input"
+			},
+			"rationale": "GPQA 94.3% is Apex-tier reasoning, but TB 70.7% is Superior-tier coding. LMSYS 1538 confirms strong IF.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Claude Sonnet 5",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 80.4,
+					"SWE-bench_Pro": 63.2
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": 2,
+				"outputPer1m": 10,
+				"notes": "Introductory through Aug 31; $3/$15 from Sep 1"
+			},
+			"rationale": "TB 80.4% Superior/Prime coding. SWE-Pro 63.2% is Superior-tier. Anthropic production default.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Gemini 3.5 Flash",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google AI Studio / Vertex AI",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 76.2,
+					"SWE-bench_Verified": 78
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": 1.5,
+				"outputPer1m": 7.5
+			},
+			"rationale": "TB 76.2% and SWE-V 78.0% are both Superior-tier. Replaced by 3.6 Flash.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Gemini 3.6 Flash",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google AI Studio / Vertex AI",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 78,
+					"SWE-bench_Pro": 58.7,
+					"DeepSWE": 49
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"CharXiv": 85.2,
+					"GDM_MRCR_128k": 91.8
+				}
+			},
+			"pricing": {
+				"inputPer1m": 1.5,
+				"outputPer1m": 7.5
+			},
+			"rationale": "TB 78.0% Superior-tier coding. Strong long-context recall (91.8% MRCR) but weaker agentic coding (49% DeepSWE).",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3.7 Max",
+			"provider": "Alibaba",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Alibaba Cloud / OpenRouter",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 69.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"Artificial_Analysis_Intelligence_Index": 56.6
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1455
+			},
+			"pricing": {
+				"inputPer1m": 2,
+				"outputPer1m": 6
+			},
+			"rationale": "AAII 56.6% is Prime-tier reasoning, but TB 69.7% is Superior-tier coding. LMSYS 1455 confirms production quality.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3.7 Plus",
+			"provider": "Alibaba",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Alibaba Cloud / Fireworks",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 70.3
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"GPQA_Diamond": 90,
+					"Artificial_Analysis_Intelligence_Index": 39
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.28,
+				"outputPer1m": 1.13
+			},
+			"rationale": "GPQA 90.0% is Prime-tier reasoning, but TB 70.3% is Superior-tier coding. AAII 39.0% supports Superior placement.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Kimi K2.6",
+			"provider": "Moonshot AI",
+			"parameters": "1T/32B MoE",
+			"weightsType": "open (Modified MIT)",
+			"hostedBy": "Moonshot / Together / Fireworks",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"Terminal-Bench_2.0": 66.7,
+					"SWE-bench_Verified": 80.2
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 7,
+				"benchmarks": {
+					"GPQA_Diamond": 90.5
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.95,
+				"outputPer1m": 4
+			},
+			"rationale": "SWE-V 80.2% and GPQA 90.5% are Prime-tier, but TB 66.7% (2.0) is Superior-tier. Superseded by K3.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Kimi K2.7 Code",
+			"provider": "Moonshot AI",
+			"parameters": "1.02T MoE",
+			"weightsType": "open (Modified MIT)",
+			"hostedBy": "Moonshot / Together / Fireworks",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 6,
+				"benchmarks": {
+					"MCPMark_Verified": 81.1
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 6,
+				"benchmarks": {
+					"GPQA_Diamond": 89.6,
+					"Artificial_Analysis_Coding_Index": 60.8
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.95,
+				"outputPer1m": 4
+			},
+			"rationale": "Coding-specialist. MCPMark 81.1% and GPQA 89.6% are Superior-tier. Narrower benchmark coverage than generalist K2.6.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Claude Opus 4.7",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 69.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1567
+			},
+			"pricing": {
+				"inputPer1m": 5,
+				"outputPer1m": 25
+			},
+			"rationale": "LMSYS 1567 was #2 overall. TB 69.7% is Superior-tier coding. Superseded by Opus 4.8/5.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Grok 4.20",
+			"provider": "xAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "xAI API",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1493
+			},
+			"pricing": {
+				"inputPer1m": 2,
+				"outputPer1m": 6
+			},
+			"rationale": "LMSYS 1493 is Superior-tier. 2M context window. Limited verified coding/reasoning benchmarks.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Grok 4.3",
+			"provider": "xAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "xAI API",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1491
+			},
+			"pricing": {
+				"inputPer1m": 1.25,
+				"outputPer1m": 2.5
+			},
+			"rationale": "LMSYS ~1491 is Superior-tier. Current xAI flagship for general use. Limited verified coding/reasoning benchmarks.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.4",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 3,
+				"benchmarks": {
+					"Terminal-Bench_2.0": 75.1
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1484
+			},
+			"pricing": {
+				"inputPer1m": 2.5,
+				"outputPer1m": 15
+			},
+			"rationale": "TB 75.1% (2.0) and LMSYS 1484 are Superior-tier. Being retired July 2026.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.2",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "A",
+			"className": "Superior",
+			"coding": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"Terminal-Bench_2.0": 61.4,
+					"SWE-bench_Verified": 80
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1480
+			},
+			"pricing": {
+				"inputPer1m": 1.75,
+				"outputPer1m": 14
+			},
+			"rationale": "SWE-V 80.0% is Prime-tier coding, but TB 61.4% (2.0) is Superior-tier. LMSYS 1480 supports Superior placement.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Claude Sonnet 4.6",
+			"provider": "Anthropic",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Anthropic API",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"Terminal-Bench_2.0": 53.4,
+					"SWE-bench_Verified": 79.6
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"GPQA_Diamond": 74.1,
+					"HLE": 50
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1370,
+				"Style_Control_Arena": 1
+			},
+			"pricing": {
+				"inputPer1m": 3,
+				"outputPer1m": 15
+			},
+			"rationale": "SWE-V 79.6% is A-tier coding, but TB 53.4% (2.0) and GPQA 74.1% are Competent-tier. Demoted from A per coding>reasoning rule.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.6 Luna",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 8,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 84.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Agents_Last_Exam": 50.3,
+					"MRCR_128k": 41.3
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.2,
+				"outputPer1m": 1.2
+			},
+			"rationale": "TB 84.7% is Prime-tier coding, but MRCR 41.3% shows severe long-context reasoning degradation. Demoted to Competent.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3-235B-A22B",
+			"provider": "Alibaba",
+			"parameters": "235B/22B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"GPQA_Diamond": 77.5,
+					"LiveCodeBench_v6": 1
+				}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1455
+			},
+			"pricing": {
+				"inputPer1m": 0.455,
+				"outputPer1m": 0.9
+			},
+			"rationale": "LiveCodeBench v6 #1 open-source. GPQA 77.5% is Competent-tier reasoning. LMSYS 1455 is Superior-tier IF; coding gaps keep it in B.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Nemotron 3 Ultra",
+			"provider": "NVIDIA",
+			"parameters": "500B/50B MoE",
+			"weightsType": "open (NVIDIA Open Model)",
+			"hostedBy": "NVIDIA API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 56.4,
+					"SWE-bench_Verified": 70.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "TB 56.4% and SWE-V 70.7% are Competent-tier. Positioned for enterprise agentic apps. Full open-source package.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Llama 4 Maverick",
+			"provider": "Meta",
+			"parameters": "400B/17B MoE",
+			"weightsType": "open (Llama 4 License)",
+			"hostedBy": "Together / Fireworks / AWS",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"GPQA_Diamond": 69.8
+				}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Provider-dependent hosting"
+			},
+			"rationale": "GPQA 69.8% is Competent-tier reasoning. Meta's best open MoE. Benchmarks lag Chinese open models.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Mistral Large 3",
+			"provider": "Mistral AI",
+			"parameters": "675B/41B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Mistral API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1275
+			},
+			"pricing": {
+				"inputPer1m": 0.5,
+				"outputPer1m": 1.5
+			},
+			"rationale": "LMSYS ~1275 is Competent-tier. European provider. General-purpose open-weight multimodal. Limited verified coding/reasoning data.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Gemma 4 31B IT",
+			"provider": "Google",
+			"parameters": "32.2B",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Google AI Studio / Vertex AI / Kaggle",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"GPQA_Diamond": 85.7,
+					"Artificial_Analysis_Intelligence_Index": 29.4
+				}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Free on Google AI Studio; paid on Vertex AI"
+			},
+			"rationale": "GPQA 85.7% is Superior-tier reasoning, but AAII 29.4% is Competent-tier. Dense model; smaller parameter count limits coding depth.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3.5-122B-A10B",
+			"provider": "Alibaba",
+			"parameters": "122B/10B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Reported to beat GPT-5-mini on general quality. Limited verified benchmark data. Apache 2.0.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3.6-35B-A3B",
+			"provider": "Alibaba",
+			"parameters": "35B/3B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 3,
+				"benchmarks": {
+					"SWE-bench_Verified": 73.4
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "SWE-V 73.4% is Superior-tier coding, but small active parameter count (3B) limits reasoning depth. Competent overall.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3-Coder-80B",
+			"provider": "Alibaba",
+			"parameters": "80B/3B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"SWE-bench_Verified": 70.6,
+					"SWE-bench_Pro": 44.3
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Coding-specialist. SWE-V 70.6% is Superior-tier, but SWE-Pro 44.3% is Competent-tier. Narrow focus keeps it in B.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "GPT-5.4 Mini",
+			"provider": "OpenAI",
+			"parameters": "undisclosed (likely <30B)",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 0,
+				"benchmarks": {
+					"Terminal-Bench_2.0": 60
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": 0.75,
+				"outputPer1m": 4.5
+			},
+			"rationale": "TB 60.0% (2.0) is Competent-tier. Likely below 30B parameters; included for completeness.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Gemini 3 Flash",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google AI Studio / Vertex AI",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 0,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 58
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"instructionFollowing": {
+				"LMSYS_Arena_Elo": 1474
+			},
+			"pricing": {
+				"inputPer1m": 0.075,
+				"outputPer1m": 0.3
+			},
+			"rationale": "TB 58.0% is Competent-tier coding. LMSYS 1474 is Superior-tier IF, but coding weakness dominates at 50% weight.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Grok 4.1 Fast",
+			"provider": "xAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "xAI API",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 0,
+				"benchmarks": {
+					"Vibe_Code_Bench": 1.2,
+					"BenchLM_Coding": 50.2
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 5,
+				"benchmarks": {
+					"GPQA_Diamond": 63.7,
+					"MMLU_Pro": 74.3
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.2,
+				"outputPer1m": 0.5
+			},
+			"rationale": "BenchLM score 59.5/100 (#60 of 216). Coding rank #63 of 132. GPQA 63.7% is Competent-tier. 2M context window.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3-32B",
+			"provider": "Alibaba",
+			"parameters": "32B dense",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Best single-GPU dense model per provider claims. Limited verified benchmark data. 32B parameters.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Mistral Small 4",
+			"provider": "Mistral AI",
+			"parameters": "119B/6.5B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Mistral API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": 0.15,
+				"outputPer1m": 0.6
+			},
+			"rationale": "Efficient instruct/reasoning/coding/multimodal MoE. Limited verified data. Positioned as lower-cost Mistral route.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Nemotron 3 Super",
+			"provider": "NVIDIA",
+			"parameters": "120B/12B MoE",
+			"weightsType": "open (NVIDIA Open Model)",
+			"hostedBy": "NVIDIA API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Best throughput-to-accuracy ratio in Nemotron family. 2.2x higher throughput than competitors. Limited verified benchmarks.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Nemotron 3 Nano",
+			"provider": "NVIDIA",
+			"parameters": "31.6B/3.6B MoE",
+			"weightsType": "open (NVIDIA Open Model)",
+			"hostedBy": "NVIDIA API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "31.6B total parameters. Most efficient Nemotron. 4x faster than prior Nano. Edge/PC deployable via API.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Llama 4 Scout",
+			"provider": "Meta",
+			"parameters": "109B/17B MoE",
+			"weightsType": "open (Llama 4 License)",
+			"hostedBy": "Together / Fireworks / AWS",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Provider-dependent hosting"
+			},
+			"rationale": "10M token context window (largest open). Speed-optimized. Benchmarks lag Chinese open models.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "gpt-oss-120b",
+			"provider": "OpenAI",
+			"parameters": "116B",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "OpenAI API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": 0,
+				"benchmarks": {
+					"Artificial_Analysis_Intelligence_Index": 23.8
+				}
+			},
+			"pricing": {
+				"inputPer1m": 0.04,
+				"outputPer1m": 0.35,
+				"notes": "Provider-dependent: $0.04-$0.35 input, $0.19-$0.75 output"
+			},
+			"rationale": "OpenAI's open-weight offering. Fastest median output in class (271.4 tok/s). AAII 23.8% is Competent-tier.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "DBRX",
+			"provider": "Databricks",
+			"parameters": "132B/36B MoE",
+			"weightsType": "open (Databricks Open License)",
+			"hostedBy": "Databricks API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Enterprise MoE. Databricks ecosystem. Limited current verified benchmark data.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Command R+",
+			"provider": "Cohere",
+			"parameters": "104B",
+			"weightsType": "open (CC-BY-NC)",
+			"hostedBy": "Cohere API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "RAG-optimized. 10 languages. 128K context. Enterprise retrieval. Aging benchmark profile.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Mixtral 8x22B",
+			"provider": "Mistral AI",
+			"parameters": "141B/39B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Mistral API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Sparse MoE pioneer. Strong multilingual. 64K context. Benchmarks now lag current generation.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Mistral Large 2",
+			"provider": "Mistral AI",
+			"parameters": "123B",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Mistral API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "128K context. 80+ languages. European provider. General-purpose. Superseded by Large 3.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Yi-1.5-34B",
+			"provider": "01.AI",
+			"parameters": "34B",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Together / Fireworks / OpenRouter",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "34B parameters. Strong multilingual support. Chinese-English bilingual. Limited current verified data.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Inkling",
+			"provider": "Thinking Machines Lab",
+			"parameters": "975B/41B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Together / Fireworks / OpenRouter",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 63.8
+				}
+			},
+			"reasoning": {
+				"relativeGrade": 0,
+				"benchmarks": {
+					"Humanitys_Last_Exam": 46
+				}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Provider-dependent hosting"
+			},
+			"rationale": "TB 63.8% Competent-tier coding. HLE 46.0% is Prime-tier reasoning. Limited coverage keeps it in B.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Inkling-Small",
+			"provider": "Thinking Machines Lab",
+			"parameters": "276B/12B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Together / Fireworks / OpenRouter",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 1,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 64.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": 0.3,
+				"outputPer1m": 1.2
+			},
+			"rationale": "TB 64.7% Competent-tier coding. Smaller variant of Inkling. Limited reasoning benchmarks.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Ornith-1.0-397B",
+			"provider": "DeepReinforce",
+			"parameters": "397B/17B MoE",
+			"weightsType": "open (MIT)",
+			"hostedBy": "Together / Fireworks / OpenRouter",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 4,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 77.5
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "TB 77.5% is Superior-tier coding, but no verified reasoning data. Conservative placement in B.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Hy3",
+			"provider": "Tencent",
+			"parameters": "295B/21B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Tencent Cloud / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": 2,
+				"benchmarks": {
+					"Terminal-Bench_2.1": 71.7
+				}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "TB 71.7% is Superior-tier coding, but no verified reasoning data. Conservative placement in B.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "MiMo V2.5 Pro",
+			"provider": "Xiaomi",
+			"parameters": "1.0T/42B MoE",
+			"weightsType": "open (MIT)",
+			"hostedBy": "Xiaomi API / Together / Fireworks",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "1T total parameters. Limited verified benchmark data. Positioned as coding/reasoning model.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "MiMo V2 Pro",
+			"provider": "Xiaomi",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Xiaomi API",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Limited verified benchmark data. Closed-weight predecessor to V2.5 Pro.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Step-3.5-Flash",
+			"provider": "StepFun",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "StepFun API / OpenRouter",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Best value on LiveCodeBench v6 per provider claims. Limited verified data.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Hunter Alpha",
+			"provider": "Anonymous",
+			"parameters": "1T/32B MoE",
+			"weightsType": "open (unknown)",
+			"hostedBy": "OpenRouter",
+			"class": "B",
+			"className": "Competent",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Free on OpenRouter"
+			},
+			"rationale": "Largest free model on OpenRouter. Limited verified benchmark data.",
+			"modality": [
+				"text"
+			]
+		},
+		{
+			"name": "Qwen3-VL-235B-A22B",
+			"provider": "Alibaba",
+			"parameters": "235B/22B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: OCR, Document Understanding, Video Understanding, Visual Agentics. 32-language OCR. Visual UI operation. Hour-long video understanding.",
+			"modality": [
+				"vision"
+			]
+		},
+		{
+			"name": "Qwen3-VL-30B-A3B",
+			"provider": "Alibaba",
+			"parameters": "30B/3B MoE",
+			"weightsType": "open (Apache 2.0)",
+			"hostedBy": "Alibaba Cloud / Together / Fireworks",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: OCR, Document Understanding, Visual Reasoning. Compact VLM. Efficient edge deployment.",
+			"modality": [
+				"vision"
+			]
+		},
+		{
+			"name": "Veo 3.1",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google AI Pro / Ultra / Vertex AI",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Video Generation. Rated best all-rounder 2026. 4K output, native audio, lip sync.",
+			"modality": [
+				"video-generation"
+			]
+		},
+		{
+			"name": "Kling 3.0 / Kling 3.0 Omni",
+			"provider": "Kuaishou",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Kuaishou API",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Video Generation. Cinematic motion quality. Native lip-sync in 5 languages. 4K output.",
+			"modality": [
+				"video-generation"
+			]
+		},
+		{
+			"name": "Runway Gen-4 / Gen-4.5",
+			"provider": "Runway",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Runway API",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Video Generation. Best for marketers and editors. Strong creative control.",
+			"modality": [
+				"video-generation"
+			]
+		},
+		{
+			"name": "Pika",
+			"provider": "Pika Labs",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Pika API",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Video Generation (Social Media). Optimized for Reels, TikTok, Shorts.",
+			"modality": [
+				"video-generation"
+			]
+		},
+		{
+			"name": "Seedance 2.0",
+			"provider": "ByteDance",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "ByteDance API",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Video Generation (Multi-shot Storyboarding). Native multi-shot stories. Character consistency.",
+			"modality": [
+				"video-generation"
+			]
+		},
+		{
+			"name": "Sora 2",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API (being discontinued)",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Video Generation. High-fidelity text-to-video. Photorealistic cinematic output. Being discontinued.",
+			"modality": [
+				"video-generation"
+			]
+		},
+		{
+			"name": "Imagen 4",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google AI Studio / Vertex AI",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Image Generation. Photorealistic and artistic output. Strong text rendering in images.",
+			"modality": [
+				"image-generation"
+			]
+		},
+		{
+			"name": "DALL-E 4",
+			"provider": "OpenAI",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "OpenAI API",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Image Generation. Exceptional prompt adherence and visual quality. Integrated with ChatGPT.",
+			"modality": [
+				"image-generation"
+			]
+		},
+		{
+			"name": "Midjourney v7",
+			"provider": "Midjourney",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Midjourney API",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Image Generation (Artistic). Industry-leading artistic image generation. Preferred by designers.",
+			"modality": [
+				"image-generation"
+			]
+		},
+		{
+			"name": "Flux 2",
+			"provider": "Black Forest Labs",
+			"parameters": "undisclosed",
+			"weightsType": "open/API",
+			"hostedBy": "BFL API / Together / Replicate",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Image Generation. Strong text rendering accuracy and anatomical correctness. Open accessibility.",
+			"modality": [
+				"image-generation"
+			]
+		},
+		{
+			"name": "Stable Diffusion 4 Ultra",
+			"provider": "Stability AI",
+			"parameters": "undisclosed",
+			"weightsType": "open/closed hybrid",
+			"hostedBy": "Stability API / Together / Replicate",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Image Generation. Frontier open-weight image generation. Flexible deployment.",
+			"modality": [
+				"image-generation"
+			]
+		},
+		{
+			"name": "Gemini 3.5 Flash Cyber",
+			"provider": "Google",
+			"parameters": "undisclosed",
+			"weightsType": "closed",
+			"hostedBy": "Google API (limited pilot)",
+			"class": "E",
+			"className": "Specialized",
+			"coding": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"reasoning": {
+				"relativeGrade": "N/A (insufficient verified data)",
+				"benchmarks": {}
+			},
+			"pricing": {
+				"inputPer1m": null,
+				"outputPer1m": null,
+				"notes": "Pricing not publicly disclosed"
+			},
+			"rationale": "Task: Security / Vulnerability Discovery. Specialized for vulnerability discovery, validation, and patching. Limited pilot.",
+			"modality": [
+				"security"
+			]
+		}
+	]
+}

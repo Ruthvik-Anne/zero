@@ -49,6 +49,14 @@ describe("classifyStreamFailure", () => {
 		["invalid_request_error", undefined, "invalid_request"],
 		["api_error", undefined, "server_error"],
 		[undefined, 503, "server_error"],
+		// D12: dropped-connection errors have no provider error body — the type
+		// arg is whatever extractStreamFailureParts fell back to (err.code or
+		// err.message), which for Node/fetch network errors is one of these.
+		["ECONNRESET", undefined, "network_error"],
+		["ETIMEDOUT", undefined, "network_error"],
+		["ECONNREFUSED", undefined, "network_error"],
+		["fetch failed", undefined, "network_error"],
+		["socket hang up", undefined, "network_error"],
 		["something_else", undefined, "unknown"],
 	])("classifies %s / %s as %s", (type, status, expected) => {
 		expect(classifyStreamFailure(type, status)).toBe(expected);

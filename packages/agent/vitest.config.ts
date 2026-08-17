@@ -12,6 +12,8 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: [
+			{ find: /^@zero-agent\/ai$/, replacement: aiSrcIndex },
+			{ find: /^@zero-agent\/ai\/oauth$/, replacement: aiSrcOAuth },
 			{ find: /^@earendil-works\/pi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@earendil-works\/pi-ai\/oauth$/, replacement: aiSrcOAuth },
 			{ find: /^@mariozechner\/pi-ai$/, replacement: aiSrcIndex },

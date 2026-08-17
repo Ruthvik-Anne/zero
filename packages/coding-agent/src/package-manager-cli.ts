@@ -1,4 +1,4 @@
-import type { ImageContent, TextContent, UserMessage } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent, UserMessage } from "@zero-agent/ai";
 import chalk from "chalk";
 import { spawn } from "child_process";
 import { readFileSync, rmSync, statSync } from "fs";
@@ -466,6 +466,7 @@ async function runSelfUpdate(command: SelfUpdateCommand): Promise<void> {
 			const child = spawn(step.command, step.args, {
 				stdio: "inherit",
 				shell: shouldUseWindowsShell(step.command),
+				windowsHide: true,
 			});
 			child.on("error", (error) => {
 				reject(error);

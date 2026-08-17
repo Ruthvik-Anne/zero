@@ -19,8 +19,8 @@ import { createConnection, createServer, type Server, type Socket } from "node:n
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { performance } from "node:perf_hooks";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { AssistantMessage } from "@zero-agent/ai";
 import { SessionManager } from "../src/core/session-manager.js";
 import { createCompactAssistantDelta } from "../src/modes/daemon/compact-session-stream.js";
 import type { DaemonOutbound } from "../src/modes/daemon/daemon-protocol.js";

@@ -178,19 +178,23 @@ function scanListeningDaemons(): DiscoveredDaemonProcess[] {
 	if (process.platform === "win32") {
 		return [];
 	}
-	const ss = spawnSync("ss", ["-lxp"], { encoding: "utf8" });
+	const ss = spawnSync("ss", ["-lxp"], { encoding: "utf8", windowsHide: true });
 	if (!ss.error && ss.status === 0 && typeof ss.stdout === "string") {
 		return enrichUptimes(parseSsListeners(ss.stdout, APP_NAME));
 	}
-	const lsof = spawnSync("lsof", ["-nP", "-F", "pn", "-U", "-a", "-c", APP_NAME], { encoding: "utf8" });
+	const lsof = spawnSync("lsof", ["-nP", "-F", "pn", "-U", "-a", "-c", APP_NAME], {
+		encoding: "utf8",
+		windowsHide: true,
+	});
 	const byName = !lsof.error && typeof lsof.stdout === "string" ? parseLsofListeners(lsof.stdout) : [];
 	let byPid: DiscoveredDaemonProcess[] = [];
-	const ps = spawnSync("ps", ["-axo", "pid=,comm=,args="], { encoding: "utf8" });
+	const ps = spawnSync("ps", ["-axo", "pid=,comm=,args="], { encoding: "utf8", windowsHide: true });
 	if (!ps.error && ps.status === 0 && typeof ps.stdout === "string") {
 		const pids = parsePrimeAgentProcessIds(ps.stdout, APP_NAME);
 		if (pids.length > 0) {
 			const lsofByPid = spawnSync("lsof", ["-nP", "-F", "pn", "-U", "-a", "-p", pids.join(",")], {
 				encoding: "utf8",
+				windowsHide: true,
 			});
 			if (!lsofByPid.error && typeof lsofByPid.stdout === "string") {
 				byPid = parseLsofListeners(lsofByPid.stdout);
@@ -210,7 +214,7 @@ function enrichUptimes(daemons: DiscoveredDaemonProcess[]): DiscoveredDaemonProc
 	if (pids.length === 0) {
 		return daemons;
 	}
-	const ps = spawnSync("ps", ["-o", "pid=,etimes=", "-p", pids.join(",")], { encoding: "utf8" });
+	const ps = spawnSync("ps", ["-o", "pid=,etimes=", "-p", pids.join(",")], { encoding: "utf8", windowsHide: true });
 	if (ps.error || typeof ps.stdout !== "string") {
 		return daemons;
 	}
@@ -806,7 +810,10 @@ function recordResidualListenerFailures(
 	}
 }
 function describeDaemonParent(pid: number): string {
-	const result = spawnSync("ps", ["-o", "ppid=,tty=,command=", "-p", String(pid)], { encoding: "utf8" });
+	const result = spawnSync("ps", ["-o", "ppid=,tty=,command=", "-p", String(pid)], {
+		encoding: "utf8",
+		windowsHide: true,
+	});
 	if (result.error || result.status !== 0 || typeof result.stdout !== "string") {
 		return "";
 	}

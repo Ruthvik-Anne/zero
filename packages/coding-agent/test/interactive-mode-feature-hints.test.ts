@@ -1,4 +1,4 @@
-import { type Component, Container, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, Container, visibleWidth } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FEATURE_HINT_ANIMATION_INTERVAL_MS } from "../src/modes/interactive/components/feature-hint.js";

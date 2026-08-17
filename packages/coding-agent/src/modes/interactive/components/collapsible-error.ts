@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { type Component, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { theme } from "../theme/theme.js";
 import { keyHint } from "./keybinding-hints.js";

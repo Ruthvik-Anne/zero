@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import tempfile
 import time
+import types
 import unittest
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -254,20 +256,82 @@ class McpIntegrationTest(unittest.TestCase):
         self.assertIsNotNone(captured["http_client"])
 
     def test_resolve_config_prefers_host_override_and_headers(self):
+        # _resolve_config() returns the host's full config dict verbatim (module
+        # J: it now carries `type` so _open_session can dispatch http vs stdio,
+        # not just a (url, headers) tuple).
         async def host_with_override(req_type, payload):
-            return {"url": "https://override.test/mcp", "headers": {"X-Extra": "1"}}
+            return {"type": "http", "url": "https://override.test/mcp", "headers": {"X-Extra": "1"}}
 
         async def host_empty(req_type, payload):
             return {}
 
         with mock.patch.object(mcp_base, "host_request", host_with_override):
-            url, headers = _run(_Integration()._resolve_config())
-            self.assertEqual(url, "https://override.test/mcp")
-            self.assertEqual(headers, {"X-Extra": "1"})
+            config = _run(_Integration()._resolve_config())
+            self.assertEqual(config["url"], "https://override.test/mcp")
+            self.assertEqual(config["headers"], {"X-Extra": "1"})
         with mock.patch.object(mcp_base, "host_request", host_empty):
-            url, headers = _run(_Integration()._resolve_config())
-            self.assertEqual(url, _Integration.url)
-            self.assertEqual(headers, {})
+            config = _run(_Integration()._resolve_config())
+            self.assertEqual(config["url"], _Integration.url)
+            self.assertEqual(config["type"], "http")
+
+    def test_resolve_config_returns_stdio_shape_unmodified(self):
+        async def host_stdio(req_type, payload):
+            return {"type": "stdio", "command": "uvx", "args": ["some-server"], "env": {"KEY": "v"}}
+
+        with mock.patch.object(mcp_base, "host_request", host_stdio):
+            config = _run(_Integration()._resolve_config())
+        self.assertEqual(
+            config, {"type": "stdio", "command": "uvx", "args": ["some-server"], "env": {"KEY": "v"}}
+        )
+
+    def test_open_session_dispatches_to_stdio_when_host_config_says_stdio(self):
+        captured = {}
+
+        class _FakeStdioClient:
+            def __init__(self, params):
+                captured["params"] = params
+
+            async def __aenter__(self):
+                return (object(), object())
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+        class _FakeSession:
+            def __init__(self, read, write):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+            async def initialize(self):
+                captured["initialized"] = True
+
+        async def host_stdio(req_type, payload):
+            return {"type": "stdio", "command": "uvx", "args": ["some-server"], "env": {"KEY": "v"}}
+
+        fake_mcp_module = types.SimpleNamespace(
+            ClientSession=_FakeSession,
+            StdioServerParameters=lambda command, args, env: {"command": command, "args": args, "env": env},
+        )
+        fake_stdio_module = types.SimpleNamespace(stdio_client=_FakeStdioClient)
+
+        async def scenario():
+            with mock.patch.object(mcp_base, "host_request", host_stdio), mock.patch.dict(
+                sys.modules, {"mcp": fake_mcp_module, "mcp.client.stdio": fake_stdio_module}
+            ):
+                async with AsyncExitStack() as stack:
+                    return await _Integration()._open_session(stack)
+
+        session = _run(scenario())
+        self.assertIsInstance(session, _FakeSession)
+        self.assertTrue(captured.get("initialized"))
+        self.assertEqual(captured["params"]["command"], "uvx")
+        self.assertEqual(captured["params"]["args"], ["some-server"])
+        self.assertEqual(captured["params"]["env"]["KEY"], "v")
 
 
 if __name__ == "__main__":

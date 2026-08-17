@@ -158,11 +158,12 @@ function spawnSupervisor(paths: TestPaths): ProcessHandle {
 				ENG_4600_FIXTURE_MODE: "supervisor",
 				ENG_4600_REGISTRY_DIR: paths.registryDir,
 				ENG_4600_SOCKET_PATH: paths.socketPath,
-				PI_OFFLINE: "1",
+				ZERO_OFFLINE: "1",
 				TMPDIR: paths.socketTmpDir,
 				TSX_TSCONFIG_PATH: tsconfigPath,
 			},
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
+			windowsHide: true,
 		}),
 		"supervisor",
 	);
@@ -189,10 +190,11 @@ function spawnStandaloneWorker(
 					[DAEMON_WORKER_TOKEN_ENV]: token,
 					[DAEMON_WORKER_ACTIVE_SESSION_ID_ENV]: "eng-4603-worker",
 					[DAEMON_WORKER_SUPERVISOR_SOCKET_ENV]: paths.socketPath,
-					PI_OFFLINE: "1",
+					ZERO_OFFLINE: "1",
 					TSX_TSCONFIG_PATH: tsconfigPath,
 				},
 				stdio: ["ignore", "pipe", "pipe"],
+				windowsHide: true,
 			},
 		),
 		"worker",
@@ -295,7 +297,7 @@ function registerFixtureRecord(value: unknown, role: "supervisor" | "worker", pa
 }
 
 function readFixtureProcessSnapshot(): Map<number, FixtureProcessSnapshot> {
-	const listing = spawnSync("ps", ["-axo", "pid=,ppid=,state="], { encoding: "utf8" });
+	const listing = spawnSync("ps", ["-axo", "pid=,ppid=,state="], { encoding: "utf8", windowsHide: true });
 	if (listing.error) throw listing.error;
 	if (listing.status !== 0) {
 		throw new Error(`Could not enumerate fixture descendants: ${listing.stderr.trim()}`);
@@ -684,11 +686,12 @@ async function runCli(
 				...extraEnv,
 				[supervisorRegistryDirEnv]: paths.registryDir,
 				[ENV_AGENT_DIR]: paths.agentDir,
-				PI_OFFLINE: "1",
+				ZERO_OFFLINE: "1",
 				TMPDIR: paths.socketTmpDir,
 				TSX_TSCONFIG_PATH: tsconfigPath,
 			},
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		}),
 		"client",
 	);
@@ -1008,7 +1011,7 @@ describe("ENG-4603 worker recovery convergence", () => {
 		await waitForType(successor, "ready", 60_000);
 		const successorStartId = getProcessStartId(successor.child.pid!);
 		client.close();
-		const systemLsofPath = spawnSync("which", ["lsof"], { encoding: "utf8" }).stdout.trim();
+		const systemLsofPath = spawnSync("which", ["lsof"], { encoding: "utf8", windowsHide: true }).stdout.trim();
 		if (!systemLsofPath) throw new Error("Could not locate lsof for the shutdown regression");
 		const lsofPath = join(paths.agentDir, "lsof");
 		writeFileSync(lsofPath, '#!/bin/sh\nexec "$ENG_4603_SYSTEM_LSOF" -nP -F pn -U -a -p "$ENG_4603_LSOF_PIDS"\n', {
@@ -1022,6 +1025,7 @@ describe("ENG-4603 worker recovery convergence", () => {
 		const listenersBeforeShutdown = spawnSync(lsofPath, [], {
 			encoding: "utf8",
 			env: { ...process.env, ...lsofEnvironment },
+			windowsHide: true,
 		}).stdout;
 		expect(listenersBeforeShutdown).toContain(`p${predecessor.child.pid}`);
 		expect(listenersBeforeShutdown).toContain(`p${successor.child.pid}`);

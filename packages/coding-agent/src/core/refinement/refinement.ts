@@ -10,9 +10,10 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
-import { completeSimple } from "@earendil-works/pi-ai";
+import type { AgentMessage, ThinkingLevel } from "@zero-agent/agent-core";
+import type { Model } from "@zero-agent/ai";
+import { completeSimple } from "@zero-agent/ai";
+import { type ProviderCandidate, routedCompleteSimple } from "@zero-agent/ai/router";
 import { getAgentDir } from "../../config.js";
 import { serializeConversation } from "../compaction/utils.js";
 import { convertToLlm } from "../messages.js";
@@ -27,7 +28,16 @@ const DEFAULT_OVERVIEW_ENTRY_LIMIT = 6;
 const DEFAULT_OVERVIEW_REFINEMENT_LIMIT = 5;
 const DEFAULT_OVERVIEW_CONTENT_LIMIT = 180;
 
-export type RefinementKind = "prompt" | "memory" | "skill" | "subagent";
+/**
+ * "guardrail" (module F/H integration): durable memory of past harm-check
+ * adjudications — what was flagged, hard/soft, how the user responded —
+ * scoped local/global like every other kind, refined via the same
+ * `/refine`/`refine.run()` flow. Consumed programmatically by module F's
+ * Layer 2 adjudication (project-specific precedent) rather than rendered into
+ * the per-turn system prompt like `subagent` entries are — see
+ * `formatHarnessStateForPrompt`'s explicit exclusion below.
+ */
+export type RefinementKind = "prompt" | "memory" | "skill" | "subagent" | "guardrail";
 export type RefinementAction = "create" | "update" | "delete";
 export type HarnessScope = "local" | "global";
 
@@ -216,6 +226,7 @@ function emptyHarnessState(): HarnessState {
 			memory: {},
 			skill: {},
 			subagent: {},
+			guardrail: {},
 		},
 		refinements: [],
 	};
@@ -358,6 +369,59 @@ export function saveHarnessState(harnessStateDir: string, state: HarnessState): 
 	return statePath;
 }
 
+export interface GuardrailPrecedentInput {
+	toolName: string;
+	/** Layer-1 category/pattern labels that triggered the flag, e.g. ["filesystem-delete"]. */
+	matchedPatterns: string[];
+	action: "soft_block" | "hard_block";
+	/** Whether the user approved a soft_block prompt (n/a for hard_block). */
+	approved?: boolean;
+	scope: "workspace" | "outside_workspace" | "os_level";
+}
+
+/**
+ * Record (or update) a durable "guardrail" harness entry for a harm-check
+ * adjudication (module F ↔ module C integration) — automatic, on every
+ * soft/hard block, not gated behind a manual `/refine` call. Repeated
+ * identical flags (same tool + same matched patterns) update ONE entry's
+ * occurrence count/timestamp rather than growing the harness unbounded.
+ *
+ * This only WRITES precedent. Layer 2 consulting this precedent to adjust a
+ * future verdict is a deliberately separate, not-yet-implemented step — it's
+ * a product decision (should repeated approval reduce friction over time?)
+ * that deserves its own explicit design, not an implicit side effect of
+ * logging.
+ */
+export function recordGuardrailPrecedent(harnessStateDir: string, input: GuardrailPrecedentInput): void {
+	const state = loadHarnessState(harnessStateDir, "local");
+	const id = slug(`${input.toolName}_${input.matchedPatterns.join("_")}`, "guardrail_entry");
+	const existing = state.entries.guardrail[id];
+	const occurrences = ((existing?.metadata.occurrences as number | undefined) ?? 0) + 1;
+	const nowIso = now();
+	state.entries.guardrail[id] = {
+		id,
+		kind: "guardrail",
+		title: `${input.toolName}: ${input.matchedPatterns.join(", ")}`,
+		content: `Tool "${input.toolName}" flagged for ${input.matchedPatterns.join(", ")} (scope: ${input.scope}). Last adjudication: ${input.action}${input.approved !== undefined ? (input.approved ? ", approved" : ", declined") : ""}.`,
+		path: `guardrail/${id}`,
+		scope: "local",
+		reference: {},
+		arguments: {},
+		metadata: {
+			toolName: input.toolName,
+			matchedPatterns: input.matchedPatterns,
+			lastAction: input.action,
+			lastApproved: input.approved,
+			occurrences,
+		},
+		source: "harm-check",
+		created_at: existing?.created_at ?? nowIso,
+		updated_at: nowIso,
+		version: (existing?.version ?? 0) + 1,
+	};
+	saveHarnessState(harnessStateDir, state);
+}
+
 export function getRefinementHistoryPath(harnessStateDir: string = getGlobalHarnessStateDir()): string {
 	return join(harnessStateDir, REFINEMENT_HISTORY_FILE_NAME);
 }
@@ -464,6 +528,9 @@ export function formatHarnessStateForPrompt(
 
 	let totalEntries = 0;
 	for (const kind of Object.keys(state.entries) as RefinementKind[]) {
+		// "guardrail" entries are host-side precedent for module F's Layer 2
+		// adjudication, not model-facing routing hints — never rendered here.
+		if (kind === "guardrail") continue;
 		const entries = Object.values(state.entries[kind]).sort((a, b) =>
 			[a.path, a.title, a.id].join("\0").localeCompare([b.path, b.title, b.id].join("\0")),
 		);
@@ -870,6 +937,14 @@ export async function planRefinement(
 	headers?: Record<string, string>,
 	signal?: AbortSignal,
 	thinkingLevel?: ThinkingLevel,
+	/**
+	 * module G integration: additional provider/model candidates to fall back to
+	 * on a rate-limit/overloaded/server-error failure. Empty/omitted (the
+	 * default) is byte-for-byte the previous single-call `completeSimple`
+	 * behavior — refinement gains fallback coverage only when the caller
+	 * actually configures one (mirrors sdk.ts's `providerFallback` wiring).
+	 */
+	fallbackCandidates: ProviderCandidate[] = [],
 ): Promise<RefinementPlan> {
 	const id = `refine_${new Date()
 		.toISOString()
@@ -910,14 +985,21 @@ export async function planRefinement(
 	// Keep the refinement request non-reasoning regardless of the interactive session
 	// thinking level so the model uses its output budget for the JSON object.
 	void thinkingLevel;
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: REFINEMENT_SYSTEM_PROMPT,
-			messages: [{ role: "user", content: [{ type: "text", text: userPrompt }], timestamp: Date.now() }],
-		},
-		{ maxTokens: refinementMaxOutputTokens(model), signal, apiKey, headers },
-	);
+	const refinementContext = {
+		systemPrompt: REFINEMENT_SYSTEM_PROMPT,
+		messages: [
+			{ role: "user" as const, content: [{ type: "text" as const, text: userPrompt }], timestamp: Date.now() },
+		],
+	};
+	const refinementOptions = { maxTokens: refinementMaxOutputTokens(model), signal, apiKey, headers };
+	const response =
+		fallbackCandidates.length === 0
+			? await completeSimple(model, refinementContext, refinementOptions)
+			: await routedCompleteSimple(
+					[{ model, options: refinementOptions }, ...fallbackCandidates],
+					refinementContext,
+					refinementOptions,
+				);
 
 	if (response.stopReason === "error") {
 		throw new Error(`Refinement failed: ${response.errorMessage || "Unknown error"}`);

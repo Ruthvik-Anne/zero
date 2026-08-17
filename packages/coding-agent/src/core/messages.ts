@@ -5,8 +5,8 @@
  * and provides a transformer to convert them to LLM-compatible messages.
  */
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { ImageContent, Message, TextContent } from "@zero-agent/ai";
 import type { AgentCronJob } from "./cron-jobs.js";
 import { isSessionSlashCommandName, parseSessionSlashCommand, type SessionSlashCommand } from "./slash-commands.js";
 
@@ -186,7 +186,7 @@ export interface CompactionSummaryMessage {
 }
 
 // Extend CustomAgentMessages via declaration merging
-declare module "@earendil-works/pi-agent-core" {
+declare module "@zero-agent/agent-core" {
 	interface CustomAgentMessages {
 		bashExecution: BashExecutionMessage;
 		custom: CustomMessage;

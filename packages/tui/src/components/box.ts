@@ -3,7 +3,12 @@ import type { Component } from "../tui.js";
 import { applyBackgroundToLine, visibleWidth } from "../utils.js";
 
 type RenderCache = {
-	childLines: string[];
+	// Raw per-child output arrays (pre-leftPad), by reference. Text/Box (and
+	// well-behaved components generally) return the exact same array
+	// instance when their own render output is unchanged and a brand-new
+	// array otherwise, so reference equality here is a sound "did anything
+	// change" signal without re-deriving and comparing the padded content.
+	childOutputs: string[][];
 	width: number;
 	bgSample: string | undefined;
 	lines: string[];
@@ -55,17 +60,6 @@ export class Box implements Component {
 		this.cache = undefined;
 	}
 
-	private matchCache(width: number, childLines: string[], bgSample: string | undefined): boolean {
-		const cache = this.cache;
-		return (
-			!!cache &&
-			cache.width === width &&
-			cache.bgSample === bgSample &&
-			cache.childLines.length === childLines.length &&
-			cache.childLines.every((line, i) => line === childLines[i])
-		);
-	}
-
 	invalidate(): void {
 		this.invalidateCache();
 		for (const child of this.children) {
@@ -81,30 +75,39 @@ export class Box implements Component {
 
 		const contentWidth = Math.max(1, width - this.paddingX * 2);
 		const leftPad = " ".repeat(this.paddingX);
+		const cache = this.cache;
 
-		// Render all children
-		const childLines: string[] = [];
+		// Render all children, tracking each child's raw output array by
+		// reference so an unchanged tree can skip the leftPad concat +
+		// background/padding pass below entirely (the dominant per-frame
+		// cost when hundreds/thousands of static boxes sit in a transcript
+		// and only something unrelated elsewhere forces a re-render).
+		const childOutputs: string[][] = [];
 		const selectionRegions: TableCellSelectionRegion[] = [];
-		for (const child of this.children) {
-			const lineOffset = childLines.length;
+		let totalLines = 0;
+		let sameChildOutputs = !!cache && cache.childOutputs.length === this.children.length;
+		for (let i = 0; i < this.children.length; i++) {
+			const child = this.children[i];
 			const lines = child.render(contentWidth);
+			childOutputs.push(lines);
+			if (sameChildOutputs && cache!.childOutputs[i] !== lines) {
+				sameChildOutputs = false;
+			}
 			for (const region of child.getSelectionRegions?.() ?? []) {
 				selectionRegions.push({
 					...region,
-					line: region.line + lineOffset + this.paddingY,
+					line: region.line + totalLines + this.paddingY,
 					col: region.col + this.paddingX,
-					tableTop: region.tableTop + lineOffset + this.paddingY,
-					tableBottom: region.tableBottom + lineOffset + this.paddingY,
+					tableTop: region.tableTop + totalLines + this.paddingY,
+					tableBottom: region.tableBottom + totalLines + this.paddingY,
 					tableLeft: region.tableLeft + this.paddingX,
 					tableRight: region.tableRight + this.paddingX,
 				});
 			}
-			for (const line of lines) {
-				childLines.push(leftPad + line);
-			}
+			totalLines += lines.length;
 		}
 
-		if (childLines.length === 0) {
+		if (totalLines === 0) {
 			this.cache = undefined;
 			return [];
 		}
@@ -112,10 +115,22 @@ export class Box implements Component {
 		// Check if bgFn output changed by sampling
 		const bgSample = this.bgFn ? this.bgFn("test") : undefined;
 
-		// Check cache validity
-		if (this.matchCache(width, childLines, bgSample)) {
-			this.cache!.selectionRegions = selectionRegions;
-			return this.cache!.lines;
+		// Fast path: every child returned the exact same array it did last
+		// render, and width/background are unchanged, so the padded output
+		// is provably identical too. Selection regions are always freshly
+		// recomputed above regardless of this branch.
+		if (sameChildOutputs && cache && cache.width === width && cache.bgSample === bgSample) {
+			cache.selectionRegions = selectionRegions;
+			return cache.lines;
+		}
+
+		// Slow path: at least one child's content changed (or this is the
+		// first render, or width/background changed) - rebuild from scratch.
+		const childLines: string[] = [];
+		for (const lines of childOutputs) {
+			for (const line of lines) {
+				childLines.push(leftPad + line);
+			}
 		}
 
 		// Apply background and padding
@@ -137,7 +152,7 @@ export class Box implements Component {
 		}
 
 		// Update cache
-		this.cache = { childLines, width, bgSample, lines: result, selectionRegions };
+		this.cache = { childOutputs, width, bgSample, lines: result, selectionRegions };
 
 		return result;
 	}

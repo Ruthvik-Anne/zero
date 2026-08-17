@@ -1,4 +1,4 @@
-import { type AssistantMessage, type AssistantMessageEvent, parseStreamingJson } from "@earendil-works/pi-ai";
+import { type AssistantMessage, type AssistantMessageEvent, parseStreamingJson } from "@zero-agent/ai";
 import type { DaemonEventMeta, DaemonOutbound } from "./daemon-protocol.js";
 
 type SessionEvent = Extract<DaemonOutbound, { type: "session_event" }>["event"];

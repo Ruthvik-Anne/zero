@@ -7,16 +7,35 @@ import { KernelManager } from "../src/core/kernel/index.js";
 
 /** Find a python that can launch an ipykernel and has dill, or null to skip. */
 function resolveKernelPython(): string | null {
-	const candidates = [
-		process.env.PRIME_AGENT_KERNEL_PYTHON,
-		join(homedir(), ".prime", "agent", "kernel-venv", "bin", "python"),
-	].filter((p): p is string => Boolean(p));
+	// uv/stdlib venvs lay out bin/python on POSIX but Scripts/python.exe on
+	// Windows — there is no bin/ dir there at all.
+	const defaultVenvPython =
+		process.platform === "win32"
+			? join(homedir(), ".zero", "agent", "kernel-venv", "Scripts", "python.exe")
+			: join(homedir(), ".zero", "agent", "kernel-venv", "bin", "python");
+	const candidates = [process.env.ZERO_KERNEL_PYTHON, defaultVenvPython].filter((p): p is string => Boolean(p));
 	for (const python of candidates) {
 		if (!existsSync(python)) continue;
-		const check = spawnSync(python, ["-c", "import ipykernel, dill"], { encoding: "utf8" });
+		const check = spawnSync(python, ["-c", "import ipykernel, dill"], { encoding: "utf8", windowsHide: true });
 		if (check.status === 0) return python;
 	}
 	return null;
+}
+
+// A just-killed real kernel subprocess (spawned with a tempDir as its cwd)
+// can leave that directory transiently undeletable on Windows even after
+// dispose() resolves — retry, and tolerate a leftover if it still hasn't
+// released by then; this is a cleanup artifact, not a test-correctness
+// problem. Mirrors test/suite/harness.ts's identical fix.
+function cleanupTempDir(dir: string): void {
+	try {
+		rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+			throw error;
+		}
+	}
 }
 
 const python = resolveKernelPython();
@@ -34,7 +53,7 @@ describeIfKernel("kernel state snapshot round-trip (real kernel)", { tags: ["ker
 	});
 
 	afterAll(() => {
-		if (dir) rmSync(dir, { recursive: true, force: true });
+		if (dir) cleanupTempDir(dir);
 	});
 
 	function newManager(): KernelManager {
@@ -88,7 +107,7 @@ describeIfKernel("kernel state snapshot round-trip (real kernel)", { tags: ["ker
 			expect(restore).toEqual({ restored: [], failed: [], path: join(freshDir, "missing.dill") });
 		} finally {
 			await manager.dispose();
-			rmSync(freshDir, { recursive: true, force: true });
+			cleanupTempDir(freshDir);
 		}
 	}, 60_000);
 
@@ -114,7 +133,7 @@ describeIfKernel("kernel state snapshot round-trip (real kernel)", { tags: ["ker
 			expect(restore?.restored).toEqual(expect.arrayContaining(["list", "print", "id"]));
 		} finally {
 			await reader.dispose();
-			rmSync(dir, { recursive: true, force: true });
+			cleanupTempDir(dir);
 		}
 	}, 60_000);
 
@@ -136,7 +155,7 @@ describeIfKernel("kernel state snapshot round-trip (real kernel)", { tags: ["ker
 			expect(echo.stdout.trim()).toBe("alive");
 		} finally {
 			await manager.dispose();
-			rmSync(badDir, { recursive: true, force: true });
+			cleanupTempDir(badDir);
 		}
 	}, 60_000);
 
@@ -154,7 +173,7 @@ describeIfKernel("kernel state snapshot round-trip (real kernel)", { tags: ["ker
 			expect(names).not.toContain("rlm");
 		} finally {
 			await manager.dispose();
-			rmSync(listDir, { recursive: true, force: true });
+			cleanupTempDir(listDir);
 		}
 	}, 60_000);
 
@@ -171,7 +190,7 @@ describeIfKernel("kernel state snapshot round-trip (real kernel)", { tags: ["ker
 			await expect.poll(() => existsSync(autoPath), { timeout: 10_000 }).toBe(true);
 		} finally {
 			await manager.dispose();
-			rmSync(autoDir, { recursive: true, force: true });
+			cleanupTempDir(autoDir);
 		}
 	}, 60_000);
 });

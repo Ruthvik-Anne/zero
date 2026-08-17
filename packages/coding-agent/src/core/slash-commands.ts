@@ -10,7 +10,7 @@ export interface SlashCommandInfo {
 	sourceInfo: SourceInfo;
 }
 
-export const SESSION_SLASH_COMMAND_NAMES = ["compact", "refine", "goal", "autonomous"] as const;
+export const SESSION_SLASH_COMMAND_NAMES = ["compact", "refine", "goal", "autonomous", "mode", "rollback"] as const;
 
 export type SessionSlashCommandName = (typeof SESSION_SLASH_COMMAND_NAMES)[number];
 
@@ -169,6 +169,18 @@ const CANONICAL_BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "autonomous",
 		description: "Set or view autonomous mode",
 		argumentHint: "[status|on|off]",
+		takesArgument: true,
+	},
+	{
+		name: "mode",
+		description: "Set or view plan/auto/manual mode",
+		argumentHint: "[plan|auto|manual]",
+		takesArgument: true,
+	},
+	{
+		name: "rollback",
+		description: "Restore the workspace to a module H checkpoint (most recent by default)",
+		argumentHint: "[checkpoint-id]",
 		takesArgument: true,
 	},
 	{

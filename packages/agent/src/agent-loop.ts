@@ -11,7 +11,7 @@ import {
 	streamSimple,
 	type ToolResultMessage,
 	validateToolArguments,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import type {
 	AgentContext,
 	AgentEvent,

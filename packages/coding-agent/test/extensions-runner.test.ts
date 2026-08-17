@@ -78,6 +78,7 @@ describe("ExtensionRunner", () => {
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",
+		getSessionMode: () => "auto",
 	};
 
 	describe("shortcut conflicts", () => {

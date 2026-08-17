@@ -1,4 +1,4 @@
-import { getLogger } from "@earendil-works/pi-ai";
+import { getLogger } from "@zero-agent/ai";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import ignore from "ignore";
 import { homedir } from "os";

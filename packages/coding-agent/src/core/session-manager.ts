@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ImageContent, Message, ServiceTier, TextContent, Usage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { AssistantMessage, ImageContent, Message, ServiceTier, TextContent, Usage } from "@zero-agent/ai";
 import { randomUUID } from "crypto";
 import {
 	appendFileSync,
@@ -343,7 +343,7 @@ function createUniqueSessionFileTarget(sessionDir: string): { sessionId: string;
 	throw new Error("Unable to create a unique session file");
 }
 
-function getSessionArtifactPath(sessionDir: string, sessionId: string): string {
+export function getSessionArtifactPath(sessionDir: string, sessionId: string): string {
 	return join(dirname(sessionDir), "session-artifacts", sessionId);
 }
 

@@ -1,8 +1,9 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Api, Model, ServiceTier } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@zero-agent/agent-core";
+import type { Api, Model, ServiceTier } from "@zero-agent/ai";
 import type { AgentSession } from "./agent-session.js";
 import type { ToolDefinition } from "./extensions/index.js";
 import type { HostRequestHandler } from "./kernel/index.js";
+import type { SessionMode } from "./mode/session-mode.js";
 
 export interface RlmRunRequest {
 	prompt: string;
@@ -222,8 +223,17 @@ export interface CreateRlmSubagentRuntimeOptions {
 	rlmParentNodeId: string;
 	/** Source of the IPython cell that spawned this subagent, for display. */
 	spawnCode?: string;
+	/**
+	 * module B: when set (by `isolation: "worktree"` on `rlm.run()`), the child
+	 * session's cwd — a fresh git worktree instead of the parent's shared cwd,
+	 * for parallel children that mutate files without conflicting. Falls back
+	 * to the parent's cwd when omitted, exactly as before this option existed.
+	 */
+	cwdOverride?: string;
 	/** Publish the session to the parent before a host makes the runtime addressable. */
 	onSessionPublished?: (session: AgentSession) => void;
+	/** module I: the parent's current mode, inherited so plan mode can't be escaped via delegation. */
+	mode?: SessionMode;
 }
 
 export interface SubagentRuntimeHost {

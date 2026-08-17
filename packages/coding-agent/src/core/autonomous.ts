@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readlink } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { AssistantMessage, Usage, UserMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Usage, UserMessage } from "@zero-agent/ai";
 import { waitForChildProcess } from "../utils/child-process.js";
 import { killProcessTree, trackDetachedChildPid, untrackDetachedChildPid } from "../utils/shell.js";
 
@@ -496,6 +496,7 @@ function runChildProcess(
 			detached: process.platform !== "win32",
 			shell: options.shell === true,
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
 		if (child.pid) {
 			trackDetachedChildPid(child.pid);

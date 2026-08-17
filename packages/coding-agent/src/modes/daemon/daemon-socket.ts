@@ -1,6 +1,6 @@
-import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 
@@ -33,17 +33,55 @@ export interface DaemonSocketIdentity {
 	ino: number;
 }
 
+// (B7) Was a hardcoded machine-global pipe name while the POSIX path is
+// uid-scoped (defaultDaemonSocketDir() below) — two different users on the
+// same machine, or a stale daemon from an old session, collided with a bare
+// EADDRINUSE. Scope it the same way.
+function windowsPipeUserSuffix(): string {
+	try {
+		return userInfo().username.replace(/[^A-Za-z0-9_.-]/g, "_") || "user";
+	} catch {
+		return "user";
+	}
+}
+
 export function defaultDaemonSocketPath(): string {
 	if (process.platform === "win32") {
-		return "\\\\.\\pipe\\prime-agent-daemon";
+		return `\\\\.\\pipe\\prime-agent-daemon-${windowsPipeUserSuffix()}`;
 	}
 	return join(defaultDaemonSocketDir(), "daemon.sock");
+}
+
+/**
+ * (B7) Windows named pipes have no filesystem path proper-lockfile can lock —
+ * `\\.\pipe\...` isn't a real file. Lock a real auxiliary file instead (same
+ * directory convention as the POSIX socket dir) purely for mutual exclusion;
+ * the pipe itself is still created by whoever wins this lock.
+ */
+function windowsDaemonLockPath(socketPath: string): string {
+	const suffix = socketPath.replace(/[^A-Za-z0-9_.-]/g, "_");
+	return join(tmpdir(), `zero-daemon-lock-${suffix}`);
 }
 
 export async function acquireDaemonSocketPathLease(socketPath: string): Promise<DaemonSocketPathLease | undefined> {
 	ensureDefaultDaemonSocketDir(socketPath);
 	if (process.platform === "win32") {
-		return undefined;
+		const lockPath = windowsDaemonLockPath(socketPath);
+		if (!existsSync(lockPath)) {
+			writeFileSync(lockPath, "", { flag: "wx" });
+		}
+		const releaseLock = await lockfile.lock(lockPath, {
+			realpath: false,
+			stale: DAEMON_SOCKET_LOCK_STALE_MS,
+			update: DAEMON_SOCKET_LOCK_UPDATE_MS,
+			retries: {
+				retries: 600,
+				factor: 1,
+				minTimeout: DAEMON_SOCKET_RELEASE_POLL_MS,
+				maxTimeout: DAEMON_SOCKET_RELEASE_POLL_MS,
+			},
+		});
+		return new DaemonSocketPathLease(socketPath, releaseLock);
 	}
 	const releaseLock = await lockfile.lock(socketPath, {
 		realpath: false,
@@ -63,6 +101,20 @@ export async function prepareDaemonSocketPath(socketPath: string, lease?: Daemon
 	ensureDefaultDaemonSocketDir(socketPath);
 
 	if (process.platform === "win32") {
+		if (lease) {
+			assertSocketLease(socketPath, lease);
+		}
+		// (B7) A Windows named pipe has no persistent filesystem entry to stat —
+		// `existsSync`/`lstatSync` don't apply to `\\.\pipe\...` the way they do
+		// to a Unix socket inode, so there is nothing to "detect as stale" the
+		// same way. But `canConnectToUnixSocket` below is not actually
+		// POSIX-specific despite its name — `net.createConnection(path)`
+		// connects to a Windows named pipe identically to a Unix socket — so the
+		// one check that actually matters (is something listening right now)
+		// still works unchanged.
+		if (await canConnectToUnixSocket(socketPath)) {
+			throw new Error(`Daemon socket already in use: ${socketPath}`);
+		}
 		return;
 	}
 	if (lease) {
@@ -132,6 +184,15 @@ async function prepareUnixDaemonSocketPath(socketPath: string): Promise<void> {
 	unlinkSync(socketPath);
 }
 
+/**
+ * (B7) Documented platform gap, not silently faked: a Windows named pipe's
+ * permissions are set by the security descriptor passed at *creation* time
+ * (which Node's `net.Server.listen()` does not expose a way to customize),
+ * not by a POSIX-style chmod applied afterward — there is no equivalent call
+ * to retrofit here. In practice this matters less than the POSIX case: a
+ * pipe's default ACL already restricts it to the creating user + built-in
+ * Administrators, unlike a fresh Unix socket file's default mode.
+ */
 export function restrictDaemonSocketPath(socketPath: string): void {
 	if (process.platform === "win32") {
 		return;
@@ -139,6 +200,14 @@ export function restrictDaemonSocketPath(socketPath: string): void {
 	chmodSync(socketPath, DAEMON_SOCKET_MODE);
 }
 
+/**
+ * (B7) Documented platform gap: `lstatSync` doesn't apply to `\\.\pipe\...`
+ * paths — Windows named pipes aren't part of the regular filesystem
+ * namespace, so there is no dev/ino (or equivalent) to retrofit an identity
+ * check onto. Callers already treat `undefined` as "no identity available"
+ * (see `cleanupUnixDaemonSocketPath`'s `expectedIdentity` check), so this is
+ * a safe, honest "unavailable" rather than a faked value.
+ */
 export function getDaemonSocketIdentity(socketPath: string): DaemonSocketIdentity | undefined {
 	if (process.platform === "win32") {
 		return undefined;
@@ -153,6 +222,11 @@ export function cleanupDaemonSocketPath(
 	lease?: DaemonSocketPathLease,
 ): void {
 	if (process.platform === "win32") {
+		// (B7) Not a gap: unlike a Unix socket, a Windows named pipe leaves no
+		// persistent filesystem entry once its last handle closes — there is
+		// nothing to unlink. Releasing the mutex lease (acquireDaemonSocketPathLease's
+		// auxiliary lock file) is the only real cleanup, and callers already do
+		// that themselves via `lease.release()`.
 		return;
 	}
 	if (lease) {

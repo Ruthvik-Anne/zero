@@ -1,12 +1,12 @@
 /**
  * Central timing instrumentation for startup profiling.
- * Enable with PI_TIMING=1 environment variable.
+ * Enable with ZERO_TIMING=1 environment variable.
  */
 
-import { getLogger } from "@earendil-works/pi-ai";
+import { getLogger } from "@zero-agent/ai";
 
 const log = getLogger("coding-agent.timings");
-const ENABLED = process.env.PI_TIMING === "1";
+const ENABLED = process.env.ZERO_TIMING === "1";
 const timings: Array<{ label: string; ms: number }> = [];
 let lastTime = Date.now();
 

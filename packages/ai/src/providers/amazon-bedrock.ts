@@ -550,13 +550,13 @@ function mapThinkingLevelToEffort(
 
 /**
  * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
+ * Defaults to "short" and uses ZERO_CACHE_RETENTION for backward compatibility.
  */
 function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
 	if (cacheRetention) {
 		return cacheRetention;
 	}
-	if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
+	if (typeof process !== "undefined" && process.env.ZERO_CACHE_RETENTION === "long") {
 		return "long";
 	}
 	return "short";
@@ -907,7 +907,7 @@ function isGovCloudBedrockTarget(model: Model<"bedrock-converse-stream">, option
 function buildAdditionalModelRequestFields(
 	model: Model<"bedrock-converse-stream">,
 	options: BedrockOptions,
-): Record<string, any> | undefined {
+): DocumentType | undefined {
 	if (!options.reasoning || !model.reasoning) {
 		return undefined;
 	}
@@ -916,7 +916,7 @@ function buildAdditionalModelRequestFields(
 		// GovCloud Bedrock currently rejects the Claude thinking.display field.
 		// Omit it there until the GovCloud Converse schema catches up.
 		const display = isGovCloudBedrockTarget(model, options) ? undefined : (options.thinkingDisplay ?? "summarized");
-		const result: Record<string, any> = supportsAdaptiveThinking(model.id, model.name)
+		const result: Record<string, DocumentType> = supportsAdaptiveThinking(model.id, model.name)
 			? {
 					thinking: { type: "adaptive", ...(display !== undefined ? { display } : {}) },
 					output_config: { effort: mapThinkingLevelToEffort(model, options.reasoning) },

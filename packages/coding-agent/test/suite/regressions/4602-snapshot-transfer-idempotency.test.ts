@@ -1,6 +1,6 @@
 import type { Socket } from "node:net";
 import { PassThrough } from "node:stream";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import type { ActiveSessionState, DaemonSocketClient } from "../../../src/modes/daemon/active-session-state.js";
 import { AgentDaemon } from "../../../src/modes/daemon/daemon-mode.js";

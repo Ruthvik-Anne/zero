@@ -1,6 +1,6 @@
-import type { TextContent } from "@earendil-works/pi-ai";
-import type { Component } from "@earendil-works/pi-tui";
-import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+import type { TextContent } from "@zero-agent/ai";
+import type { Component } from "@zero-agent/tui";
+import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@zero-agent/tui";
 import type { MessageRenderer } from "../../../core/extensions/types.js";
 import type { CustomMessage } from "../../../core/messages.js";
 import { getMarkdownTheme, theme } from "../theme/theme.js";

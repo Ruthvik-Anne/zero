@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ForkServerUnavailable, forkKernel, isForkServerEnabled } from "../src/core/kernel/fork-server.js";
 
-const FORK_ENV = "PRIME_AGENT_KERNEL_FORKSERVER";
+const FORK_ENV = "ZERO_KERNEL_FORKSERVER";
 
 describe("fork-server gating", () => {
 	afterEach(() => {

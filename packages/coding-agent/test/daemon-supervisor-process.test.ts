@@ -26,7 +26,7 @@ const children = new Set<ChildProcess>();
 const workerPids = new Set<number>();
 const daemonSockets = new Set<string>();
 const childDiagnostics = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
-const PROCESS_STRESS_WORKERS = Number.parseInt(process.env.PRIME_AGENT_STRESS_WORKERS ?? "10", 10);
+const PROCESS_STRESS_WORKERS = Number.parseInt(process.env.ZERO_STRESS_WORKERS ?? "10", 10);
 
 afterEach(async () => {
 	for (const socketPath of daemonSockets) {
@@ -90,10 +90,11 @@ function spawnSupervisor(
 			env: {
 				...process.env,
 				[ENV_AGENT_DIR]: agentDir,
-				PI_OFFLINE: "1",
+				ZERO_OFFLINE: "1",
 				TSX_TSCONFIG_PATH: resolve(__dirname, "../../../tsconfig.json"),
 			},
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		},
 	);
 	children.add(child);

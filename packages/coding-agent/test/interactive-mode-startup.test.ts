@@ -1,4 +1,4 @@
-import { Container, setKeybindings } from "@earendil-works/pi-tui";
+import { Container, setKeybindings } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.js";

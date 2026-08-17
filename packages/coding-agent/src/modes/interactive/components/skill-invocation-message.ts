@@ -1,4 +1,4 @@
-import { Box, Markdown, type MarkdownTheme, Text } from "@earendil-works/pi-tui";
+import { Box, Markdown, type MarkdownTheme, Text } from "@zero-agent/tui";
 import type { ParsedSkillBlock } from "../../../core/skill-blocks.js";
 import { getMarkdownTheme, theme } from "../theme/theme.js";
 import { keyText } from "./keybinding-hints.js";

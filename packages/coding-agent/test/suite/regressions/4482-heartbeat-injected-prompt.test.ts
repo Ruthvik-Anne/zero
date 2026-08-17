@@ -1,6 +1,6 @@
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
-import { fauxAssistantMessage, fauxToolCall, type Message } from "@earendil-works/pi-ai";
-import { Container, type MarkdownTheme } from "@earendil-works/pi-tui";
+import type { AgentMessage, AgentTool } from "@zero-agent/agent-core";
+import { fauxAssistantMessage, fauxToolCall, type Message } from "@zero-agent/ai";
+import { Container, type MarkdownTheme } from "@zero-agent/tui";
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { type AgentCronJob, shouldDeferHeartbeatCronJob } from "../../../src/core/cron-jobs.js";

@@ -83,6 +83,42 @@ describe("Input component", () => {
 		});
 	});
 
+	describe("masked", () => {
+		it("renders typed characters as * instead of the real value", () => {
+			const input = new Input();
+			input.masked = true;
+			for (const char of "sk-live-secret") input.handleInput(char);
+
+			const [line] = input.render(40);
+			assert.ok(line);
+			assert.ok(!line.includes("sk-live-secret"), "masked render must not leak the real value");
+			assert.ok(line.includes("*".repeat("sk-live-secret".length)));
+		});
+
+		it("still returns the real (unmasked) value from getValue()", () => {
+			const input = new Input();
+			input.masked = true;
+			input.handleInput("s");
+			input.handleInput("3");
+			input.handleInput("c");
+			input.handleInput("r");
+			input.handleInput("3");
+			input.handleInput("t");
+
+			assert.strictEqual(input.getValue(), "s3cr3t");
+		});
+
+		it("does not mask by default", () => {
+			const input = new Input();
+			for (const char of "plaintext") input.handleInput(char);
+
+			const [line] = input.render(40);
+			assert.ok(line);
+			assert.ok(line.includes("plaintext"));
+			assert.ok(!line.includes("*"));
+		});
+	});
+
 	describe("Kill ring", () => {
 		it("Ctrl+W saves deleted text to kill ring and Ctrl+Y yanks it", () => {
 			const input = new Input();

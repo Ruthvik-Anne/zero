@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { Agent, type AgentMessage, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentMessage, type StreamFn } from "@zero-agent/agent-core";
 import {
 	type AssistantMessage,
 	type Context,
@@ -11,7 +11,7 @@ import {
 	getModel,
 	type TextContent,
 	type Usage,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -243,7 +243,19 @@ describe("AgentSession rlm recursion", () => {
 	afterEach(() => {
 		session?.dispose();
 		session = undefined;
-		rmSync(tempDir, { recursive: true, force: true });
+		// A just-killed real kernel subprocess (spawned with tempDir as its cwd)
+		// can leave tempDir transiently undeletable on Windows even after
+		// dispose() resolves — retry, and tolerate a leftover if it still hasn't
+		// released by then; this is a cleanup artifact, not a test-correctness
+		// problem. Mirrors test/suite/harness.ts's identical fix.
+		try {
+			rmSync(tempDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+				throw error;
+			}
+		}
 	});
 
 	function createSession(
@@ -2137,8 +2149,13 @@ describe("AgentSession rlm recursion", () => {
 	});
 
 	it("lets a stale kernel depth cap defer to the live host gate", () => {
-		const python =
-			process.env.PRIME_AGENT_KERNEL_PYTHON ?? join(homedir(), ".prime", "agent", "kernel-venv", "bin", "python");
+		// (task #23) uv/stdlib venvs lay out bin/python on POSIX but
+		// Scripts/python.exe on Windows — there is no bin/ dir there at all.
+		const defaultVenvPython =
+			process.platform === "win32"
+				? join(homedir(), ".zero", "agent", "kernel-venv", "Scripts", "python.exe")
+				: join(homedir(), ".zero", "agent", "kernel-venv", "bin", "python");
+		const python = process.env.ZERO_KERNEL_PYTHON ?? defaultVenvPython;
 		const runtime = join(process.cwd(), "..", "..", "prime-agent-runtime", "src");
 		const probe = spawnSync(
 			python,
@@ -2146,6 +2163,7 @@ describe("AgentSession rlm recursion", () => {
 			{
 				env: { ...process.env, PYTHONPATH: runtime, RLM_DEPTH: "1", RLM_MAX_DEPTH: "1" },
 				encoding: "utf8",
+				windowsHide: true,
 			},
 		);
 
@@ -3198,7 +3216,19 @@ describe("AgentSession RLM session dir", () => {
 	afterEach(() => {
 		session?.dispose();
 		session = undefined;
-		rmSync(tempDir, { recursive: true, force: true });
+		// A just-killed real kernel subprocess (spawned with tempDir as its cwd)
+		// can leave tempDir transiently undeletable on Windows even after
+		// dispose() resolves — retry, and tolerate a leftover if it still hasn't
+		// released by then; this is a cleanup artifact, not a test-correctness
+		// problem. Mirrors test/suite/harness.ts's identical fix.
+		try {
+			rmSync(tempDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+				throw error;
+			}
+		}
 	});
 
 	function createSession(
@@ -3346,20 +3376,20 @@ describe("AgentSession RLM session dir", () => {
 		const agentDir = join(tempDir, "custom-agent-dir");
 		const root = createSession(SessionManager.inMemory(tempDir), agentDir);
 		const env = (root as unknown as InspectableRlmDirSession)._rlmKernelEnv();
-		expect(env.PRIME_AGENT_CODING_AGENT_DIR).toBe(agentDir);
+		expect(env.ZERO_CODING_AGENT_DIR).toBe(agentDir);
 	});
 
 	it("omits the agentDir env var when none is configured", () => {
 		const root = createSession(SessionManager.inMemory(tempDir));
 		const env = (root as unknown as InspectableRlmDirSession)._rlmKernelEnv();
-		expect(env.PRIME_AGENT_CODING_AGENT_DIR).toBeUndefined();
+		expect(env.ZERO_CODING_AGENT_DIR).toBeUndefined();
 	});
 
 	it("exports agentDir but skips key injection when no websearch skill is loaded", () => {
 		const agentDir = join(tempDir, "custom-agent-dir");
 		const root = createSession(SessionManager.inMemory(tempDir), agentDir, "stored-key", false);
 		const env = (root as unknown as InspectableRlmDirSession)._rlmKernelEnv();
-		expect(env.PRIME_AGENT_CODING_AGENT_DIR).toBe(agentDir);
+		expect(env.ZERO_CODING_AGENT_DIR).toBe(agentDir);
 		expect(env.SERPER_API_KEY).toBeUndefined();
 	});
 

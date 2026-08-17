@@ -15,8 +15,9 @@ import {
 	statSync,
 	writeFileSync,
 } from "fs";
+import { homedir } from "os";
 import { basename, dirname, join } from "path";
-import { CONFIG_DIR_NAME, getAgentDir, getBinDir, getSessionsDir } from "./config.js";
+import { CONFIG_DIR_NAME, ENV_AGENT_DIR, getAgentDir, getBinDir, getSessionsDir } from "./config.js";
 import { migrateKeybindingsConfig } from "./core/keybindings.js";
 import { readFirstLineSync } from "./utils/file-lines.js";
 
@@ -24,6 +25,38 @@ const MIGRATION_GUIDE_URL =
 	"https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/CHANGELOG.md#extensions-migration";
 const EXTENSIONS_DOC_URL =
 	"https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/extensions.md";
+
+// The pre-rebrand config dir name, hardcoded rather than derived: it's a one-time
+// historical constant (what this fork used to be called), not a config value that
+// should ever track CONFIG_DIR_NAME's current rebrand-driven default.
+const LEGACY_CONFIG_DIR_NAME = ".prime/agent";
+
+/**
+ * Move a legacy `.prime/agent` config directory to its `.zero/agent` successor,
+ * in place, before any other migration runs — every other migration resolves
+ * paths through `getAgentDir()`/`CONFIG_DIR_NAME`, so they must see the moved
+ * files, not the old location.
+ *
+ * No-ops if the legacy directory doesn't exist (fresh install) or the current
+ * one already does — deliberately never merges or overwrites an existing
+ * `.zero/agent`, matching every other migration's own existsSync self-guard.
+ */
+export function migrateLegacyConfigDir(baseDir: string, label: string): void {
+	const legacyDir = join(baseDir, LEGACY_CONFIG_DIR_NAME);
+	const currentDir = join(baseDir, CONFIG_DIR_NAME);
+	if (!existsSync(legacyDir) || existsSync(currentDir)) return;
+	try {
+		mkdirSync(dirname(currentDir), { recursive: true });
+		renameSync(legacyDir, currentDir);
+		console.log(chalk.green(`Migrated ${label} ${LEGACY_CONFIG_DIR_NAME} → ${CONFIG_DIR_NAME}`));
+	} catch (err) {
+		console.log(
+			chalk.yellow(
+				`Warning: Could not migrate ${label} ${LEGACY_CONFIG_DIR_NAME} to ${CONFIG_DIR_NAME}: ${err instanceof Error ? err.message : err}`,
+			),
+		);
+	}
+}
 
 /**
  * Migrate legacy oauth.json and settings.json apiKeys to auth.json.
@@ -413,6 +446,15 @@ export function runMigrations(cwd: string): {
 	migratedAuthProviders: string[];
 	deprecationWarnings: string[];
 } {
+	// Must run first: every migration below reads from getAgentDir()/CONFIG_DIR_NAME,
+	// so a not-yet-moved legacy .prime/agent would otherwise look like a fresh install.
+	// Global dir only applies when the default homedir-based location is actually in
+	// use — an explicit ENV_AGENT_DIR override has no legacy counterpart to migrate.
+	if (!process.env[ENV_AGENT_DIR]) {
+		migrateLegacyConfigDir(homedir(), "global");
+	}
+	migrateLegacyConfigDir(cwd, "project");
+
 	const migratedAuthProviders = migrateAuthToAuthJson();
 	migrateSessionsFromAgentRoot();
 	migrateLegacySessionDirsToSessionRoot();

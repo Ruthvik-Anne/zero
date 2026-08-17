@@ -40,6 +40,13 @@ plans/
 collect.sh
 .kernel-venv/
 .worktrees/
+# Project-local agent config (.zero/agent) and RLM worktree-isolation checkouts
+# (.zero/worktrees) both live under this directory — .worktrees/ above predates
+# the rebrand and never covered either.
+.zero/
+# Test scratch dirs leaked by non-portable setup outside a try block
+# (agent-session-autonomous.test.ts, fixed in task #42); ignore defensively.
+.tmp-autonomous-untracked-*/
 
 __pycache__/
 *.pyc

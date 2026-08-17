@@ -8,7 +8,7 @@ import { stderr, stdin } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { getPackageDir } from "../../config.js";
+import { APP_NAME, getAgentDir, getPackageDir } from "../../config.js";
 import type { PythonSkillRuntimeInfo } from "../skills.js";
 
 const BOOTSTRAP_SCHEMA = 8;
@@ -328,8 +328,8 @@ function formatPythonSkillInstallArgs(skill: BootstrapPythonSkill): string[] {
 
 function ensureKernelPythonKey(pythonSkills: readonly BootstrapPythonSkill[]): string {
 	return [
-		process.env.PRIME_AGENT_KERNEL_PYTHON ?? "",
-		process.env.PRIME_AGENT_KERNEL_VENV ?? "",
+		process.env.ZERO_KERNEL_PYTHON ?? "",
+		process.env.ZERO_KERNEL_VENV ?? "",
 		process.env.HOME ?? "",
 		process.env.XDG_DATA_HOME ?? "",
 		JSON.stringify(pythonSkills),
@@ -337,16 +337,18 @@ function ensureKernelPythonKey(pythonSkills: readonly BootstrapPythonSkill[]): s
 }
 
 export function getKernelVenvDir(): string {
-	const override = process.env.PRIME_AGENT_KERNEL_VENV;
+	const override = process.env.ZERO_KERNEL_VENV;
 	if (override) return path.resolve(expandHome(override));
-	return path.join(os.homedir(), ".prime", "agent", "kernel-venv");
+	// Same config-dir cascade as everything else (getAgentDir()), so the kernel
+	// venv never lives in a different app-config location than settings/sessions.
+	return path.join(getAgentDir(), "kernel-venv");
 }
 
 function getXdgKernelVenvDir(): string {
 	const dataHome = process.env.XDG_DATA_HOME
 		? path.resolve(expandHome(process.env.XDG_DATA_HOME))
 		: path.join(os.homedir(), ".local", "share");
-	return path.join(dataHome, "prime", "agent", "kernel-venv");
+	return path.join(dataHome, APP_NAME, "agent", "kernel-venv");
 }
 
 async function resolveWritableKernelVenvDir(): Promise<string> {
@@ -355,7 +357,7 @@ async function resolveWritableKernelVenvDir(): Promise<string> {
 		await mkdir(path.dirname(primary), { recursive: true });
 		return primary;
 	} catch (primaryError) {
-		if (process.env.PRIME_AGENT_KERNEL_VENV) {
+		if (process.env.ZERO_KERNEL_VENV) {
 			throw new Error(`couldn't create kernel venv parent directory for ${primary}: ${errorMessage(primaryError)}`);
 		}
 
@@ -365,7 +367,7 @@ async function resolveWritableKernelVenvDir(): Promise<string> {
 			return fallback;
 		} catch (fallbackError) {
 			throw new Error(
-				`couldn't create kernel venv directory at ${primary} or ${fallback}; set PRIME_AGENT_KERNEL_PYTHON to a python with ipykernel installed. ${errorMessage(fallbackError)}`,
+				`couldn't create kernel venv directory at ${primary} or ${fallback}; set ZERO_KERNEL_PYTHON to a python with ipykernel installed. ${errorMessage(fallbackError)}`,
 			);
 		}
 	}
@@ -376,6 +378,7 @@ function run(command: string, args: string[], options: { stdio?: "ignore" | "inh
 		const child = spawn(command, args, {
 			env: process.env,
 			stdio: options.stdio ?? "ignore",
+			windowsHide: true,
 		});
 		child.on("error", reject);
 		child.on("exit", (code, signal) => {
@@ -511,6 +514,13 @@ async function findExecutable(name: string): Promise<string | null> {
 	return null;
 }
 
+// `uv venv` (and stdlib venv) lay out a POSIX venv as bin/python but a
+// Windows venv as Scripts/python.exe — there is no bin/ directory at all on
+// Windows (confirmed: uv only creates Scripts/, Lib/, pyvenv.cfg there).
+function venvPythonPath(venv: string): string {
+	return process.platform === "win32" ? path.join(venv, "Scripts", "python.exe") : path.join(venv, "bin", "python");
+}
+
 async function ensureUv(options: EnsureKernelPythonOptions): Promise<string> {
 	const fromPath = await findExecutable("uv");
 	if (fromPath) return fromPath;
@@ -518,12 +528,11 @@ async function ensureUv(options: EnsureKernelPythonOptions): Promise<string> {
 	const localUv = path.join(os.homedir(), ".local", "bin", process.platform === "win32" ? "uv.exe" : "uv");
 	if (await isExecutable(localUv)) return localUv;
 
-	const shouldInstallUv =
-		process.env.PRIME_AGENT_INSTALL_UV === "1" || (!options.onProgress && (await confirmUvInstall()));
+	const shouldInstallUv = process.env.ZERO_INSTALL_UV === "1" || (!options.onProgress && (await confirmUvInstall()));
 	if (!shouldInstallUv) {
 		throw new Error(
 			`uv is required to set up the Python kernel. Install uv yourself: ${UV_INSTALL_COMMAND}, ` +
-				"or set PRIME_AGENT_INSTALL_UV=1 to let prime-agent run that installer.",
+				"or set ZERO_INSTALL_UV=1 to let prime-agent run that installer.",
 		);
 	}
 
@@ -543,7 +552,7 @@ async function ensureUv(options: EnsureKernelPythonOptions): Promise<string> {
 }
 
 async function confirmUvInstall(): Promise<boolean> {
-	if (process.env.PRIME_AGENT_INSTALL_UV === "0") return false;
+	if (process.env.ZERO_INSTALL_UV === "0") return false;
 	if (!stdin.isTTY || !stderr.isTTY) return false;
 
 	const rl = createInterface({ input: stdin, output: stderr });
@@ -725,7 +734,7 @@ async function bootstrapVenv(
 ): Promise<void> {
 	await mkdir(path.dirname(venv), { recursive: true });
 	const uv = await ensureUv(options);
-	const python = path.join(venv, "bin", "python");
+	const python = venvPythonPath(venv);
 	const sourceDir = await resolveRuntimeSourceDir();
 	const runtimeRequirement = sourceDir ?? RUNTIME_REQUIREMENT;
 	const runtimeIdentity = await resolveRuntimeIdentity();
@@ -848,7 +857,7 @@ function formatBootstrapFailure(error: unknown): Error {
 	return new Error(
 		`Failed to set up the Python kernel runtime. ${errorMessage(error)}\n` +
 			"First-time setup needs internet to install uv, Python, ipykernel, prime-agent-runtime, and default Python packages; once set up, prime-agent runs offline. " +
-			"Set PRIME_AGENT_KERNEL_PYTHON to a Python with ipykernel, a current prime-agent-runtime, and default Python packages installed to skip auto-bootstrap.",
+			"Set ZERO_KERNEL_PYTHON to a Python with ipykernel, a current prime-agent-runtime, and default Python packages installed to skip auto-bootstrap.",
 	);
 }
 
@@ -856,7 +865,7 @@ async function ensureKernelPythonUncached(
 	options: EnsureKernelPythonOptions,
 	pythonSkills: readonly BootstrapPythonSkill[],
 ): Promise<string> {
-	const override = process.env.PRIME_AGENT_KERNEL_PYTHON;
+	const override = process.env.ZERO_KERNEL_PYTHON;
 	if (override) {
 		const python = path.resolve(expandHome(override));
 		const missing: string[] = [];
@@ -877,16 +886,16 @@ async function ensureKernelPythonUncached(
 			if (missingPythonSkills.length > 0) {
 				reportProgress(
 					options,
-					`Warning: Python skills unavailable in PRIME_AGENT_KERNEL_PYTHON and will be disabled: ${missingPythonSkills.join(", ")}`,
+					`Warning: Python skills unavailable in ZERO_KERNEL_PYTHON and will be disabled: ${missingPythonSkills.join(", ")}`,
 				);
 			}
 		}
 		if (missing.length === 0) return python;
-		throw new Error(`PRIME_AGENT_KERNEL_PYTHON points to a Python missing ${missing.join(" and ")}: ${python}`);
+		throw new Error(`ZERO_KERNEL_PYTHON points to a Python missing ${missing.join(" and ")}: ${python}`);
 	}
 
 	const venv = await resolveWritableKernelVenvDir();
-	const python = path.join(venv, "bin", "python");
+	const python = venvPythonPath(venv);
 	const runtimeIdentity = await resolveRuntimeIdentity();
 	if (await kernelReady(python, venv, runtimeIdentity, pythonSkills)) return python;
 
@@ -926,4 +935,44 @@ export function ensureKernelPython(options: EnsureKernelPythonOptions = {}): Pro
 	});
 	inFlightEnsureKernelPython = { key, promise };
 	return promise;
+}
+
+/**
+ * Cheap (no subprocess) approximation of whether `ensureKernelPython` would return
+ * near-instantly right now, or would need to do a full/expensive rebuild (uv python
+ * install, venv create, pip install of ipykernel/runtime/default packages). Used to
+ * gate eager kernel prewarm: prewarming a cold cache would compete for disk/network
+ * I/O with unrelated work happening at the same time (e.g. a fresh daemon worker's
+ * auth handshake), so callers should only prewarm when this returns true and otherwise
+ * fall back to the existing lazy-start-on-first-use path.
+ *
+ * Deliberately conservative: any uncertainty (unreadable files, no bootstrap-version
+ * marker, a mismatched one) resolves to `false` rather than risking a false "cached"
+ * that reintroduces the eager-rebuild race this check exists to avoid.
+ *
+ * `.bootstrap-version` (written by `writeBootstrapVersion` on every successful
+ * bootstrap/sync) already serves as the marker file this needs — it lives inside the
+ * resolved venv directory itself, so it can never be mistaken for a marker belonging
+ * to a different venv location, and there is no need for a second marker file.
+ */
+export async function isKernelPythonLikelyCached(
+	options: Pick<EnsureKernelPythonOptions, "pythonSkills"> = {},
+): Promise<boolean> {
+	try {
+		// ZERO_KERNEL_PYTHON never triggers a venv build (bootstrap.ts's override branch
+		// only runs fast `python -c "import ..."` probes, or throws) — always safe to prewarm.
+		if (process.env.ZERO_KERNEL_PYTHON) return true;
+
+		// Uses the primary venv location only (no XDG fallback, no mkdir): this is a
+		// read-only probe, and the fallback path is a near-never-taken edge case.
+		const venv = getKernelVenvDir();
+		if (!(await isExecutable(venvPythonPath(venv)))) return false;
+
+		const pythonSkills = normalizePythonSkills(options.pythonSkills);
+		const runtimeIdentity = await resolveRuntimeIdentity();
+		const version = await readBootstrapVersion(venv);
+		return bootstrapVersionCurrent(version, runtimeIdentity, pythonSkills);
+	} catch {
+		return false;
+	}
 }

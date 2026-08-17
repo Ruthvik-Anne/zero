@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model, ServiceTier } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@zero-agent/agent-core";
+import type { Model, ServiceTier } from "@zero-agent/ai";
 import { getAgentDir } from "../config.js";
 import type { AgentSessionMessageController } from "./agent-messages.js";
 import type { AgentObserveController } from "./agent-observe.js";
@@ -12,6 +12,7 @@ import type { AgentRlmHeartbeatController } from "./cron-jobs.js";
 import { createHerdrAgentStateExtension } from "./extensions/builtin/herdr-agent-state.js";
 import type { SessionStartEvent, ToolDefinition } from "./extensions/index.js";
 import { McpManager } from "./mcp/mcp-manager.js";
+import type { SessionMode } from "./mode/session-mode.js";
 import { ModelRegistry } from "./model-registry.js";
 import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type ResourceLoader } from "./resource-loader.js";
 import type { SubagentRuntimeHost } from "./rlm-runtime.js";
@@ -90,6 +91,8 @@ export interface AgentSessionCreationOptions {
 	telemetryDisabled?: true;
 	/** Initial goal to seed at session creation (rlmDepth 0 only, idempotent). */
 	initialGoal?: { objective: string; tokenBudget?: number };
+	/** module I: plan/auto/manual mode, inherited by RLM children so it can't be escaped via delegation. */
+	mode?: SessionMode;
 }
 
 /**
@@ -223,7 +226,10 @@ export async function createAgentSessionServices(
 		diagnostics.push({
 			type: "info",
 			message:
-				"Prime Agent sends pseudonymous usage and performance metrics without prompts, responses, tool content, file paths, or repository data. Disable this with telemetry.enabled=false, PRIME_AGENT_TELEMETRY=0, DO_NOT_TRACK=1, or offline mode.",
+				// (B13) Was still telling users to set PRIME_AGENT_TELEMETRY=0 — the code
+				// only ever reads ZERO_TELEMETRY (telemetry.ts:213); the old var name did
+				// nothing.
+				"Zero sends pseudonymous usage and performance metrics without prompts, responses, tool content, file paths, or repository data. Disable this with telemetry.enabled=false, ZERO_TELEMETRY=0, DO_NOT_TRACK=1, or offline mode.",
 		});
 		settingsManager.setTelemetryNoticeShown(true);
 	}
@@ -302,6 +308,7 @@ export async function createAgentSessionFromServices(
 		autonomous: options.autonomous,
 		serializedRefine: options.serializedRefine,
 		initialGoal: options.initialGoal,
+		mode: options.mode,
 	});
 	if (result.session.rlmDepth === 0 && !options.telemetryDisabled) {
 		installAgentTelemetry(result.session, {

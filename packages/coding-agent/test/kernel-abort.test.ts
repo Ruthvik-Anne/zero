@@ -314,3 +314,22 @@ describe("KernelManager abort handling", () => {
 		manager.disposeSync();
 	});
 });
+
+describe("KernelManager kernelStderr accumulation (B5)", () => {
+	it("caps the accumulated diagnostic buffer instead of growing it unbounded", () => {
+		const manager = new KernelManager({ cwd: process.cwd() });
+		const privateManager = manager as unknown as {
+			appendKernelDiagnostic: (message: string) => void;
+			kernelStderr: string;
+		};
+
+		for (let i = 0; i < 2000; i++) {
+			privateManager.appendKernelDiagnostic(`line ${i} of a very chatty kernel`);
+		}
+
+		expect(privateManager.kernelStderr.length).toBeLessThanOrEqual(4096);
+		// The tail is still the most recent content, not an early slice.
+		expect(privateManager.kernelStderr).toContain("line 1999");
+		expect(privateManager.kernelStderr).not.toContain("line 0 ");
+	});
+});

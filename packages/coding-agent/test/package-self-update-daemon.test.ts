@@ -507,13 +507,13 @@ describe("self-update daemon restart", () => {
 		mkdirSync(packageDir, { recursive: true });
 
 		originalAgentDir = process.env[ENV_AGENT_DIR];
-		originalPiPackageDir = process.env.PI_PACKAGE_DIR;
+		originalPiPackageDir = process.env.ZERO_PACKAGE_DIR;
 		originalCwd = process.cwd();
 		originalExecPath = process.execPath;
 		originalExitCode = process.exitCode;
 		process.exitCode = undefined;
 		process.env[ENV_AGENT_DIR] = agentDir;
-		process.env.PI_PACKAGE_DIR = packageDir;
+		process.env.ZERO_PACKAGE_DIR = packageDir;
 		process.chdir(projectDir);
 		Object.defineProperty(process, "execPath", {
 			value: join(packageDir, "dist", "cli.js"),
@@ -536,9 +536,9 @@ describe("self-update daemon restart", () => {
 			process.env[ENV_AGENT_DIR] = originalAgentDir;
 		}
 		if (originalPiPackageDir === undefined) {
-			delete process.env.PI_PACKAGE_DIR;
+			delete process.env.ZERO_PACKAGE_DIR;
 		} else {
-			process.env.PI_PACKAGE_DIR = originalPiPackageDir;
+			process.env.ZERO_PACKAGE_DIR = originalPiPackageDir;
 		}
 		delete process.env[SELF_UPDATE_INTERACTIVE_CHILD_ENV];
 		Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });

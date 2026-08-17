@@ -45,6 +45,7 @@ function runProbe(action: string): ProbeResult {
 	const result = spawnSync(process.execPath, ["--import", tsxLoader, "--input-type=module", "--eval", script], {
 		cwd: packageRoot,
 		encoding: "utf8",
+		windowsHide: true,
 	});
 
 	if (result.status !== 0) {

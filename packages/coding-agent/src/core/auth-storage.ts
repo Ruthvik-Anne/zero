@@ -4,45 +4,33 @@
  *
  * Uses file locking to prevent race conditions when multiple pi instances
  * try to refresh tokens simultaneously.
+ *
+ * (B7) Every `{ mode: 0o600 }` passed to writeFileSync below only toggles
+ * the Windows read-only attribute, not an owner-only ACL — auth.json sits at
+ * whatever ACL its parent directory inherits on Windows. Not a regression
+ * (there's no direct POSIX-mode equivalent to retrofit), but the protection
+ * these calls imply doesn't actually exist on that platform; a real fix would
+ * need an `icacls`-based ACL restriction, out of scope for this pass.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	findEnvKeys,
 	getEnvApiKey,
 	type OAuthCredentials,
 	type OAuthLoginCallbacks,
 	type OAuthProviderId,
-} from "@earendil-works/pi-ai";
-import { getOAuthApiKey, getOAuthProvider, getOAuthProviders } from "@earendil-works/pi-ai/oauth";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+} from "@zero-agent/ai";
+import { getOAuthApiKey, getOAuthProvider, getOAuthProviders } from "@zero-agent/ai/oauth";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { getAgentDir } from "../config.js";
-import {
-	clearPrimeCliCredentials,
-	getPrimeCliConfigPath,
-	loadPrimeCliConfig,
-	PRIME_INFERENCE_PROVIDER_ID,
-	type PrimeCliConfig,
-	type PrimeTeam,
-	savePrimeCliApiKey,
-	savePrimeCliTeamSelection,
-} from "./prime-inference-auth.js";
 import { resolveConfigValue, resolveConfigValueUncached } from "./resolve-config-value.js";
-
-export type PrimeTeamCredential = {
-	teamId: string;
-	name: string;
-	slug?: string;
-	role?: string;
-	createdAt?: string;
-};
 
 export type ApiKeyCredential = {
 	type: "api_key";
 	key: string;
-	primeTeam?: PrimeTeamCredential | null;
 };
 
 export type OAuthCredential = {
@@ -65,11 +53,6 @@ export type AuthStatus = {
 		| "models_json_command"
 		| "stale";
 	label?: string;
-};
-
-export type AuthStorageOptions = {
-	primeCliConfigPath?: string;
-	usePrimeCliConfig?: boolean;
 };
 
 type LockResult<T> = {
@@ -115,10 +98,46 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 		}
 	}
 
+	/**
+	 * (B2) Was `existsSync` -> `writeFileSync` (check-then-act): two processes
+	 * racing on a fresh install could both pass the existence check, then the
+	 * second one's write truncates whatever the first one already wrote (real
+	 * credentials, once the lock-holder gets that far) back to "{}". `"wx"` is
+	 * an atomic exclusive create — it fails with EEXIST if the file already
+	 * exists, so there is no window where "doesn't exist" can go stale between
+	 * the check and the write.
+	 */
 	private ensureFileExists(): void {
-		if (!existsSync(this.authPath)) {
-			writeFileSync(this.authPath, "{}", "utf-8");
-			chmodSync(this.authPath, 0o600);
+		try {
+			writeFileSync(this.authPath, "{}", { encoding: "utf-8", flag: "wx", mode: 0o600 });
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+				throw error;
+			}
+			// Someone else created it between our last check and this call — fine,
+			// that's exactly what this exclusive-create is meant to make safe.
+		}
+	}
+
+	/**
+	 * (B3) Was a direct `writeFileSync(this.authPath, next)` — truncates the
+	 * real file in place, so a crash mid-write leaves an unparseable auth.json,
+	 * which then trips B1's loadError guard permanently (unrecoverable through
+	 * the UI). Write-temp-then-rename is atomic on both POSIX and Windows for a
+	 * same-directory rename — matches the pattern already used by telemetry.ts,
+	 * session-manager.ts, refinement.ts, and daemon-supervisor.ts.
+	 */
+	private writeAuthFileAtomically(content: string): void {
+		const temporaryPath = `${this.authPath}.${process.pid}.${randomUUID()}.tmp`;
+		try {
+			writeFileSync(temporaryPath, content, { encoding: "utf-8", flag: "wx", mode: 0o600 });
+			renameSync(temporaryPath, this.authPath);
+		} finally {
+			try {
+				unlinkSync(temporaryPath);
+			} catch {
+				// The rename succeeded or the temporary file was never created.
+			}
 		}
 	}
 
@@ -139,10 +158,16 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 					throw error;
 				}
 				lastError = error;
-				const start = Date.now();
-				while (Date.now() - start < delayMs) {
-					// Sleep synchronously to avoid changing callers to async.
-				}
+				// (B8) Was a `while (Date.now() - start < delayMs) {}` busy-spin —
+				// burned a full CPU core for the entire wait instead of actually
+				// blocking. Atomics.wait is a real OS-level wait (no polling), still
+				// synchronous (this method's contract, withLock<T>(): T, can't
+				// become async without breaking every existing sync caller —
+				// withLockAsync already exists as the async alternative for callers
+				// that can tolerate one). This still blocks the event loop for
+				// delayMs either way; Atomics.wait only removes the CPU-spin, it
+				// doesn't make the wait non-blocking.
+				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
 			}
 		}
 
@@ -159,8 +184,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			const current = existsSync(this.authPath) ? readFileSync(this.authPath, "utf-8") : undefined;
 			const { result, next } = fn(current);
 			if (next !== undefined) {
-				writeFileSync(this.authPath, next, "utf-8");
-				chmodSync(this.authPath, 0o600);
+				this.writeAuthFileAtomically(next);
 			}
 			return result;
 		} finally {
@@ -204,8 +228,7 @@ export class FileAuthStorageBackend implements AuthStorageBackend {
 			const { result, next } = await fn(current);
 			throwIfCompromised();
 			if (next !== undefined) {
-				writeFileSync(this.authPath, next, "utf-8");
-				chmodSync(this.authPath, 0o600);
+				this.writeAuthFileAtomically(next);
 			}
 			throwIfCompromised();
 			return result;
@@ -252,26 +275,22 @@ export class AuthStorage {
 	private loadError: Error | null = null;
 	private errors: Error[] = [];
 
-	private constructor(
-		private storage: AuthStorageBackend,
-		private options: AuthStorageOptions = {},
-	) {
+	private constructor(private storage: AuthStorageBackend) {
 		this.reload();
 	}
 
-	static create(authPath?: string, options?: AuthStorageOptions): AuthStorage {
-		const authOptions = options ?? { usePrimeCliConfig: authPath === undefined };
-		return new AuthStorage(new FileAuthStorageBackend(authPath ?? join(getAgentDir(), "auth.json")), authOptions);
+	static create(authPath?: string): AuthStorage {
+		return new AuthStorage(new FileAuthStorageBackend(authPath ?? join(getAgentDir(), "auth.json")));
 	}
 
-	static fromStorage(storage: AuthStorageBackend, options?: AuthStorageOptions): AuthStorage {
-		return new AuthStorage(storage, options);
+	static fromStorage(storage: AuthStorageBackend): AuthStorage {
+		return new AuthStorage(storage);
 	}
 
-	static inMemory(data: AuthStorageData = {}, options?: AuthStorageOptions): AuthStorage {
+	static inMemory(data: AuthStorageData = {}): AuthStorage {
 		const storage = new InMemoryAuthStorageBackend();
 		storage.withLock(() => ({ result: undefined, next: JSON.stringify(data, null, 2) }));
-		return AuthStorage.fromStorage(storage, options);
+		return AuthStorage.fromStorage(storage);
 	}
 
 	/**
@@ -375,22 +394,6 @@ export class AuthStorage {
 		};
 	}
 
-	private getPrimeCliAuthCandidate(provider: string): AuthSourceCandidate | undefined {
-		const apiKey = this.getPrimeCliApiKey(provider);
-		if (!apiKey) {
-			return undefined;
-		}
-		return {
-			label: "Prime CLI",
-			...this.createAuthSourceCandidate({
-				configured: false,
-				source: "prime_cli",
-				identityMaterial: provider,
-				valueMaterial: apiKey,
-			}),
-		};
-	}
-
 	private getStoredAuthCandidate(
 		provider: string,
 		options?: { resolveCommandValue?: boolean; resolvedCommandValue?: string },
@@ -483,21 +486,12 @@ export class AuthStorage {
 	private getAuthSourceCandidates(provider: string, options?: { includeFallback?: boolean }): AuthSourceCandidate[] {
 		const fallbackCandidate =
 			options?.includeFallback === false ? undefined : this.getFallbackAuthCandidate(provider);
-		const candidates =
-			provider === PRIME_INFERENCE_PROVIDER_ID
-				? [
-						this.getRuntimeAuthCandidate(provider),
-						this.getEnvironmentAuthCandidate(provider),
-						this.getPrimeCliAuthCandidate(provider),
-						this.getStoredAuthCandidate(provider),
-						fallbackCandidate,
-					]
-				: [
-						this.getRuntimeAuthCandidate(provider),
-						this.getStoredAuthCandidate(provider),
-						this.getEnvironmentAuthCandidate(provider),
-						fallbackCandidate,
-					];
+		const candidates = [
+			this.getRuntimeAuthCandidate(provider),
+			this.getStoredAuthCandidate(provider),
+			this.getEnvironmentAuthCandidate(provider),
+			fallbackCandidate,
+		];
 		return candidates.filter((candidate): candidate is AuthSourceCandidate => candidate !== undefined);
 	}
 
@@ -640,9 +634,25 @@ export class AuthStorage {
 		}
 	}
 
-	private persistProviderChange(provider: string, credential: AuthCredential | undefined): void {
+	/**
+	 * (B1) Was a bare early return — auth.json failing to parse at reload()
+	 * meant every subsequent set()/remove() updated in-memory state only, with
+	 * nothing written and nothing told to the caller. login() awaits the OAuth
+	 * flow, calls set(), returns void — the UI reported success regardless.
+	 * Now recorded via the same recordError()/drainErrors() channel every other
+	 * failure in this class already uses.
+	 */
+	/** Returns whether the change actually reached disk — see set()/remove()/login(). */
+	private persistProviderChange(provider: string, credential: AuthCredential | undefined): boolean {
 		if (this.loadError) {
-			return;
+			this.recordError(
+				new Error(
+					`auth.json could not be read (${this.loadError.message}); the ${
+						credential ? "update" : "removal"
+					} for "${provider}" was applied in memory only and will not survive a restart`,
+				),
+			);
+			return false;
 		}
 
 		try {
@@ -656,8 +666,10 @@ export class AuthStorage {
 				}
 				return { result: undefined, next: JSON.stringify(merged, null, 2) };
 			});
+			return true;
 		} catch (error) {
 			this.recordError(error);
+			return false;
 		}
 	}
 
@@ -669,21 +681,26 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Set credential for a provider.
+	 * Set credential for a provider. Returns whether it was actually persisted
+	 * to disk (B1) — false means it only lives in memory for this process and
+	 * will be lost on restart; drainErrors() has the reason. Existing callers
+	 * that ignore the return value keep their current (in-memory-always-wins)
+	 * behavior unchanged.
 	 */
-	set(provider: string, credential: AuthCredential): void {
+	set(provider: string, credential: AuthCredential): boolean {
 		this.clearStaleAuthSource(provider, "stored");
 		this.data[provider] = credential;
-		this.persistProviderChange(provider, credential);
+		return this.persistProviderChange(provider, credential);
 	}
 
 	/**
-	 * Remove credential for a provider.
+	 * Remove credential for a provider. Returns whether the removal was
+	 * actually persisted to disk (B1) — see set().
 	 */
-	remove(provider: string): void {
+	remove(provider: string): boolean {
 		this.clearStaleAuthSource(provider, "stored");
 		delete this.data[provider];
-		this.persistProviderChange(provider, undefined);
+		return this.persistProviderChange(provider, undefined);
 	}
 
 	/**
@@ -730,6 +747,13 @@ export class AuthStorage {
 
 	/**
 	 * Login to an OAuth provider.
+	 *
+	 * (B1) Was fire-and-forget: `set()` returned void, so a persist failure
+	 * (unreadable auth.json, disk full, permissions, ...) was swallowed and
+	 * login() resolved successfully anyway — the UI reported success for a
+	 * credential that existed only in this process's memory and vanished on
+	 * restart. Now throws, so callers that already handle a rejected login()
+	 * (every one does, for the OAuth flow itself) surface this the same way.
 	 */
 	async login(providerId: OAuthProviderId, callbacks: OAuthLoginCallbacks): Promise<void> {
 		const provider = getOAuthProvider(providerId);
@@ -738,22 +762,25 @@ export class AuthStorage {
 		}
 
 		const credentials = await provider.login(callbacks);
-		this.set(providerId, { type: "oauth", ...credentials });
+		const persisted = this.set(providerId, { type: "oauth", ...credentials });
+		if (!persisted) {
+			// Peek, don't drain — the same underlying error stays queued for
+			// whatever else (a startup/runtime diagnostics pass) eventually calls
+			// drainErrors(); this throw is an immediate, additional signal to the
+			// caller of login() specifically, not the only place this surfaces.
+			const cause = this.errors[this.errors.length - 1];
+			throw new Error(
+				`Signed in to ${providerId}, but the credential could not be saved to auth.json${
+					cause ? `: ${cause.message}` : ""
+				}. It will be lost when this session ends.`,
+			);
+		}
 	}
 
 	/**
 	 * Logout from a provider.
 	 */
 	logout(provider: string): void {
-		if (provider === PRIME_INFERENCE_PROVIDER_ID && this.isPrimeCliConfigEnabled()) {
-			try {
-				clearPrimeCliCredentials(this.getEnabledPrimeCliConfigPath());
-				this.clearStaleAuthSource(provider, "prime_cli");
-			} catch (error) {
-				this.recordError(error);
-				throw error;
-			}
-		}
 		this.remove(provider);
 	}
 
@@ -811,8 +838,8 @@ export class AuthStorage {
 	 * Get API key for a provider.
 	 * Priority:
 	 * 1. Runtime override (CLI --api-key)
-	 * 2. Prime Inference: environment variable, Prime CLI config, auth.json
-	 * 3. Other providers: auth.json, environment variable
+	 * 2. auth.json
+	 * 3. Environment variable
 	 * 4. Fallback resolver (models.json custom providers)
 	 */
 	async getApiKeyWithSourceToken(
@@ -831,28 +858,6 @@ export class AuthStorage {
 
 		const envCandidate = this.getEnvironmentAuthCandidate(providerId);
 		const envKey = getEnvApiKey(providerId);
-		if (
-			providerId === PRIME_INFERENCE_PROVIDER_ID &&
-			envKey &&
-			envCandidate &&
-			!this.isAuthSourceStale(providerId, envCandidate)
-		) {
-			return {
-				apiKey: envKey,
-				sourceToken: this.getAuthSourceTokenForCandidate(providerId, envCandidate),
-			};
-		}
-
-		if (providerId === PRIME_INFERENCE_PROVIDER_ID) {
-			const primeCliCandidate = this.getPrimeCliAuthCandidate(providerId);
-			const primeCliKey = this.getPrimeCliApiKey(providerId);
-			if (primeCliKey && primeCliCandidate && !this.isAuthSourceStale(providerId, primeCliCandidate)) {
-				return {
-					apiKey: primeCliKey,
-					sourceToken: this.getAuthSourceTokenForCandidate(providerId, primeCliCandidate),
-				};
-			}
-		}
 
 		const cred = this.data[providerId];
 
@@ -934,13 +939,8 @@ export class AuthStorage {
 			}
 		}
 
-		// Other providers preserve auth.json priority over environment variables.
-		if (
-			providerId !== PRIME_INFERENCE_PROVIDER_ID &&
-			envKey &&
-			envCandidate &&
-			!this.isAuthSourceStale(providerId, envCandidate)
-		) {
+		// auth.json takes priority over environment variables.
+		if (envKey && envCandidate && !this.isAuthSourceStale(providerId, envCandidate)) {
 			return {
 				apiKey: envKey,
 				sourceToken: this.getAuthSourceTokenForCandidate(providerId, envCandidate),
@@ -971,165 +971,5 @@ export class AuthStorage {
 	 */
 	getOAuthProviders() {
 		return getOAuthProviders();
-	}
-
-	setPrimeInferenceTeamSelection(team: PrimeTeam | null): void {
-		if (this.isPrimeCliConfigEnabled()) {
-			try {
-				savePrimeCliTeamSelection(team, this.getEnabledPrimeCliConfigPath());
-			} catch (error) {
-				this.recordError(error);
-				throw error;
-			}
-			return;
-		}
-
-		const credential = this.data[PRIME_INFERENCE_PROVIDER_ID];
-		if (credential?.type !== "api_key") {
-			return;
-		}
-		this.set(PRIME_INFERENCE_PROVIDER_ID, {
-			...credential,
-			primeTeam: team ? this.toPrimeTeamCredential(team) : null,
-		});
-	}
-
-	setPrimeInferenceApiKey(apiKey: string): void {
-		if (this.isPrimeCliConfigEnabled()) {
-			try {
-				const configPath = this.getEnabledPrimeCliConfigPath();
-				const config = loadPrimeCliConfig(configPath);
-				const existingCredential = this.data[PRIME_INFERENCE_PROVIDER_ID];
-				const legacyPrimeTeam = existingCredential?.type === "api_key" ? existingCredential.primeTeam : undefined;
-				if (config.apiKey !== apiKey) {
-					savePrimeCliApiKey(apiKey, configPath);
-				} else if (!config.teamIdFromEnv && (legacyPrimeTeam === null || (!config.teamId && legacyPrimeTeam))) {
-					savePrimeCliTeamSelection(legacyPrimeTeam, configPath);
-				}
-				this.clearStaleAuthSource(PRIME_INFERENCE_PROVIDER_ID, "prime_cli");
-			} catch (error) {
-				this.recordError(error);
-				throw error;
-			}
-			if (this.data[PRIME_INFERENCE_PROVIDER_ID]) {
-				this.remove(PRIME_INFERENCE_PROVIDER_ID);
-			}
-			return;
-		}
-
-		const existingCredential = this.data[PRIME_INFERENCE_PROVIDER_ID];
-		const existingPrimeTeam = existingCredential?.type === "api_key" ? existingCredential.primeTeam : undefined;
-		this.set(PRIME_INFERENCE_PROVIDER_ID, {
-			type: "api_key",
-			key: apiKey,
-			...(existingPrimeTeam !== undefined ? { primeTeam: existingPrimeTeam } : {}),
-		});
-	}
-
-	getPrimeInferenceTeamSelection(): PrimeTeamCredential | null | undefined {
-		let config: PrimeCliConfig | undefined;
-		if (this.isPrimeCliConfigEnabled()) {
-			config = this.getPrimeCliConfig(PRIME_INFERENCE_PROVIDER_ID);
-			if (config?.teamIdFromEnv) {
-				return undefined;
-			}
-		}
-
-		const credential = this.data[PRIME_INFERENCE_PROVIDER_ID];
-		const authSource = this.getAuthStatus(PRIME_INFERENCE_PROVIDER_ID).source;
-		if (authSource === "runtime" || authSource === "environment") {
-			return undefined;
-		}
-		if (authSource === "prime_cli") {
-			if (credential?.type === "api_key" && credential.primeTeam === null) {
-				return null;
-			}
-			if (config?.teamId) {
-				return this.toPrimeTeamCredential({
-					teamId: config.teamId,
-					name: config.teamName ?? "Prime CLI team",
-					...(config.teamRole ? { role: config.teamRole } : {}),
-				});
-			}
-			if (credential?.type === "api_key" && credential.primeTeam) {
-				return credential.primeTeam;
-			}
-			return null;
-		}
-		if (credential?.type === "api_key" && credential.primeTeam !== undefined) {
-			return credential.primeTeam;
-		}
-		if (!config?.apiKey && config?.teamId) {
-			return this.toPrimeTeamCredential({
-				teamId: config.teamId,
-				name: config.teamName ?? "Prime CLI team",
-				...(config.teamRole ? { role: config.teamRole } : {}),
-			});
-		}
-		return undefined;
-	}
-
-	getProviderHeaders(providerId: string): Record<string, string> | undefined {
-		if (providerId !== PRIME_INFERENCE_PROVIDER_ID) {
-			return undefined;
-		}
-
-		const primeCliConfig = this.getPrimeCliConfig(providerId);
-		if (primeCliConfig?.teamIdFromEnv) {
-			return primeCliConfig.teamId ? { "X-Prime-Team-ID": primeCliConfig.teamId } : undefined;
-		}
-
-		const teamId = this.getPrimeInferenceTeamSelection()?.teamId;
-		return teamId ? { "X-Prime-Team-ID": teamId } : undefined;
-	}
-
-	getPrimeCliConfigPath(): string | undefined {
-		if (!this.isPrimeCliConfigEnabled()) {
-			return undefined;
-		}
-		return getPrimeCliConfigPath(this.options.primeCliConfigPath);
-	}
-
-	private toPrimeTeamCredential(team: PrimeTeam): PrimeTeamCredential {
-		const credential: PrimeTeamCredential = {
-			teamId: team.teamId,
-			name: team.name,
-		};
-		if (team.slug) {
-			credential.slug = team.slug;
-		}
-		if (team.role) {
-			credential.role = team.role;
-		}
-		if (team.createdAt) {
-			credential.createdAt = team.createdAt;
-		}
-		return credential;
-	}
-
-	private getPrimeCliConfig(providerId: string): PrimeCliConfig | undefined {
-		if (providerId !== PRIME_INFERENCE_PROVIDER_ID) {
-			return undefined;
-		}
-		if (!this.isPrimeCliConfigEnabled()) {
-			return undefined;
-		}
-		return loadPrimeCliConfig(this.options.primeCliConfigPath);
-	}
-
-	private getPrimeCliApiKey(providerId: string): string | undefined {
-		return this.getPrimeCliConfig(providerId)?.apiKey;
-	}
-
-	private getEnabledPrimeCliConfigPath(): string {
-		const configPath = this.getPrimeCliConfigPath();
-		if (!configPath) {
-			throw new Error("Prime CLI config is not enabled");
-		}
-		return configPath;
-	}
-
-	private isPrimeCliConfigEnabled(): boolean {
-		return Boolean(this.options.usePrimeCliConfig || this.options.primeCliConfigPath);
 	}
 }

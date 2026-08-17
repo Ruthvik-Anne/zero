@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@zero-agent/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCliSubprocessEnv, createCliSubprocessLaunchSpec } from "../../../src/cli/subprocess-launch.js";
 import { ENV_AGENT_DIR } from "../../../src/config.js";
@@ -73,8 +73,8 @@ async function runCli(
 			...process.env,
 			TSX_TSCONFIG_PATH: repoTsconfigPath,
 			[ENV_AGENT_DIR]: options.agentDir,
-			PI_SKIP_VERSION_CHECK: "1",
-			PRIME_AGENT_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "0",
+			ZERO_SKIP_VERSION_CHECK: "1",
+			ZERO_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "0",
 			PRIME_AGENT_INTERNAL_DAEMON_WORKER: undefined,
 			PRIME_AGENT_INTERNAL_DAEMON_WORKER_TOKEN: undefined,
 			PRIME_AGENT_INTERNAL_DAEMON_WORKER_ACTIVE_SESSION_ID: undefined,
@@ -85,6 +85,7 @@ async function runCli(
 			...options.environment,
 		},
 		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
 	});
 	children.add(child);
 	let stdout = "";
@@ -117,6 +118,7 @@ async function runRpc(
 	const child = spawn(process.execPath, [tsxPath, fixturePath], {
 		env: { ...process.env, TSX_TSCONFIG_PATH: repoTsconfigPath },
 		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
 	});
 	children.add(child);
 	let stdout = "";
@@ -309,7 +311,7 @@ describe("ENG-4685 daemon-backed client modes", () => {
 			],
 			{
 				agentDir,
-				environment: { PRIME_AGENT_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "1" },
+				environment: { ZERO_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "1" },
 			},
 		);
 

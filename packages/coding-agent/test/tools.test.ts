@@ -191,17 +191,23 @@ describe("Coding Agent Tools", () => {
 			expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 		});
 
-		it("should include EACCES for read-only files", async () => {
+		it("should include EACCES (or EPERM on Windows) for read-only files", async () => {
 			const testFile = join(testDir, "edit-readonly.txt");
 			writeFileSync(testFile, "hello\n");
 			chmodSync(testFile, 0o444);
 
+			// (task #14) Node's fs layer legitimately reports EPERM rather than
+			// EACCES for a read-only-attribute file on Windows/NTFS — chmod's
+			// POSIX permission bits don't map onto Windows ACLs the way they do
+			// on POSIX systems. Production code (edit.ts) just echoes whatever
+			// error.code the OS actually returns, so the fix belongs here, not there.
+			const expectedCode = process.platform === "win32" ? "EPERM" : "EACCES";
 			await expect(
 				editTool.execute("test-call-14", {
 					path: testFile,
 					edits: [{ oldText: "hello", newText: "world" }],
 				}),
-			).rejects.toThrow(`Could not edit file: ${testFile}. Error code: EACCES.`);
+			).rejects.toThrow(`Could not edit file: ${testFile}. Error code: ${expectedCode}.`);
 		});
 
 		it("should include the original error message for unknown edit access errors", async () => {
@@ -230,15 +236,22 @@ describe("Coding Agent Tools", () => {
 			expect(result).toEqual({ error: `Could not edit file: ${missingFile}. Error code: ENOENT.` });
 		});
 
-		it("should include EACCES in diff preview for unreadable files", async () => {
-			const unreadableFile = join(testDir, "unreadable-preview.txt");
-			writeFileSync(unreadableFile, "hello\n");
-			chmodSync(unreadableFile, 0o222);
+		// (task #14) Skipped on Windows: chmod's write-only 0o222 only ever toggles
+		// NTFS's read-only attribute (which restricts writes), never read access —
+		// there is no way to construct an actually-unreadable-but-existing file via
+		// chmodSync on Windows, so this scenario can't be reproduced there at all.
+		it.skipIf(process.platform === "win32")(
+			"should include EACCES in diff preview for unreadable files",
+			async () => {
+				const unreadableFile = join(testDir, "unreadable-preview.txt");
+				writeFileSync(unreadableFile, "hello\n");
+				chmodSync(unreadableFile, 0o222);
 
-			const result = await computeEditsDiff(unreadableFile, [{ oldText: "hello", newText: "world" }], testDir);
+				const result = await computeEditsDiff(unreadableFile, [{ oldText: "hello", newText: "world" }], testDir);
 
-			expect(result).toEqual({ error: `Could not edit file: ${unreadableFile}. Error code: EACCES.` });
-		});
+				expect(result).toEqual({ error: `Could not edit file: ${unreadableFile}. Error code: EACCES.` });
+			},
+		);
 	});
 
 	describe("bash tool", () => {

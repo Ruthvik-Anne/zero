@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { arch, platform } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Usage } from "@zero-agent/ai";
 import { detectInstallMethod, VERSION } from "../config.js";
 import type { AgentSession, AgentSessionEvent } from "./agent-session.js";
 import type { AgentExecutionMode } from "./agent-session-config.js";
@@ -10,7 +10,9 @@ import type { AuthCredential, AuthStatus } from "./auth-storage.js";
 import type { SettingsManager } from "./settings-manager.js";
 import { isBuiltinSlashCommandName, resolveBuiltinSlashCommandName } from "./slash-commands.js";
 
-const DEFAULT_TELEMETRY_ENDPOINT = "https://api.primeintellect.ai/api/v1/agent-analytics/events";
+// No default: Zero has no telemetry backend of its own (unlike upstream's Prime
+// Intellect endpoint) — telemetry is opt-in and requires ZERO_TELEMETRY_ENDPOINT.
+const DEFAULT_TELEMETRY_ENDPOINT = undefined;
 const TELEMETRY_STATE_FILE = "telemetry.json";
 const TELEMETRY_STATE_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 10;
@@ -202,13 +204,13 @@ function parseBooleanOverride(value: string | undefined): boolean | undefined {
 }
 
 export function isTelemetryEnabled(settingsManager: SettingsManager): boolean {
-	if (parseBooleanOverride(process.env.PI_OFFLINE) === true) {
+	if (parseBooleanOverride(process.env.ZERO_OFFLINE) === true) {
 		return false;
 	}
 	if (parseBooleanOverride(process.env.DO_NOT_TRACK) === true) {
 		return false;
 	}
-	const override = parseBooleanOverride(process.env.PRIME_AGENT_TELEMETRY);
+	const override = parseBooleanOverride(process.env.ZERO_TELEMETRY);
 	if (override !== undefined) {
 		return override;
 	}
@@ -310,7 +312,7 @@ export function getOrCreateTelemetryInstallationId(agentDir: string, randomId: (
 }
 
 export class TelemetryClient implements TelemetrySink {
-	private readonly endpoint: string;
+	private readonly endpoint: string | undefined;
 	private readonly fetchImpl: typeof fetch;
 	private readonly now: () => number;
 	private readonly randomId: () => string;
@@ -324,13 +326,16 @@ export class TelemetryClient implements TelemetrySink {
 	private disabled = false;
 
 	constructor(private readonly options: TelemetryClientOptions) {
-		this.endpoint = options.endpoint ?? process.env.PRIME_AGENT_TELEMETRY_ENDPOINT ?? DEFAULT_TELEMETRY_ENDPOINT;
+		this.endpoint = options.endpoint ?? process.env.ZERO_TELEMETRY_ENDPOINT ?? DEFAULT_TELEMETRY_ENDPOINT;
 		this.fetchImpl = options.fetch ?? fetch;
 		this.now = options.now ?? Date.now;
 		this.randomId = options.randomId ?? randomUUID;
 		this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
 		this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
 		this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+		// No endpoint configured (Zero's default): behave like disabled rather than
+		// throwing at flush time or sending events into the void.
+		this.disabled = this.endpoint === undefined;
 	}
 
 	capture(name: TelemetryEventName, properties: TelemetryProperties): void {
@@ -410,12 +415,13 @@ export class TelemetryClient implements TelemetrySink {
 	}
 
 	private async send(batch: TelemetryBatch): Promise<void> {
+		if (!this.endpoint) return; // no endpoint configured — disabled catches this already, kept for type safety
 		try {
 			await this.fetchImpl(this.endpoint, {
 				method: "POST",
 				headers: {
 					"content-type": "application/json",
-					"user-agent": `prime-agent/${VERSION}`,
+					"user-agent": `zero/${VERSION}`,
 				},
 				body: JSON.stringify(batch),
 				signal: AbortSignal.timeout(this.requestTimeoutMs),
@@ -450,18 +456,7 @@ export function telemetryProviderCategory(provider: string | undefined): string 
 		return "unknown";
 	}
 	const normalized = provider.toLowerCase();
-	const categories = [
-		"anthropic",
-		"openai",
-		"google",
-		"prime",
-		"openrouter",
-		"bedrock",
-		"vertex",
-		"mistral",
-		"groq",
-		"xai",
-	];
+	const categories = ["anthropic", "openai", "google", "openrouter", "bedrock", "vertex", "mistral", "groq", "xai"];
 	return categories.find((category) => normalized.includes(category)) ?? "custom";
 }
 

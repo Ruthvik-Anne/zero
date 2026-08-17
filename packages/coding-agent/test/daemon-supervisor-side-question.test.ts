@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DaemonSocketClient } from "../src/modes/daemon/active-session-state.js";
 import { DaemonCatalogClient } from "../src/modes/daemon/daemon-catalog-process.js";
@@ -125,7 +125,14 @@ describe("daemon supervisor side-question routing", () => {
 
 	it("rejects a protocol-6 client through the supervisor socket before state exchange", async () => {
 		const root = mkdtempSync(join(tmpdir(), "prime-supervisor-old-client-"));
-		const socketPath = join(root, "supervisor.sock");
+		// Mirrors defaultDaemonSocketPath()'s own win32 handling — a raw
+		// filesystem path isn't a supported .listen() target on Windows, which
+		// uses named pipes instead (production never passes a filesystem path
+		// as socketPath on win32 either).
+		const socketPath =
+			process.platform === "win32"
+				? `\\\\.\\pipe\\prime-supervisor-test-${basename(root)}`
+				: join(root, "supervisor.sock");
 		const supervisor = new DaemonSupervisor(socketPath, {
 			defaultSessionConfig: { cwd: root, agentDir: root },
 			descriptorDir: join(root, "workers"),

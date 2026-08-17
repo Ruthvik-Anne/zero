@@ -379,6 +379,7 @@ async function ensureDaemonRunning(socketPath: string, spawnCwd?: string): Promi
 			// (EPIPE once it exits); crash details come from the daemon log,
 			// which the supervisor writes to before rethrowing startup errors.
 			stdio: "ignore",
+			windowsHide: true,
 		},
 	);
 	let childFailure:
@@ -563,7 +564,7 @@ export function shouldStartDaemonEarly(args: readonly string[], startupBenchmark
 }
 
 export function maybeStartDaemonEarly(args: readonly string[]): void {
-	const benchmarkFlag = (process.env.PI_STARTUP_BENCHMARK ?? "").toLowerCase();
+	const benchmarkFlag = (process.env.ZERO_STARTUP_BENCHMARK ?? "").toLowerCase();
 	const startupBenchmark = benchmarkFlag === "1" || benchmarkFlag === "true" || benchmarkFlag === "yes";
 	if (!shouldStartDaemonEarly(args, startupBenchmark)) {
 		return;

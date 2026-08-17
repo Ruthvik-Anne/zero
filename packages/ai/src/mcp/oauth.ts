@@ -6,10 +6,10 @@ import { oauthErrorHtml, oauthSuccessHtml } from "../utils/oauth/oauth-page.js";
 import { generatePKCE } from "../utils/oauth/pkce.js";
 import type { OAuthCredentials, OAuthLoginCallbacks, OAuthProviderInterface } from "../utils/oauth/types.js";
 
-const CALLBACK_HOST = process.env.PI_OAUTH_CALLBACK_HOST || "127.0.0.1";
+const CALLBACK_HOST = process.env.ZERO_OAUTH_CALLBACK_HOST || "127.0.0.1";
 // A range (not one port) so a leaked/concurrent login can't wedge all logins with EADDRINUSE.
 // Distinct from the Anthropic callback port (53692). All candidates are registered as redirect URIs.
-const CALLBACK_PORT_BASE = Number(process.env.PI_MCP_OAUTH_CALLBACK_PORT || 53700);
+const CALLBACK_PORT_BASE = Number(process.env.ZERO_MCP_OAUTH_CALLBACK_PORT || 53700);
 const CALLBACK_PORT_COUNT = 10;
 const CALLBACK_PATH = "/callback";
 const CALLBACK_PORTS = Array.from({ length: CALLBACK_PORT_COUNT }, (_, i) => CALLBACK_PORT_BASE + i);

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerFauxProvider } from "@earendil-works/pi-ai";
+import { registerFauxProvider } from "@zero-agent/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENT_MESSAGE_SKILL_NAME, type AgentSessionMessageController } from "../src/core/agent-messages.js";
 import { AGENT_OBSERVE_SKILL_NAME, type AgentObserveController } from "../src/core/agent-observe.js";
@@ -29,7 +29,7 @@ describe("createAgentSessionFromServices", () => {
 	});
 
 	it("shows the telemetry disclosure independently of the Herdr reporter", async () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const tempDir = join(tmpdir(), `pi-session-telemetry-notice-${Date.now()}`);
 		mkdirSync(tempDir, { recursive: true });
 		cleanupPaths.push(tempDir);
@@ -50,7 +50,7 @@ describe("createAgentSessionFromServices", () => {
 	});
 
 	it("honors an explicit daemon-carried telemetry opt-out", async () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const tempDir = join(tmpdir(), `pi-session-daemon-telemetry-opt-out-${Date.now()}`);
 		mkdirSync(tempDir, { recursive: true });
 		cleanupPaths.push(tempDir);
@@ -81,7 +81,7 @@ describe("createAgentSessionFromServices", () => {
 	});
 
 	it("does not install top-level telemetry for a resumed child session", async () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const tempDir = join(tmpdir(), `pi-session-child-telemetry-${Date.now()}`);
 		mkdirSync(tempDir, { recursive: true });
 		cleanupPaths.push(tempDir);

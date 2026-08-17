@@ -1,7 +1,7 @@
 import { lstatSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@zero-agent/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession, AgentSessionEvent } from "../src/core/agent-session.js";
 import { SettingsManager } from "../src/core/settings-manager.js";
@@ -113,7 +113,14 @@ describe("telemetry identity and transport", () => {
 			version: 1,
 			installationId: first,
 		});
-		expect(statSync(path).mode & 0o777).toBe(0o600);
+		// (task #31) writeFileSync's `mode` option maps to NTFS's binary
+		// read-only attribute on Windows, not POSIX owner/group/other bits —
+		// there is no way to end up with anything other than 0o666 (or 0o444 if
+		// the mode had no write bits at all) via chmod-style mode on Windows, so
+		// asserting the exact owner-only 0o600 value is unconstructible there.
+		if (process.platform !== "win32") {
+			expect(statSync(path).mode & 0o777).toBe(0o600);
+		}
 	});
 
 	it("replaces invalid persisted installation state", () => {
@@ -131,13 +138,23 @@ describe("telemetry identity and transport", () => {
 		expect(getOrCreateTelemetryInstallationId(agentDir, randomId)).toBe(installationId);
 	});
 
-	it("does not follow a telemetry state symlink", async () => {
+	// (task #31) Creating a file symlink without elevation requires Developer
+	// Mode (SeCreateSymbolicLinkPrivilege) on Windows; a non-admin,
+	// non-Developer-Mode process gets EPERM from symlinkSync itself, before
+	// the behavior under test ever runs. Same constraint as task #22's
+	// daemon-mode.test.ts symlink tests.
+	it.skipIf(process.platform === "win32")("does not follow a telemetry state symlink", async () => {
 		const agentDir = mkdtempSync(join(tmpdir(), "prime-agent-telemetry-"));
 		const targetPath = join(agentDir, "target.json");
 		const telemetryPath = join(agentDir, "telemetry.json");
 		writeFileSync(targetPath, "do not overwrite");
 		symlinkSync(targetPath, telemetryPath);
-		const client = new TelemetryClient({ agentDir, randomId: uuidGenerator() });
+		const client = new TelemetryClient({
+			agentDir,
+			endpoint: "https://telemetry.example.test/events",
+			fetch: async () => new Response(null, { status: 204 }),
+			randomId: uuidGenerator(),
+		});
 
 		expect(() => client.capture("agent started", {})).not.toThrow();
 		await expect(client.flush()).resolves.toBeUndefined();
@@ -189,6 +206,7 @@ describe("telemetry identity and transport", () => {
 	it("never throws when the analytics endpoint fails", async () => {
 		const client = new TelemetryClient({
 			agentDir: mkdtempSync(join(tmpdir(), "prime-agent-telemetry-")),
+			endpoint: "https://telemetry.example.test/events",
 			fetch: async () => {
 				throw new Error("network failed");
 			},
@@ -203,6 +221,7 @@ describe("telemetry identity and transport", () => {
 		const batchSizes: number[] = [];
 		const client = new TelemetryClient({
 			agentDir: mkdtempSync(join(tmpdir(), "prime-agent-telemetry-")),
+			endpoint: "https://telemetry.example.test/events",
 			fetch: async (_input, init) => {
 				const body = JSON.parse(String(init?.body)) as { events: TelemetryEvent[] };
 				batchSizes.push(body.events.length);
@@ -225,7 +244,12 @@ describe("telemetry identity and transport", () => {
 		const parent = mkdtempSync(join(tmpdir(), "prime-agent-telemetry-"));
 		const agentDir = join(parent, "not-a-directory");
 		writeFileSync(agentDir, "occupied");
-		const client = new TelemetryClient({ agentDir, randomId: uuidGenerator() });
+		const client = new TelemetryClient({
+			agentDir,
+			endpoint: "https://telemetry.example.test/events",
+			fetch: async () => new Response(null, { status: 204 }),
+			randomId: uuidGenerator(),
+		});
 
 		expect(() => client.capture("agent started", {})).not.toThrow();
 		await expect(client.flush()).resolves.toBeUndefined();
@@ -243,11 +267,11 @@ describe("telemetry controls", () => {
 		expect(isTelemetryEnabled(settings)).toBe(false);
 
 		vi.stubEnv("DO_NOT_TRACK", "0");
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "0");
+		vi.stubEnv("ZERO_TELEMETRY", "0");
 		expect(isTelemetryEnabled(settings)).toBe(false);
 
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
-		vi.stubEnv("PI_OFFLINE", "true");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
+		vi.stubEnv("ZERO_OFFLINE", "true");
 		expect(isTelemetryEnabled(settings)).toBe(false);
 	});
 
@@ -255,7 +279,7 @@ describe("telemetry controls", () => {
 		const settings = SettingsManager.inMemory({ telemetry: { enabled: true } });
 		vi.stubEnv("NODE_ENV", "test");
 		expect(isTelemetryEnabled(settings)).toBe(false);
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		expect(isTelemetryEnabled(settings)).toBe(true);
 	});
 
@@ -277,18 +301,18 @@ describe("telemetry controls", () => {
 
 describe("agent telemetry aggregation", () => {
 	it("captures only allowlisted built-in command names", async () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const sink = new FakeTelemetrySink();
 
 		await captureAgentCommandUsed({
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			commandName: "model",
 			sink,
 		});
 		await captureAgentCommandUsed({
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			commandName: "private-extension-command",
 			sink,
 		});
@@ -304,15 +328,15 @@ describe("agent telemetry aggregation", () => {
 	});
 
 	it("captures onboarding completion with categorized auth and provider data", async () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const sink = new FakeTelemetrySink();
 
 		await captureOnboardingCompleted({
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			durationMs: 250,
 			outcome: "success",
-			provider: "prime",
+			provider: "anthropic",
 			authSource: "stored",
 			storedCredentialType: "oauth",
 			sink,
@@ -325,7 +349,7 @@ describe("agent telemetry aggregation", () => {
 				duration_ms: 250,
 				outcome: "success",
 				auth_category: "oauth",
-				provider_category: "prime",
+				provider_category: "anthropic",
 			}),
 		});
 		expect(sink.flushCount).toBe(1);
@@ -333,7 +357,7 @@ describe("agent telemetry aggregation", () => {
 	});
 
 	it("emits aggregate metrics without message or tool content", () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		let timestamp = 1_000;
 		const now = () => timestamp;
 		const randomId = uuidGenerator();
@@ -342,7 +366,7 @@ describe("agent telemetry aggregation", () => {
 
 		installAgentTelemetry(fakeSession as unknown as AgentSession, {
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			executionMode: "interactive",
 			sink,
 			now,
@@ -426,13 +450,13 @@ describe("agent telemetry aggregation", () => {
 	});
 
 	it("waits for post-run compaction before finalizing run metrics", () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const sink = new FakeTelemetrySink();
 		const fakeSession = new FakeAgentSession();
 
 		installAgentTelemetry(fakeSession as unknown as AgentSession, {
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			sink,
 		});
 
@@ -459,13 +483,13 @@ describe("agent telemetry aggregation", () => {
 	});
 
 	it("keeps automatic retries in one completed run", () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const sink = new FakeTelemetrySink();
 		const fakeSession = new FakeAgentSession();
 
 		installAgentTelemetry(fakeSession as unknown as AgentSession, {
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			sink,
 		});
 
@@ -496,7 +520,7 @@ describe("agent telemetry aggregation", () => {
 	});
 
 	it("awaits the final telemetry flush during async session disposal", async () => {
-		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		vi.stubEnv("ZERO_TELEMETRY", "1");
 		const sink = new FakeTelemetrySink();
 		const fakeSession = new FakeAgentSession();
 		let releaseFlush: () => void = () => {};
@@ -511,7 +535,7 @@ describe("agent telemetry aggregation", () => {
 
 		installAgentTelemetry(fakeSession as unknown as AgentSession, {
 			agentDir: "/not-used",
-			settingsManager: SettingsManager.inMemory(),
+			settingsManager: SettingsManager.inMemory({ telemetry: { enabled: true } }),
 			sink,
 		});
 

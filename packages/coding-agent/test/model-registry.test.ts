@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AnthropicMessagesCompat, Api, Context, Model, OpenAICompletionsCompat } from "@earendil-works/pi-ai";
-import { getApiProvider } from "@earendil-works/pi-ai";
-import { getOAuthProvider, registerOAuthProvider } from "@earendil-works/pi-ai/oauth";
+import type { AnthropicMessagesCompat, Api, Context, Model, OpenAICompletionsCompat } from "@zero-agent/ai";
+import { getApiProvider } from "@zero-agent/ai";
+import { getOAuthProvider, registerOAuthProvider } from "@zero-agent/ai/oauth";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { clearApiKeyCache, ModelRegistry, type ProviderConfigInput } from "../src/core/model-registry.js";
@@ -155,27 +155,6 @@ describe("ModelRegistry", () => {
 					expect(auth.headers?.["X-Custom-Header"]).toBe("custom-value");
 				}
 			}
-		});
-
-		test("prime inference requests include selected Prime Agent team header", async () => {
-			const primeAuthStorage = AuthStorage.inMemory({
-				"prime-inference": {
-					type: "api_key",
-					key: "agent-key",
-					primeTeam: { teamId: "team-1", name: "Research" },
-				},
-			});
-			const registry = ModelRegistry.create(primeAuthStorage, modelsJsonPath);
-			const model = getModelsForProvider(registry, "prime-inference")[0];
-			expect(model).toBeDefined();
-
-			const auth = await registry.getApiKeyAndHeaders(model!);
-
-			expect(auth).toEqual({
-				ok: true,
-				apiKey: "agent-key",
-				headers: { "X-Prime-Team-ID": "team-1" },
-			});
 		});
 
 		test("baseUrl-only override does not affect other providers", () => {
@@ -1122,7 +1101,7 @@ describe("ModelRegistry", () => {
 	});
 
 	describe("auth refresh across processes", () => {
-		test("model catalog includes unauthenticated public models and hides private Prime routes", async () => {
+		test("model catalog includes unauthenticated public models", async () => {
 			const savedPrimeApiKey = process.env.PRIME_API_KEY;
 			const savedOpenAiApiKey = process.env.OPENAI_API_KEY;
 			delete process.env.PRIME_API_KEY;
@@ -1133,11 +1112,6 @@ describe("ModelRegistry", () => {
 				const unauthenticated = await registry.refreshModelCatalog();
 				expect(unauthenticated.models.some((model) => model.provider === "openai")).toBe(true);
 				expect(unauthenticated.configuredProviders).not.toContain("openai");
-				expect(
-					unauthenticated.models.some(
-						(model) => model.provider === "prime-inference" && model.id.startsWith("internal/"),
-					),
-				).toBe(false);
 
 				authStorage.setRuntimeApiKey("openai", "test-key");
 				const authenticated = await registry.refreshModelCatalog();
@@ -1153,21 +1127,21 @@ describe("ModelRegistry", () => {
 		});
 
 		test("refresh() picks up credentials written by another process", () => {
-			const savedEnvKey = process.env.PRIME_API_KEY;
-			delete process.env.PRIME_API_KEY;
+			const savedEnvKey = process.env.OPENAI_API_KEY;
+			delete process.env.OPENAI_API_KEY;
 			try {
 				const registry = ModelRegistry.create(authStorage, modelsJsonPath);
-				expect(registry.getAvailable().some((m) => m.provider === "prime-inference")).toBe(false);
+				expect(registry.getAvailable().some((m) => m.provider === "openai")).toBe(false);
 
 				// Simulate the UI process saving a login while this registry lives in the daemon.
 				const otherProcessAuth = AuthStorage.create(join(tempDir, "auth.json"));
-				otherProcessAuth.set("prime-inference", { type: "api_key", key: "test-key" });
+				otherProcessAuth.set("openai", { type: "api_key", key: "test-key" });
 
 				registry.refresh();
-				expect(registry.getAvailable().some((m) => m.provider === "prime-inference")).toBe(true);
+				expect(registry.getAvailable().some((m) => m.provider === "openai")).toBe(true);
 			} finally {
 				if (savedEnvKey !== undefined) {
-					process.env.PRIME_API_KEY = savedEnvKey;
+					process.env.OPENAI_API_KEY = savedEnvKey;
 				}
 			}
 		});

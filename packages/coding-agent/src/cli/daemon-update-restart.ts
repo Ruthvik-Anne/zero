@@ -94,9 +94,19 @@ export interface AcquireDaemonUpdateRestartCoordinatorOptions {
 	registryDir?: string;
 }
 
+// A Windows named pipe path (e.g. "\\.\pipe\prime-agent-daemon", the default
+// per defaultDaemonSocketPath()) is not a filesystem path — path.resolve()
+// mangles it (it collapses the leading "\\.\" into a drive-relative path).
+// A custom socketPath can still be an ordinary filesystem path even on
+// win32, though, so only pipe-shaped paths skip resolution.
+const WINDOWS_NAMED_PIPE_PATH_PATTERN = /^\\\\[.?]\\pipe\\/i;
+
 export function resolveDaemonUpdateRestartSocketPath(socketPath?: string): string {
 	const selectedSocketPath = socketPath ?? defaultDaemonSocketPath();
-	return process.platform === "win32" ? selectedSocketPath : resolve(selectedSocketPath);
+	if (process.platform === "win32" && WINDOWS_NAMED_PIPE_PATH_PATTERN.test(selectedSocketPath)) {
+		return selectedSocketPath;
+	}
+	return resolve(selectedSocketPath);
 }
 
 const TERMINAL_PHASES: ReadonlySet<DaemonUpdateRestartPhase> = new Set(["complete", "skipped", "failed"]);
@@ -552,6 +562,7 @@ export async function launchDaemonUpdateRestartCoordinator(
 		detached: true,
 		env: coordinatorEnvironment(agentDir),
 		stdio: "ignore",
+		windowsHide: true,
 	});
 	let launchError: Error | undefined;
 	let exitDescription: string | undefined;

@@ -33,7 +33,7 @@ function cleanupDetachedChild(pidFile: string): void {
 	const pid = Number.parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
 	if (Number.isFinite(pid) && pid > 0) {
 		try {
-			execFileSync("taskkill", ["/F", "/T", "/PID", String(pid)], { stdio: "ignore" });
+			execFileSync("taskkill", ["/F", "/T", "/PID", String(pid)], { stdio: "ignore", windowsHide: true });
 		} catch {
 			// Process may have already exited.
 		}

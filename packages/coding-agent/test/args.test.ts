@@ -190,6 +190,11 @@ describe("parseArgs", () => {
 			expect(result.mode).toBe("rpc");
 		});
 
+		test("parses --mode mcp-server", () => {
+			const result = parseArgs(["--mode", "mcp-server"]);
+			expect(result.mode).toBe("mcp-server");
+		});
+
 		test("parses --fork", () => {
 			const result = parseArgs(["--fork", "1234abcd"]);
 			expect(result.fork).toBe("1234abcd");

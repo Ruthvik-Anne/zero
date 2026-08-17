@@ -1,9 +1,9 @@
 # MCP Integrations
 
-Connect external services (Linear, Notion, …) to Prime Agent over the
+Connect external services (Linear, Notion, …) to Zero over the
 [Model Context Protocol](https://modelcontextprotocol.io).
 
-Consistent with Prime Agent's single-tool design, MCP integrations are **not**
+Consistent with Zero's single-tool design, MCP integrations are **not**
 exposed as new agent tools. Each integration is a [Python-backed skill](skills.md)
 that the model imports and calls from the IPython kernel:
 
@@ -39,7 +39,7 @@ Built-in integrations (Linear, Notion) ship **disabled**. Logging in enables the
 - `/mcp` lists integrations and connection status; `/mcp logout <name>`
   disconnects.
 
-Credentials are stored once in `~/.prime/agent/auth.json` under `mcp:<name>`.
+Credentials are stored once in `~/.zero/agent/auth.json` under `mcp:<name>`.
 Enablement is derived from whether valid credentials exist — there is no separate
 on/off switch.
 
@@ -78,11 +78,11 @@ the reference implementations.
 
 ### 1. Declare the server
 
-Add it under `mcpServers` in `~/.prime/agent/settings.json` (or project
-`.prime/agent/settings.json`):
+Add it under `mcpServers` in `~/.zero/agent/settings.json` (or project
+`.zero/agent/settings.json`):
 
 ```jsonc
-// ~/.prime/agent/settings.json
+// ~/.zero/agent/settings.json
 {
   "mcpServers": {
     "acme": {
@@ -112,7 +112,7 @@ server fields:
 ### 2. Ship the skill package
 
 Create a skill directory (any [skills location](skills.md#locations), e.g.
-`~/.prime/agent/skills/acme/`) with the standard Python-skill layout:
+`~/.zero/agent/skills/acme/`) with the standard Python-skill layout:
 
 ```
 acme/
@@ -234,7 +234,7 @@ the auth mode you configured:
 - **Discover before assuming.** Tool names and argument schemas come from the
   server and can change; call `list_tools()` / `help()` rather than hardcoding.
 - **Custom kernel + name collisions.** The kernel import name is the `server`
-  value. On a custom `PRIME_AGENT_KERNEL_PYTHON` that already has an unrelated PyPI
+  value. On a custom `ZERO_KERNEL_PYTHON` that already has an unrelated PyPI
   package of the same name (e.g. `notion`), `import <name>` may resolve to that
   package instead. Use the default managed kernel venv to avoid this.
 - **Overriding a built-in name.** Declaring an `mcpServers` entry whose key matches

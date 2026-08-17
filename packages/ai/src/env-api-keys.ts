@@ -5,7 +5,6 @@ import type { KnownProvider } from "./types.js";
 
 // NEVER convert to top-level runtime imports - breaks browser/Vite builds
 let _existsSync: typeof existsSync | null = null;
-let _readFileSync: typeof readFileSync | null = null;
 let _homedir: typeof homedir | null = null;
 let _join: typeof join | null = null;
 
@@ -20,7 +19,6 @@ const NODE_PATH_SPECIFIER = "node:" + "path";
 if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
 	dynamicImport(NODE_FS_SPECIFIER).then((m) => {
 		_existsSync = (m as { existsSync: typeof existsSync }).existsSync;
-		_readFileSync = (m as { readFileSync: typeof readFileSync }).readFileSync;
 	});
 	dynamicImport(NODE_OS_SPECIFIER).then((m) => {
 		_homedir = (m as { homedir: typeof homedir }).homedir;
@@ -105,7 +103,6 @@ function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
 	const envMap: Record<string, string> = {
 		openai: "OPENAI_API_KEY",
 		"azure-openai-responses": "AZURE_OPENAI_API_KEY",
-		"prime-inference": "PRIME_API_KEY",
 		deepseek: "DEEPSEEK_API_KEY",
 		google: "GEMINI_API_KEY",
 		"google-vertex": "GOOGLE_CLOUD_API_KEY",
@@ -210,25 +207,5 @@ export function getEnvApiKey(provider: string): string | undefined {
 		}
 	}
 
-	return undefined;
-}
-
-// PRIME_TEAM_ID env var, falling back to team_id in ~/.prime/config.json.
-export function getPrimeTeamId(): string | undefined {
-	const fromEnv = process.env.PRIME_TEAM_ID || getProcEnv("PRIME_TEAM_ID");
-	if (fromEnv?.trim()) return fromEnv.trim();
-
-	if (!_existsSync || !_readFileSync || !_homedir || !_join) return undefined;
-	const configPath = _join(_homedir(), ".prime", "config.json");
-	if (!_existsSync(configPath)) return undefined;
-	try {
-		const parsed = JSON.parse(_readFileSync(configPath, "utf-8")) as unknown;
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			const teamId = (parsed as Record<string, unknown>).team_id;
-			if (typeof teamId === "string" && teamId.trim()) return teamId.trim();
-		}
-	} catch {
-		// Unreadable/malformed config.json: behave as if no team is configured.
-	}
 	return undefined;
 }

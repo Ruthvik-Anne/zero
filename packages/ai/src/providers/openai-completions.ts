@@ -10,8 +10,9 @@ import type {
 	ChatCompletionSystemMessageParam,
 	ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions.js";
+import type { FunctionParameters } from "openai/resources/shared.js";
 import { getAnthropicCacheWriteCost, hasStandardAnthropicCachePricing } from "../cache-pricing.js";
-import { getEnvApiKey, getPrimeTeamId } from "../env-api-keys.js";
+import { getEnvApiKey } from "../env-api-keys.js";
 import { calculateCost, clampThinkingLevel } from "../models.js";
 import type {
 	AssistantMessage,
@@ -21,6 +22,7 @@ import type {
 	Message,
 	Model,
 	OpenAICompletionsCompat,
+	OpenRouterRouting,
 	SimpleStreamOptions,
 	StopReason,
 	StreamFunction,
@@ -35,6 +37,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
+import { formatStreamFailureMessage, recordStreamFailure, truncateRawPayload } from "../utils/stream-failure.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { buildBaseOptions } from "./simple-options.js";
@@ -75,6 +78,32 @@ function isImageContentBlock(block: { type: string }): block is ImageContent {
 	return block.type === "image";
 }
 
+/** Best-effort extraction of `error.error.metadata.raw`, the extra detail some providers return via OpenRouter. */
+function extractOpenRouterRawMetadata(error: unknown): string | undefined {
+	if (!error || typeof error !== "object") return undefined;
+	const body = (error as Record<string, unknown>).error;
+	if (!body || typeof body !== "object") return undefined;
+	const metadata = (body as Record<string, unknown>).metadata;
+	if (!metadata || typeof metadata !== "object") return undefined;
+	const raw = (metadata as Record<string, unknown>).raw;
+	return typeof raw === "string" ? raw : undefined;
+}
+
+/** Shape of an OpenRouter `reasoning_details` entry carrying an encrypted reasoning payload. */
+function isEncryptedReasoningDetail(
+	value: unknown,
+): value is { type: "reasoning.encrypted"; id: string; data: string } {
+	if (!value || typeof value !== "object") return false;
+	const detail = value as Record<string, unknown>;
+	return (
+		detail.type === "reasoning.encrypted" &&
+		typeof detail.id === "string" &&
+		detail.id.length > 0 &&
+		typeof detail.data === "string" &&
+		detail.data.length > 0
+	);
+}
+
 export interface OpenAICompletionsOptions extends StreamOptions {
 	toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -91,6 +120,27 @@ type ResolvedOpenAICompletionsCompat = Omit<Required<OpenAICompletionsCompat>, "
 
 type ChatCompletionInstructionMessageParam = ChatCompletionDeveloperMessageParam | ChatCompletionSystemMessageParam;
 
+/**
+ * Request fields accepted by OpenAI-compatible providers (zai, qwen, deepseek,
+ * openrouter, Vercel AI Gateway, ...) that aren't part of the official OpenAI SDK
+ * params type, or where the SDK's field is narrower than what these providers
+ * accept (e.g. `reasoning_effort` is a closed enum upstream, but these providers
+ * take arbitrary provider-defined effort strings from `thinkingLevelMap`).
+ */
+type OpenAICompletionsExtendedParams = Omit<
+	OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+	"reasoning_effort"
+> & {
+	tool_stream?: boolean;
+	enable_thinking?: boolean;
+	chat_template_kwargs?: { enable_thinking: boolean; preserve_thinking: boolean };
+	thinking?: { type: "enabled" | "disabled" };
+	reasoning_effort?: string;
+	reasoning?: { effort?: string };
+	provider?: OpenRouterRouting;
+	providerOptions?: { gateway: Record<string, string[]> };
+};
+
 type ChatCompletionTextPartWithCacheControl = ChatCompletionContentPartText & {
 	cache_control?: OpenAICompatCacheControl;
 };
@@ -103,7 +153,7 @@ function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention 
 	if (cacheRetention) {
 		return cacheRetention;
 	}
-	if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
+	if (typeof process !== "undefined" && process.env.ZERO_CACHE_RETENTION === "long") {
 		return "long";
 	}
 	return "short";
@@ -282,10 +332,15 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 				const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
 				if (!choice) continue;
 
-				// Fallback: some providers (e.g., Moonshot) return usage
-				// in choice.usage instead of the standard chunk.usage
-				if (!chunk.usage && (choice as any).usage) {
-					output.usage = parseChunkUsage((choice as any).usage, model, cacheWriteCost);
+				// Fallback: some providers (e.g., Moonshot) return usage in choice.usage
+				// instead of the standard chunk.usage. That field isn't part of the SDK
+				// type, so validate its shape before reading it: a missing or malformed
+				// value is treated as absent rather than fed into cost calculations.
+				if (!chunk.usage) {
+					const choiceUsage = (choice as unknown as Record<string, unknown>).usage;
+					if (isRawChunkUsage(choiceUsage)) {
+						output.usage = parseChunkUsage(choiceUsage, model, cacheWriteCost);
+					}
 				}
 
 				if (choice.finish_reason) {
@@ -367,16 +422,18 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 						}
 					}
 
-					const reasoningDetails = (choice.delta as any).reasoning_details;
-					if (reasoningDetails && Array.isArray(reasoningDetails)) {
+					const reasoningDetails = (choice.delta as Record<string, unknown>).reasoning_details;
+					if (Array.isArray(reasoningDetails)) {
 						for (const detail of reasoningDetails) {
-							if (detail.type === "reasoning.encrypted" && detail.id && detail.data) {
-								const matchingToolCall = output.content.find(
-									(b) => b.type === "toolCall" && b.id === detail.id,
-								) as ToolCall | undefined;
-								if (matchingToolCall) {
-									matchingToolCall.thoughtSignature = JSON.stringify(detail);
-								}
+							// Untrusted provider data: validate shape before use instead of
+							// trusting `detail` blindly (it could be null/a primitive/missing
+							// fields, not just a well-formed encrypted-reasoning record).
+							if (!isEncryptedReasoningDetail(detail)) continue;
+							const matchingToolCall = output.content.find((b) => b.type === "toolCall" && b.id === detail.id) as
+								| ToolCall
+								| undefined;
+							if (matchingToolCall) {
+								matchingToolCall.thoughtSignature = JSON.stringify(detail);
 							}
 						}
 					}
@@ -407,10 +464,19 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 				delete (block as { streamIndex?: number }).streamIndex;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			// (B12) Was `error instanceof Error ? error.message : JSON.stringify(error)`
+			// with no recordStreamFailure call at all — this was the one major
+			// provider bypassing the shared classification/diagnostic path entirely
+			// (anthropic.ts's equivalent catch already calls both). Rate-limit vs
+			// auth vs overload all collapsed to a raw SDK string with no
+			// provider_stream_failure diagnostic and no structured error log.
+			output.errorMessage = formatStreamFailureMessage(error);
 			// Some providers via OpenRouter give additional information in this field.
-			const rawMetadata = (error as any)?.error?.metadata?.raw;
-			if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;
+			// It's unbounded provider text (could be a full HTML error page from a
+			// broken upstream), so cap it before it lands in the user-facing message.
+			const rawMetadata = extractOpenRouterRawMetadata(error);
+			if (rawMetadata) output.errorMessage += `\n${truncateRawPayload(rawMetadata)}`;
+			recordStreamFailure(model, output, error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -468,11 +534,6 @@ function createClient(
 		Object.assign(headers, copilotHeaders);
 	}
 
-	if (model.provider === "prime-inference") {
-		const teamId = getPrimeTeamId();
-		if (teamId) headers["X-Prime-Team-ID"] = teamId;
-	}
-
 	if (sessionId && compat.sendSessionAffinityHeaders) {
 		headers.session_id = sessionId;
 		headers["x-client-request-id"] = sessionId;
@@ -522,9 +583,13 @@ function buildParams(
 				: undefined,
 		prompt_cache_retention: cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
 	};
+	// Single widened view used for fields that either aren't part of the official
+	// SDK params type, or (reasoning_effort) are narrower there than what these
+	// providers actually accept. Mutations go through `params` itself.
+	const extendedParams = params as OpenAICompletionsExtendedParams;
 
 	if (compat.supportsUsageInStreaming !== false) {
-		(params as any).stream_options = { include_usage: true };
+		params.stream_options = { include_usage: true };
 	}
 
 	if (compat.supportsStore) {
@@ -533,7 +598,7 @@ function buildParams(
 
 	if (options?.maxTokens) {
 		if (compat.maxTokensField === "max_tokens") {
-			(params as any).max_tokens = options.maxTokens;
+			params.max_tokens = options.maxTokens;
 		} else {
 			params.max_completion_tokens = options.maxTokens;
 		}
@@ -546,7 +611,7 @@ function buildParams(
 	if (context.tools && context.tools.length > 0) {
 		params.tools = convertTools(context.tools, compat);
 		if (compat.zaiToolStream) {
-			(params as any).tool_stream = true;
+			extendedParams.tool_stream = true;
 		}
 	} else if (hasToolHistory(context.messages)) {
 		// Anthropic (via LiteLLM/proxy) requires tools param when conversation has tool_calls/tool_results
@@ -562,43 +627,41 @@ function buildParams(
 	}
 
 	if (compat.thinkingFormat === "zai" && model.reasoning) {
-		(params as any).enable_thinking = !!options?.reasoningEffort;
+		extendedParams.enable_thinking = !!options?.reasoningEffort;
 	} else if (compat.thinkingFormat === "qwen" && model.reasoning) {
-		(params as any).enable_thinking = !!options?.reasoningEffort;
+		extendedParams.enable_thinking = !!options?.reasoningEffort;
 	} else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
-		(params as any).chat_template_kwargs = {
+		extendedParams.chat_template_kwargs = {
 			enable_thinking: !!options?.reasoningEffort,
 			preserve_thinking: true,
 		};
 	} else if (compat.thinkingFormat === "deepseek" && model.reasoning) {
-		(params as any).thinking = { type: options?.reasoningEffort ? "enabled" : "disabled" };
+		extendedParams.thinking = { type: options?.reasoningEffort ? "enabled" : "disabled" };
 		if (options?.reasoningEffort) {
-			(params as any).reasoning_effort =
-				model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+			extendedParams.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		}
 	} else if (compat.thinkingFormat === "openrouter" && model.reasoning) {
 		// OpenRouter normalizes reasoning across providers via a nested reasoning object.
-		const openRouterParams = params as typeof params & { reasoning?: { effort?: string } };
 		if (options?.reasoningEffort) {
-			openRouterParams.reasoning = {
+			extendedParams.reasoning = {
 				effort: model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort,
 			};
 		} else if (model.thinkingLevelMap?.off !== null) {
-			openRouterParams.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
+			extendedParams.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
 		}
 	} else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
 		// OpenAI-style reasoning_effort
-		(params as any).reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
+		extendedParams.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 	} else if (!options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
 		const offValue = model.thinkingLevelMap?.off;
 		if (typeof offValue === "string") {
-			(params as any).reasoning_effort = offValue;
+			extendedParams.reasoning_effort = offValue;
 		}
 	}
 
 	// OpenRouter provider routing preferences
 	if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
-		(params as any).provider = model.compat.openRouterRouting;
+		extendedParams.provider = model.compat.openRouterRouting;
 	}
 
 	// Vercel AI Gateway provider routing preferences
@@ -608,7 +671,7 @@ function buildParams(
 			const gatewayOptions: Record<string, string[]> = {};
 			if (routing.only) gatewayOptions.only = routing.only;
 			if (routing.order) gatewayOptions.order = routing.order;
-			(params as any).providerOptions = { gateway: gatewayOptions };
+			extendedParams.providerOptions = { gateway: gatewayOptions };
 		}
 	}
 
@@ -853,7 +916,10 @@ export function convertMessages(
 						? "reasoning_content"
 						: nonEmptyThinkingBlocks[0].thinkingSignature || undefined;
 					if (reasoningField) {
-						(assistantMsg as any)[reasoningField] = reasoningText;
+						// reasoningField is a dynamic provider-specific key (reasoning_content /
+						// reasoning / reasoning_text), not part of the SDK's assistant message type.
+						(assistantMsg as ChatCompletionAssistantMessageParam & Record<string, string>)[reasoningField] =
+							reasoningText;
 					} else {
 						assistantMsg.content =
 							assistantText.length > 0 ? `${reasoningText}\n\n${assistantText}` : reasoningText;
@@ -889,7 +955,9 @@ export function convertMessages(
 					})
 					.filter(Boolean);
 				if (reasoningDetails.length > 0) {
-					(assistantMsg as any).reasoning_details = reasoningDetails;
+					(
+						assistantMsg as ChatCompletionAssistantMessageParam & { reasoning_details?: unknown[] }
+					).reasoning_details = reasoningDetails;
 				}
 			}
 			if (
@@ -935,7 +1003,7 @@ export function convertMessages(
 					tool_call_id: toolMsg.toolCallId,
 				};
 				if (compat.requiresToolResultName && toolMsg.toolName) {
-					(toolResultMsg as any).name = toolMsg.toolName;
+					(toolResultMsg as ChatCompletionToolMessageParam & { name?: string }).name = toolMsg.toolName;
 				}
 				params.push(toolResultMsg);
 
@@ -995,20 +1063,44 @@ function convertTools(
 		function: {
 			name: tool.name,
 			description: tool.description,
-			parameters: tool.parameters as any, // TypeBox already generates JSON Schema
+			// TypeBox schemas are already valid JSON Schema at runtime but aren't
+			// nominally typed with an index signature, so bridge via `unknown`.
+			parameters: tool.parameters as unknown as FunctionParameters,
 			// Only include strict if provider supports it. Some reject unknown fields.
 			...(compat.supportsStrictMode !== false && { strict: false }),
 		},
 	}));
 }
 
+interface RawChunkUsage {
+	prompt_tokens?: number;
+	completion_tokens?: number;
+	prompt_cache_hit_tokens?: number;
+	prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+}
+
+/**
+ * Runtime shape check for a provider usage payload. Used for `choice.usage`,
+ * which isn't part of the SDK type and comes straight from the provider's raw
+ * response, so a missing/malformed field must degrade to "no usage" rather
+ * than propagate NaN/undefined into cost calculations.
+ */
+function isRawChunkUsage(value: unknown): value is RawChunkUsage {
+	if (!value || typeof value !== "object") return false;
+	const usage = value as Record<string, unknown>;
+	const isOptionalNumber = (field: unknown) => field === undefined || typeof field === "number";
+	if (!isOptionalNumber(usage.prompt_tokens)) return false;
+	if (!isOptionalNumber(usage.completion_tokens)) return false;
+	if (!isOptionalNumber(usage.prompt_cache_hit_tokens)) return false;
+	const details = usage.prompt_tokens_details;
+	if (details === undefined) return true;
+	if (typeof details !== "object" || details === null) return false;
+	const detailsRecord = details as Record<string, unknown>;
+	return isOptionalNumber(detailsRecord.cached_tokens) && isOptionalNumber(detailsRecord.cache_write_tokens);
+}
+
 function parseChunkUsage(
-	rawUsage: {
-		prompt_tokens?: number;
-		completion_tokens?: number;
-		prompt_cache_hit_tokens?: number;
-		prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
-	},
+	rawUsage: RawChunkUsage,
 	model: Model<"openai-completions">,
 	cacheWriteCost?: number,
 ): AssistantMessage["usage"] {
@@ -1078,7 +1170,6 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const isMoonshot = provider === "moonshotai" || provider === "moonshotai-cn" || baseUrl.includes("api.moonshot.");
 	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
 	const isCloudflareAiGateway = provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
-	const isPrimeInference = provider === "prime-inference" || baseUrl.includes("api.pinference.ai");
 
 	const isNonStandard =
 		provider === "cerebras" ||
@@ -1092,16 +1183,14 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		provider === "opencode" ||
 		baseUrl.includes("opencode.ai") ||
 		isCloudflareWorkersAI ||
-		isCloudflareAiGateway ||
-		isPrimeInference;
+		isCloudflareAiGateway;
 
-	const useMaxTokens = baseUrl.includes("chutes.ai") || isMoonshot || isCloudflareAiGateway || isPrimeInference;
+	const useMaxTokens = baseUrl.includes("chutes.ai") || isMoonshot || isCloudflareAiGateway;
 
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
 	const isAnthropicModel = model.id.startsWith("anthropic/");
-	const cacheControlFormat =
-		isAnthropicModel && (provider === "openrouter" || isPrimeInference) ? "anthropic" : undefined;
+	const cacheControlFormat = isAnthropicModel && provider === "openrouter" ? "anthropic" : undefined;
 
 	return {
 		supportsStore: !isNonStandard,
@@ -1123,7 +1212,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		openRouterRouting: {},
 		vercelGatewayRouting: {},
 		zaiToolStream: false,
-		supportsStrictMode: !isMoonshot && !isCloudflareAiGateway && !isPrimeInference,
+		supportsStrictMode: !isMoonshot && !isCloudflareAiGateway,
 		cacheControlFormat,
 		sendSessionAffinityHeaders: false,
 		supportsLongCacheRetention: !(isCloudflareWorkersAI || isCloudflareAiGateway),

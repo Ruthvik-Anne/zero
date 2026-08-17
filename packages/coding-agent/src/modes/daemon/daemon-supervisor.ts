@@ -4,7 +4,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, wr
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { Writable } from "node:stream";
-import { getLogger } from "@earendil-works/pi-ai";
+import { getLogger } from "@zero-agent/ai";
 import { createCliSubprocessEnv, createCliSubprocessLaunchSpec } from "../../cli/subprocess-launch.js";
 import {
 	appendRotatingLog,
@@ -2131,6 +2131,7 @@ export class DaemonSupervisor {
 				[SESSION_LEASE_OWNER_ID_ENV]: rootActiveSessionId,
 			}),
 			stdio: ["ignore", "ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
 		const detachWorkerStderr = child.stderr
 			? attachJsonlLineReader(child.stderr, (line) => this.log(`Session worker ${workerId} stderr: ${line}`), {
@@ -4864,6 +4865,7 @@ export class DaemonSupervisor {
 				detached: true,
 				env: environment,
 				stdio: "ignore",
+				windowsHide: true,
 			});
 			replacement.unref();
 		}

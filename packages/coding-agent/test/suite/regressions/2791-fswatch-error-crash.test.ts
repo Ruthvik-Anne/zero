@@ -93,6 +93,7 @@ process.exit(0);
 				encoding: "utf-8",
 				env: { ...process.env, [ENV_AGENT_DIR]: agentDir },
 				stdio: ["pipe", "pipe", "pipe"],
+				windowsHide: true,
 			});
 			exitCode = 0;
 		} catch (err: unknown) {

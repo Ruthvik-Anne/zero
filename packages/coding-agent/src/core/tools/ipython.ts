@@ -1,7 +1,7 @@
 // TODO: reconsider whether the persistent kernel is needed once RLM-1 weights land.
 import { existsSync } from "node:fs";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { AgentTool } from "@zero-agent/agent-core";
+import type { ImageContent, TextContent } from "@zero-agent/ai";
 import { type Static, Type } from "typebox";
 import { IMAGE_MIME_TYPES } from "../../utils/mime.js";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.js";
@@ -43,9 +43,9 @@ except Exception as _prime_agent_rlm_error:
     class _PrimeAgentMissingRlm:
         def _raise_missing(self):
             raise RuntimeError(
-                "prime-agent-runtime is not installed in this IPython kernel. "
-                "Remove ~/.prime/agent/kernel-venv so prime-agent can rebuild it, or set "
-                "PRIME_AGENT_KERNEL_PYTHON to a kernel environment with prime-agent-runtime installed. "
+                "zero-runtime is not installed in this IPython kernel. "
+                "Remove ~/.zero/agent/kernel-venv so zero can rebuild it, or set "
+                "ZERO_KERNEL_PYTHON to a kernel environment with zero-runtime installed. "
                 f"Import error: {_PRIME_AGENT_RLM_IMPORT_ERROR}"
             )
 
@@ -281,6 +281,13 @@ export interface IpythonToolOptions {
 	pythonSkills?: readonly PythonSkillRuntimeInfo[];
 	/** Per-session artifact dir where the kernel namespace snapshot is stored. Omit to disable snapshots. */
 	snapshotDir?: string;
+	/**
+	 * (finding #1, task #78/#84 follow-up) Resolves to this session's currently
+	 * active decrypted vault credential plaintexts, threaded through to
+	 * `KernelSnapshotConfig` so the kernel state snapshot never pickles a
+	 * resolved secret to disk. Omitted for sessions with no vault bound.
+	 */
+	getActiveCredentialValues?: () => Promise<string[]>;
 	/** Resolves before this kernel starts — e.g. the previous provisioner's dispose, so a
 	 * /reload's old-kernel snapshot flush can't race the new kernel's restore. */
 	readyGate?: Promise<unknown>;
@@ -297,7 +304,17 @@ export interface IpythonToolOptions {
 }
 
 function quoteScriptMagicArgument(value: string): string {
-	return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\"'\"'")}'`;
+	if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) return value;
+	if (process.platform === "win32") {
+		// IPython's `%%script` line is parsed via `arg_split(line, posix=False)`
+		// on Windows — that mode groups (and strips) double-quoted spans, but
+		// single quotes aren't quoting at all in non-posix shlex, so a
+		// single-quote-wrapped path with a space (e.g. "C:\Program Files\...")
+		// silently mis-splits. `"` isn't a legal character in a Windows path,
+		// so no escaping is needed for realistic values.
+		return `"${value}"`;
+	}
+	return `'${value.replace(/'/g, "'\"'\"'")}'`;
 }
 
 function applyShellSettingsToBashMagicCell(
@@ -484,7 +501,11 @@ export class IpythonKernelProvisioner {
 				pythonSkills: this.options?.pythonSkills,
 				// Only persistent sessions (which have an artifact dir) get a revivable snapshot.
 				snapshot: snapshotDir
-					? { path: snapshotPathIn(snapshotDir), manifestPath: manifestPathIn(snapshotDir) }
+					? {
+							path: snapshotPathIn(snapshotDir),
+							manifestPath: manifestPathIn(snapshotDir),
+							getActiveCredentialValues: this.options?.getActiveCredentialValues,
+						}
 					: undefined,
 			});
 			let pendingRestore: RestoreResult | undefined;
@@ -525,7 +546,12 @@ export class IpythonKernelProvisioner {
 				}
 			} catch (error) {
 				// Never leak the kernel's ZMQ sockets / temp dir if startup fails after spawn.
-				void m.dispose();
+				// (B11) Was `void m.dispose()` — not awaiting it defeated that stated
+				// intent: startKernel rejected while socket close, SIGTERM, and
+				// rmSync(tempDir) were still in flight, and the caller's memo-clear
+				// on rejection let the very next call spawn a new kernel racing the
+				// old one's still-in-progress teardown (temp dir reuse, port reuse).
+				await m.dispose();
 				throw error;
 			}
 			// Only tell the model what was revived once the kernel is actually usable —

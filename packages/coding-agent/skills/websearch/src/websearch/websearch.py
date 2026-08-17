@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -18,12 +19,8 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _agent_dir() -> Path:
-    """Resolve the Prime Agent config dir the same way the runtime does."""
-    raw = (
-        os.environ.get("PRIME_AGENT_CODING_AGENT_DIR")
-        or os.environ.get("PI_CODING_AGENT_DIR")
-        or str(Path.home() / ".prime" / "agent")
-    )
+    """Resolve the Zero config dir the same way the runtime does."""
+    raw = os.environ.get("ZERO_CODING_AGENT_DIR") or str(Path.home() / ".zero" / "agent")
     return Path(raw).expanduser()
 
 
@@ -156,9 +153,9 @@ async def run(
         )
 
     if timeout is None:
-        timeout = _env_int("PRIME_AGENT_WEBSEARCH_TIMEOUT", 45)
+        timeout = _env_int("ZERO_WEBSEARCH_TIMEOUT", 45)
     if num_results is None:
-        num_results = _env_int("PRIME_AGENT_WEBSEARCH_NUM_RESULTS", 5)
+        num_results = _env_int("ZERO_WEBSEARCH_NUM_RESULTS", 5)
 
     try:
         result = await _fetch_serper(query, api_key, timeout=timeout, num_results=num_results)
@@ -174,5 +171,79 @@ async def run(
         output = output[:half] + marker + output[len(output) - half:]
         if len(output) > max_output:  # marker alone exceeds the budget
             output = output[:max_output]
+
+    return output
+
+
+def _truncate_section(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    marker = f"\n... [section truncated, {len(text)} chars total] ...\n"
+    half = max(0, (max_chars - len(marker)) // 2)
+    return text[:half] + marker + text[len(text) - half :]
+
+
+async def research(
+    queries: list[str],
+    *,
+    max_output: int = 16384,
+    timeout: int | None = None,
+    num_results: int | None = None,
+) -> str:
+    """Fan out several related search queries concurrently and combine the results.
+
+    Use this instead of calling `run()` repeatedly in a loop when a question
+    genuinely needs several distinct angles (e.g. a term's definition, its most
+    recent developments, and a specific counterexample) — the queries run
+    concurrently, not sequentially, and one query failing does not lose the
+    others. This function does not synthesize an answer itself; it returns
+    each query's results clearly labeled so you can cross-reference them.
+
+    Args:
+        queries: 2-8 distinct search queries. A single query should just use `run()`.
+        max_output: Truncate the combined output to this many chars.
+        timeout: HTTP timeout in seconds, per query.
+        num_results: Organic results to return, per query.
+
+    Returns:
+        Combined, per-query-labeled search results.
+    """
+    if not queries:
+        raise ValueError("research() requires at least one query")
+    if len(queries) > 8:
+        raise ValueError("research() supports at most 8 queries per call; split into multiple calls")
+
+    api_key = _resolve_api_key()
+    if not api_key:
+        return (
+            "Web search is not set up yet: no Serper API key is configured.\n"
+            "Tell the user how to enable it:\n"
+            "  1. Get a free API key at https://serper.dev (sign up, copy the key).\n"
+            "  2. In Prime Agent, run /login, switch to MCP Connections, choose \"Serper (web search)\", and paste the key.\n"
+            "Do not ask the user to set environment variables. Once the key is saved, web search works automatically."
+        )
+
+    if timeout is None:
+        timeout = _env_int("ZERO_WEBSEARCH_TIMEOUT", 45)
+    if num_results is None:
+        num_results = _env_int("ZERO_WEBSEARCH_NUM_RESULTS", 5)
+
+    async def run_one(query: str) -> str:
+        try:
+            return await _fetch_serper(query, api_key, timeout=timeout, num_results=num_results)
+        except Exception as e:
+            return f"Error searching for '{query}': {e}"
+
+    results = await asyncio.gather(*(run_one(query) for query in queries))
+
+    per_query_budget = max(512, max_output // len(queries))
+    sections = [
+        f'## Query {i + 1}: "{query}"\n\n{_truncate_section(result, per_query_budget)}'
+        for i, (query, result) in enumerate(zip(queries, results))
+    ]
+    output = "\n\n---\n\n".join(sections)
+
+    if len(output) > max_output:
+        output = _truncate_section(output, max_output)
 
     return output

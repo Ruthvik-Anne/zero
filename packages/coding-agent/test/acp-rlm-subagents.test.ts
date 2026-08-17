@@ -2,7 +2,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
-import { Agent } from "@earendil-works/pi-agent-core";
+import { Agent } from "@zero-agent/agent-core";
 import {
 	type AssistantMessage,
 	type Context,
@@ -10,7 +10,7 @@ import {
 	getModel,
 	type TextContent,
 	type Usage,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.js";
 import type { AgentSessionRuntime } from "../src/core/agent-session-runtime.js";

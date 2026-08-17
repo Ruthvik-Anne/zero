@@ -13,45 +13,40 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import type { OAuthAuthInfo } from "@earendil-works/pi-ai";
+import type { OAuthAuthInfo } from "@zero-agent/ai";
 
-export const PRIME_INFERENCE_PROVIDER_ID = "prime-inference";
-export const PRIME_INFERENCE_PROVIDER_NAME = "Prime Inference";
 export const PRIME_AGENT_TRACES_PROVIDER_ID = "prime-agent-traces";
 export const PRIME_AGENT_TRACES_PROVIDER_NAME = "Prime Agent Traces";
 
 const DEFAULT_PRIME_API_BASE_URL = "https://api.primeintellect.ai";
 const DEFAULT_PRIME_FRONTEND_URL = "https://app.primeintellect.ai";
-const DEFAULT_PRIME_INFERENCE_URL = "https://api.pinference.ai/api/v1";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
-export type PrimeInferenceAuthSource = "prime-cli" | "browser";
+// (B13) Renamed from PrimeInference* — this file now handles only Prime Agent
+// Traces auth (task #30 removed the hosted-inference integration entirely); the
+// old names were a stale leftover from before that removal.
+export type PrimeAgentTracesAuthSource = "prime-cli" | "browser";
 
-export type PrimeInferenceLoginResult = {
+export type PrimeAgentTracesLoginResult = {
 	apiKey: string;
-	source: PrimeInferenceAuthSource;
+	source: PrimeAgentTracesAuthSource;
 };
 
 export type PrimeCliConfig = {
 	apiKey?: string;
 	baseUrl: string;
 	frontendUrl: string;
-	inferenceUrl: string;
 	path: string;
-	teamId?: string;
-	teamName?: string;
-	teamRole?: string;
-	teamIdFromEnv: boolean;
 };
 
-export type PrimeInferenceLoginCallbacks = {
+export type PrimeAgentTracesLoginCallbacks = {
 	onAuth: (info: OAuthAuthInfo) => void;
 	onProgress?: (message: string) => void;
 	signal?: AbortSignal;
 };
 
-export type PrimeInferenceLoginOptions = {
+export type PrimeAgentTracesLoginOptions = {
 	configPath?: string;
 	fetchFn?: typeof fetch;
 	pollIntervalMs?: number;
@@ -68,7 +63,7 @@ type PrimeChallengeResponse = {
 	statusAuthToken: string;
 };
 
-export type PrimeInferenceAccessResult =
+export type PrimeAgentTracesAccessResult =
 	| { ok: true }
 	| {
 			ok: false;
@@ -77,14 +72,6 @@ export type PrimeInferenceAccessResult =
 	  };
 
 type PrimeAccessScope = "inference" | "agent_traces";
-
-export type PrimeTeam = {
-	teamId: string;
-	name: string;
-	slug?: string;
-	role?: string;
-	createdAt?: string;
-};
 
 function defaultPrimeCliConfigPath(): string {
 	return join(homedir(), ".prime", "config.json");
@@ -110,11 +97,6 @@ function stringField(data: Record<string, unknown>, key: string): string | undef
 function stringEnv(name: string): string | undefined {
 	const value = process.env[name];
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function numberField(data: Record<string, unknown>, key: string): number | undefined {
-	const value = data[key];
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -163,40 +145,17 @@ function writePrimeCliConfigData(configPath: string, data: Record<string, unknow
 	}
 }
 
-function clearPrimeTeamFields(data: Record<string, unknown>): void {
-	delete data.team_id;
-	delete data.team_name;
-	delete data.team_role;
-}
-
 export function loadPrimeCliConfig(configPath: string = defaultPrimeCliConfigPath()): PrimeCliConfig {
 	const data = readPrimeCliConfigData(configPath);
-	const teamIdFromEnv = stringEnv("PRIME_TEAM_ID");
-	const teamId = teamIdFromEnv ?? stringField(data, "team_id");
 
 	const config: PrimeCliConfig = {
 		baseUrl: normalizeBaseUrl(stringField(data, "base_url")),
 		frontendUrl: normalizeUrl(stringField(data, "frontend_url"), DEFAULT_PRIME_FRONTEND_URL),
-		inferenceUrl: normalizeUrl(stringField(data, "inference_url"), DEFAULT_PRIME_INFERENCE_URL),
 		path: configPath,
-		teamIdFromEnv: teamIdFromEnv !== undefined,
 	};
 	const apiKey = stringField(data, "api_key");
 	if (apiKey) {
 		config.apiKey = apiKey;
-	}
-	if (teamId) {
-		config.teamId = teamId;
-	}
-	if (!teamIdFromEnv) {
-		const teamName = stringField(data, "team_name");
-		const teamRole = stringField(data, "team_role");
-		if (teamName) {
-			config.teamName = teamName;
-		}
-		if (teamRole) {
-			config.teamRole = teamRole;
-		}
 	}
 	return config;
 }
@@ -204,7 +163,6 @@ export function loadPrimeCliConfig(configPath: string = defaultPrimeCliConfigPat
 export function savePrimeCliApiKey(apiKey: string, configPath: string = defaultPrimeCliConfigPath()): PrimeCliConfig {
 	const data = readPrimeCliConfigData(configPath);
 	data.api_key = apiKey;
-	clearPrimeTeamFields(data);
 	writePrimeCliConfigData(configPath, data);
 	return loadPrimeCliConfig(configPath);
 }
@@ -212,27 +170,6 @@ export function savePrimeCliApiKey(apiKey: string, configPath: string = defaultP
 export function clearPrimeCliCredentials(configPath: string = defaultPrimeCliConfigPath()): PrimeCliConfig {
 	const data = readPrimeCliConfigData(configPath);
 	delete data.api_key;
-	clearPrimeTeamFields(data);
-	writePrimeCliConfigData(configPath, data);
-	return loadPrimeCliConfig(configPath);
-}
-
-export function savePrimeCliTeamSelection(
-	team: PrimeTeam | null,
-	configPath: string = defaultPrimeCliConfigPath(),
-): PrimeCliConfig {
-	const data = readPrimeCliConfigData(configPath);
-	if (team) {
-		data.team_id = team.teamId;
-		data.team_name = team.name;
-		if (team.role) {
-			data.team_role = team.role;
-		} else {
-			delete data.team_role;
-		}
-	} else {
-		clearPrimeTeamFields(data);
-	}
 	writePrimeCliConfigData(configPath, data);
 	return loadPrimeCliConfig(configPath);
 }
@@ -295,7 +232,7 @@ async function fetchWithTimeout(
 			throw new Error("Login cancelled");
 		}
 		if (controller.signal.aborted) {
-			throw new Error("Prime Inference request timed out");
+			throw new Error("Prime request timed out");
 		}
 		throw error;
 	} finally {
@@ -341,94 +278,6 @@ async function readJsonObject(response: Response, context: string): Promise<Reco
 		throw new Error(`${context} returned an invalid response`);
 	}
 	return parsed;
-}
-
-function parsePrimeTeam(value: unknown): PrimeTeam | undefined {
-	if (!isRecord(value)) {
-		return undefined;
-	}
-	const teamId = stringField(value, "teamId");
-	if (!teamId) {
-		return undefined;
-	}
-
-	const team: PrimeTeam = {
-		teamId,
-		name: stringField(value, "name") ?? "Unknown",
-	};
-	const slug = stringField(value, "slug");
-	const role = stringField(value, "role");
-	const createdAt = stringField(value, "createdAt");
-	if (slug) {
-		team.slug = slug;
-	}
-	if (role) {
-		team.role = role;
-	}
-	if (createdAt) {
-		team.createdAt = createdAt;
-	}
-	return team;
-}
-
-export async function fetchPrimeTeams(
-	apiKey: string,
-	baseUrl: string,
-	options: {
-		fetchFn?: typeof fetch;
-		requestTimeoutMs?: number;
-		signal?: AbortSignal;
-	} = {},
-): Promise<PrimeTeam[]> {
-	const fetchFn = options.fetchFn ?? fetch;
-	const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-	const teams: PrimeTeam[] = [];
-	let offset = 0;
-	const limit = 100;
-
-	while (true) {
-		const url = new URL(`${normalizeBaseUrl(baseUrl)}/api/v1/user/teams`);
-		url.searchParams.set("offset", String(offset));
-		url.searchParams.set("limit", String(limit));
-		const response = await fetchWithTimeout(
-			fetchFn,
-			url,
-			{
-				method: "GET",
-				headers: {
-					Authorization: `Bearer ${apiKey}`,
-					Accept: "application/json",
-				},
-			},
-			requestTimeoutMs,
-			options.signal,
-		);
-
-		if (!response.ok) {
-			throw new Error(`Failed to fetch Prime teams: ${await readResponseMessage(response)}`);
-		}
-
-		const data = await readJsonObject(response, "Prime teams");
-		const batch = data.data;
-		if (!Array.isArray(batch)) {
-			throw new Error("Prime teams response missing team data");
-		}
-
-		for (const item of batch) {
-			const team = parsePrimeTeam(item);
-			if (team) {
-				teams.push(team);
-			}
-		}
-
-		const totalCount = numberField(data, "total_count") ?? teams.length;
-		if (batch.length === 0 || teams.length >= totalCount) {
-			break;
-		}
-		offset += limit;
-	}
-
-	return teams;
 }
 
 function createPrimeChallengeKeypair(): { privateKey: string; publicKey: string } {
@@ -536,7 +385,7 @@ async function pollPrimeChallengeResult(
 
 async function runPrimeBrowserLogin(
 	config: PrimeChallengeConfig,
-	callbacks: PrimeInferenceLoginCallbacks,
+	callbacks: PrimeAgentTracesLoginCallbacks,
 	fetchFn: typeof fetch,
 	timeoutMs: number,
 	pollIntervalMs: number,
@@ -563,7 +412,7 @@ async function checkPrimeScopeAccess(
 		requestTimeoutMs?: number;
 		signal?: AbortSignal;
 	} = {},
-): Promise<PrimeInferenceAccessResult> {
+): Promise<PrimeAgentTracesAccessResult> {
 	const fetchFn = options.fetchFn ?? fetch;
 	const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 	const url = `${normalizeBaseUrl(baseUrl)}/api/v1/user/whoami`;
@@ -612,18 +461,6 @@ async function checkPrimeScopeAccess(
 	return { ok: false, message: `Prime token does not have ${scopeLabel} write permission` };
 }
 
-export async function checkPrimeInferenceAccess(
-	apiKey: string,
-	baseUrl: string,
-	options: {
-		fetchFn?: typeof fetch;
-		requestTimeoutMs?: number;
-		signal?: AbortSignal;
-	} = {},
-): Promise<PrimeInferenceAccessResult> {
-	return checkPrimeScopeAccess(apiKey, baseUrl, "inference", "inference", options);
-}
-
 export async function checkPrimeAgentTracesAccess(
 	apiKey: string,
 	baseUrl: string,
@@ -632,62 +469,19 @@ export async function checkPrimeAgentTracesAccess(
 		requestTimeoutMs?: number;
 		signal?: AbortSignal;
 	} = {},
-): Promise<PrimeInferenceAccessResult> {
+): Promise<PrimeAgentTracesAccessResult> {
 	return checkPrimeScopeAccess(apiKey, baseUrl, "agent_traces", "agent trace", options);
 }
 
-function formatAccessFailure(result: Exclude<PrimeInferenceAccessResult, { ok: true }>): string {
+function formatAccessFailure(result: Exclude<PrimeAgentTracesAccessResult, { ok: true }>): string {
 	const status = result.status === undefined ? "" : `HTTP ${result.status}: `;
 	return `${status}${result.message}`;
 }
 
-export async function loginPrimeInference(
-	callbacks: PrimeInferenceLoginCallbacks,
-	options: PrimeInferenceLoginOptions = {},
-): Promise<PrimeInferenceLoginResult> {
-	const config = loadPrimeCliConfig(options.configPath);
-	const fetchFn = options.fetchFn ?? fetch;
-	const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-	const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-
-	if (config.apiKey) {
-		callbacks.onProgress?.("Checking existing Prime CLI credentials...");
-		const access = await checkPrimeInferenceAccess(config.apiKey, config.baseUrl, {
-			fetchFn,
-			requestTimeoutMs,
-			signal: callbacks.signal,
-		});
-		if (access.ok) {
-			throwIfCancelled(callbacks.signal);
-			return { apiKey: config.apiKey, source: "prime-cli" };
-		}
-		callbacks.onProgress?.(
-			`Existing Prime CLI key cannot access Prime Inference (${formatAccessFailure(access)}). Starting browser login...`,
-		);
-	} else {
-		callbacks.onProgress?.("No Prime CLI API key found. Starting browser login...");
-	}
-
-	const apiKey = await runPrimeBrowserLogin(config, callbacks, fetchFn, requestTimeoutMs, pollIntervalMs);
-	throwIfCancelled(callbacks.signal);
-	callbacks.onProgress?.("Checking Prime Inference access...");
-	const access = await checkPrimeInferenceAccess(apiKey, config.baseUrl, {
-		fetchFn,
-		requestTimeoutMs,
-		signal: callbacks.signal,
-	});
-	if (!access.ok) {
-		throw new Error(`Prime API key does not have Prime Inference access (${formatAccessFailure(access)})`);
-	}
-
-	throwIfCancelled(callbacks.signal);
-	return { apiKey, source: "browser" };
-}
-
 export async function loginPrimeAgentTraces(
-	callbacks: PrimeInferenceLoginCallbacks,
-	options: PrimeInferenceLoginOptions = {},
-): Promise<PrimeInferenceLoginResult> {
+	callbacks: PrimeAgentTracesLoginCallbacks,
+	options: PrimeAgentTracesLoginOptions = {},
+): Promise<PrimeAgentTracesLoginResult> {
 	const config = loadPrimeCliConfig(options.configPath);
 	const traceConfig = resolvePrimeAgentTracesChallengeConfig(config);
 	const fetchFn = options.fetchFn ?? fetch;

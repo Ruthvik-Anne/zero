@@ -1,4 +1,4 @@
-import { type Component, Container } from "@earendil-works/pi-tui";
+import { type Component, Container } from "@zero-agent/tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.js";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.js";

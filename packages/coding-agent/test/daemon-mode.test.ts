@@ -2,8 +2,8 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import { basename, join, resolve } from "node:path";
+import type { Api, Model } from "@zero-agent/ai";
 import { describe, expect, it, vi } from "vitest";
 import {
 	AGENT_FAMILY_REACH_ERROR,
@@ -44,6 +44,15 @@ import {
 } from "../src/modes/daemon/daemon-protocol.js";
 import type { SessionSummary } from "../src/modes/daemon/daemon-session-list.js";
 import { DAEMON_WORKER_SUPERVISOR_SOCKET_ENV } from "../src/modes/daemon/daemon-worker-protocol.js";
+
+// (task #22) A raw temp-dir filesystem path isn't a supported net.Server
+// .listen() target on Windows (EACCES) — mirrors the same fix applied to
+// daemon-supervisor-side-question.test.ts: use a Windows named pipe path for
+// these tests' own throwaway fake-supervisor sockets, matching how
+// defaultDaemonSocketPath() already picks a pipe path on win32 in production.
+function testSocketPath(tempDir: string, name: string): string {
+	return process.platform === "win32" ? `\\\\.\\pipe\\${name}-${basename(tempDir)}` : join(tempDir, name);
+}
 
 describe("daemon mode helpers", () => {
 	it("preserves envelope client identity while registering prompt admission", () => {
@@ -485,80 +494,87 @@ describe("daemon mode helpers", () => {
 		}
 	});
 
-	it("canonicalizes symlinked paths in the family catalog and name reservations", async () => {
-		const tempDir = mkdtempSync(join(tmpdir(), "prime-agent-family-catalog-paths-"));
-		try {
-			const realDir = join(tempDir, "real");
-			const aliasDir = join(tempDir, "alias");
-			mkdirSync(realDir);
-			symlinkSync(realDir, aliasDir, "dir");
-			const parentPath = join(realDir, "parent.jsonl");
-			writeFileSync(parentPath, "");
-			const daemon = new AgentDaemon(join(tempDir, "daemon.sock"), {
-				defaultSessionConfig: { agentDir: tempDir, cwd: tempDir, sessionDir: tempDir },
-				createRuntime: vi.fn(),
-			});
-			const parent = makeState("parent");
-			parent.runtime = {
-				...parent.runtime,
-				cwd: tempDir,
-				metadata: { kind: "top-level", createdAt: 1 },
-				session: {
-					sessionId: "session-parent",
-					sessionName: "parent",
-					sessionFile: parentPath,
-					sessionManager: { getSessionArtifactDir: () => undefined },
-					rlmDepth: 0,
-					isStreaming: false,
-					isSessionActive: false,
-					unfinishedActionCount: 0,
-					hasRunningRlmChildren: () => false,
-				},
-			} as never;
-			const child = {
-				activeSessionId: "child-active",
-				sessionId: "session-child",
-				sessionName: "child",
-				runtimeKind: "subagent",
-				cwd: tempDir,
-				isStreaming: false,
-				unfinishedActionCount: 0,
-				parentSessionPath: join(aliasDir, "parent.jsonl"),
-				rlmDepth: 1,
-				status: "idle",
-			};
-			const internals = daemon as unknown as {
-				sessions: Map<string, ActiveSessionState>;
-				remoteAgentPeers: Map<string, typeof child>;
-				createAgentFamilyRoster(state: ActiveSessionState): Promise<{ entries: Array<{ id: string }> }>;
-			};
-			internals.sessions.set(parent.activeSessionId, parent);
-			internals.remoteAgentPeers.set(child.activeSessionId, child);
-			const listAll = vi.spyOn(SessionManager, "listAll").mockResolvedValue([]);
+	// (task #22) Creating a directory symlink without elevation requires
+	// Developer Mode (SeCreateSymbolicLinkPrivilege) on Windows; a non-admin,
+	// non-Developer-Mode process gets EPERM from symlinkSync itself, before
+	// the behavior under test ever runs.
+	it.skipIf(process.platform === "win32")(
+		"canonicalizes symlinked paths in the family catalog and name reservations",
+		async () => {
+			const tempDir = mkdtempSync(join(tmpdir(), "prime-agent-family-catalog-paths-"));
 			try {
-				expect(await internals.createAgentFamilyRoster(parent)).toMatchObject({
-					entries: [expect.objectContaining({ id: "session-child" })],
+				const realDir = join(tempDir, "real");
+				const aliasDir = join(tempDir, "alias");
+				mkdirSync(realDir);
+				symlinkSync(realDir, aliasDir, "dir");
+				const parentPath = join(realDir, "parent.jsonl");
+				writeFileSync(parentPath, "");
+				const daemon = new AgentDaemon(join(tempDir, "daemon.sock"), {
+					defaultSessionConfig: { agentDir: tempDir, cwd: tempDir, sessionDir: tempDir },
+					createRuntime: vi.fn(),
 				});
-				expect(
-					sessionNameReservationKey({
-						name: "worker",
-						depth: 1,
-						parentSessionPath: parentPath,
-					}),
-				).toBe(
-					sessionNameReservationKey({
-						name: "worker",
-						depth: 1,
-						parentSessionPath: join(aliasDir, "parent.jsonl"),
-					}),
-				);
+				const parent = makeState("parent");
+				parent.runtime = {
+					...parent.runtime,
+					cwd: tempDir,
+					metadata: { kind: "top-level", createdAt: 1 },
+					session: {
+						sessionId: "session-parent",
+						sessionName: "parent",
+						sessionFile: parentPath,
+						sessionManager: { getSessionArtifactDir: () => undefined },
+						rlmDepth: 0,
+						isStreaming: false,
+						isSessionActive: false,
+						unfinishedActionCount: 0,
+						hasRunningRlmChildren: () => false,
+					},
+				} as never;
+				const child = {
+					activeSessionId: "child-active",
+					sessionId: "session-child",
+					sessionName: "child",
+					runtimeKind: "subagent",
+					cwd: tempDir,
+					isStreaming: false,
+					unfinishedActionCount: 0,
+					parentSessionPath: join(aliasDir, "parent.jsonl"),
+					rlmDepth: 1,
+					status: "idle",
+				};
+				const internals = daemon as unknown as {
+					sessions: Map<string, ActiveSessionState>;
+					remoteAgentPeers: Map<string, typeof child>;
+					createAgentFamilyRoster(state: ActiveSessionState): Promise<{ entries: Array<{ id: string }> }>;
+				};
+				internals.sessions.set(parent.activeSessionId, parent);
+				internals.remoteAgentPeers.set(child.activeSessionId, child);
+				const listAll = vi.spyOn(SessionManager, "listAll").mockResolvedValue([]);
+				try {
+					expect(await internals.createAgentFamilyRoster(parent)).toMatchObject({
+						entries: [expect.objectContaining({ id: "session-child" })],
+					});
+					expect(
+						sessionNameReservationKey({
+							name: "worker",
+							depth: 1,
+							parentSessionPath: parentPath,
+						}),
+					).toBe(
+						sessionNameReservationKey({
+							name: "worker",
+							depth: 1,
+							parentSessionPath: join(aliasDir, "parent.jsonl"),
+						}),
+					);
+				} finally {
+					listAll.mockRestore();
+				}
 			} finally {
-				listAll.mockRestore();
+				rmSync(tempDir, { recursive: true, force: true });
 			}
-		} finally {
-			rmSync(tempDir, { recursive: true, force: true });
-		}
-	});
+		},
+	);
 
 	it("lists and sends agent messages to completed retained subagents", async () => {
 		const daemon = new AgentDaemon("/tmp/prime-agent-test.sock", {
@@ -895,6 +911,92 @@ describe("daemon mode helpers", () => {
 			expect(parentState.runtime.session.sessionFile).toBeUndefined();
 			expect(child.session.sessionManager.getHeader()).toMatchObject({ rlmDepth: 1 });
 			expect(child.session.sessionManager.getHeader()?.parentSession).toBeUndefined();
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	// finding #3: a plan-mode parent spawning an RLM subagent through the daemon's
+	// real createRlmSubagentRuntime path must not silently hand the child DEFAULT_SESSION_MODE
+	// ("auto") — the child's sessionOptions must carry the parent's mode through.
+	it("passes the parent's session mode through to a daemon-created RLM subagent runtime", async () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "prime-agent-daemon-subagent-mode-"));
+		try {
+			const createRuntime = vi.fn(async (options: Parameters<CreateAgentSessionRuntimeFactory>[0]) => ({
+				session: makeRuntimeSession(options.sessionManager),
+				extensionsResult: { extensions: [], errors: [], runtime: {} } as unknown as Awaited<
+					ReturnType<CreateAgentSessionRuntimeFactory>
+				>["extensionsResult"],
+				services: { cwd: options.cwd, agentDir: options.agentDir } as Awaited<
+					ReturnType<CreateAgentSessionRuntimeFactory>
+				>["services"],
+				diagnostics: [],
+			}));
+			const daemon = new AgentDaemon(join(tempDir, "daemon.sock"), {
+				defaultSessionConfig: { agentDir: tempDir, cwd: tempDir, sessionDir: join(tempDir, "sessions") },
+				createRuntime,
+			});
+			const internals = daemon as unknown as {
+				createRuntime(command: Extract<DaemonCommand, { type: "create" }>): Promise<ActiveSessionState>;
+				createRlmSubagentRuntime(
+					parentState: ActiveSessionState,
+					options: CreateRlmSubagentRuntimeOptions,
+				): Promise<ActiveSessionState["runtime"]>;
+			};
+			const parentState = await internals.createRuntime({ type: "create", noSession: true });
+			await internals.createRlmSubagentRuntime(parentState, {
+				parentSession: parentState.runtime.session,
+				id: "child-1",
+				prompt: "inherit plan mode",
+				sessionName: "plan-mode-child",
+				sessionDir: join(tempDir, "child"),
+				model: {} as Model<Api>,
+				thinkingLevel: "off",
+				serviceTier: null,
+				scopedModels: [],
+				activeToolNames: [],
+				customTools: [],
+				includeGoals: false,
+				includeCompactSkill: false,
+				rlmDepth: 1,
+				rlmMaxDepth: 2,
+				rlmParentNodeId: "child-1",
+				mode: "plan",
+			});
+
+			// The parent's own "create" call happens first; the child's createRlmSubagentRuntime
+			// call is the last one made against this mock.
+			const childCreateCall = createRuntime.mock.calls.at(-1);
+			expect(
+				(childCreateCall?.[0] as { sessionOptions?: { mode?: string } } | undefined)?.sessionOptions?.mode,
+			).toBe("plan");
+		} finally {
+			rmSync(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	// finding #3: reopening an already-completed RLM subagent must also inherit the
+	// (possibly newly plan-mode) parent's current session mode, not silently default to
+	// auto mode forever just because the child's own branch never had one persisted.
+	it("passes the parent's current session mode through when rehydrating a completed RLM subagent", async () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "prime-agent-daemon-rehydrate-mode-"));
+		try {
+			const fixture = makePersistedRlmDaemonFixture(tempDir);
+			const internals = fixture.daemon as unknown as {
+				createRuntime(command: Extract<DaemonCommand, { type: "create" }>): Promise<ActiveSessionState>;
+				getOrHydrateBoundSessionState(id: string): Promise<ActiveSessionState>;
+			};
+			const parentState = await internals.createRuntime({ type: "create", sessionPath: fixture.parentSessionFile });
+			Object.assign(parentState.runtime.session, { getSessionMode: () => "plan" });
+
+			await internals.getOrHydrateBoundSessionState(fixture.childId);
+
+			const childCreateCall = fixture.createRuntime.mock.calls.find(
+				(call) => call[0].sessionManager.getSessionFile() === fixture.childSessionFile,
+			);
+			expect(
+				(childCreateCall?.[0] as { sessionOptions?: { mode?: string } } | undefined)?.sessionOptions?.mode,
+			).toBe("plan");
 		} finally {
 			rmSync(tempDir, { recursive: true, force: true });
 		}
@@ -1478,7 +1580,7 @@ describe("daemon mode helpers", () => {
 
 	it("does not retry supervisor agent-message rejections", async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "pa-msg-"));
-		const socketPath = join(tempDir, "d.sock");
+		const socketPath = testSocketPath(tempDir, "d");
 		let connectionCount = 0;
 		const server: Server = createServer((socket) => {
 			connectionCount++;
@@ -1553,7 +1655,7 @@ describe("daemon mode helpers", () => {
 
 	it("routes worker-local session renames through the supervisor", async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "pa-worker-rename-"));
-		const socketPath = join(tempDir, "s");
+		const socketPath = testSocketPath(tempDir, "s");
 		let receivedCommand: Record<string, unknown> | undefined;
 		let releaseResponse: () => void = () => {};
 		const responseGate = new Promise<void>((resolve) => {
@@ -1634,7 +1736,7 @@ describe("daemon mode helpers", () => {
 
 	it("does not retry permanent ambiguity errors from the supervisor", async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "pa-ambiguous-"));
-		const socketPath = join(tempDir, "s");
+		const socketPath = testSocketPath(tempDir, "s");
 		let requestCount = 0;
 		const server = createServer((socket) => {
 			socket.write(
@@ -2465,7 +2567,9 @@ describe("daemon mode helpers", () => {
 		expect((await internals.createAgentObserveListResult(targetState)).current.status).toBe("compacting");
 	});
 
-	it("canonicalizes symlinked family paths before comparison", () => {
+	// (task #22) Same Developer Mode / SeCreateSymbolicLinkPrivilege constraint
+	// as the catalog-paths test above.
+	it.skipIf(process.platform === "win32")("canonicalizes symlinked family paths before comparison", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "prime-agent-family-paths-"));
 		try {
 			const realDir = join(tempDir, "real");
@@ -9817,6 +9921,7 @@ function makeRuntimeSession(
 			return sessionManager.getSessionName();
 		},
 		setSubagentRuntimeHost: vi.fn(),
+		getSessionMode: vi.fn(() => "auto"),
 		getRlmChildRunStatus: vi.fn(() => "running"),
 		registerRlmChildSession: vi.fn(() => true),
 		releaseRlmChildSession: vi.fn(() => vi.fn()),

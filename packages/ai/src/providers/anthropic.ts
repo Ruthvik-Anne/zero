@@ -49,13 +49,13 @@ import { transformMessages } from "./transform-messages.js";
 
 /**
  * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
+ * Defaults to "short" and uses ZERO_CACHE_RETENTION for backward compatibility.
  */
 function resolveCacheRetention(cacheRetention?: CacheRetention): CacheRetention {
 	if (cacheRetention) {
 		return cacheRetention;
 	}
-	if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
+	if (typeof process !== "undefined" && process.env.ZERO_CACHE_RETENTION === "long") {
 		return "long";
 	}
 	return "short";
@@ -594,7 +594,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 							name: isOAuth
 								? fromClaudeCodeName(event.content_block.name, context.tools)
 								: event.content_block.name,
-							arguments: (event.content_block.input as Record<string, any>) ?? {},
+							arguments: (event.content_block.input as Record<string, unknown>) ?? {},
 							partialJson: "",
 							index: event.index,
 						};
@@ -651,7 +651,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					const index = blocks.findIndex((b) => b.index === event.index);
 					const block = blocks[index];
 					if (block) {
-						delete (block as any).index;
+						delete (block as { index?: number }).index;
 						if (block.type === "text") {
 							stream.push({
 								type: "text_end",
@@ -1126,11 +1126,15 @@ function convertMessages(
 						text: sanitizeSurrogates(block.text),
 					});
 				} else if (block.type === "thinking") {
-					// Redacted thinking: pass the opaque payload back as redacted_thinking
+					// Redacted thinking: pass the opaque payload back as redacted_thinking.
+					// Sessions saved before this field existed have redacted blocks with no
+					// signature; there is nothing to replay, so drop the block rather than
+					// sending the API a redacted_thinking block with missing data.
 					if (block.redacted) {
+						if (!block.thinkingSignature) continue;
 						blocks.push({
 							type: "redacted_thinking",
-							data: block.thinkingSignature!,
+							data: block.thinkingSignature,
 						});
 						continue;
 					}
@@ -1210,7 +1214,7 @@ function convertMessages(
 					lastBlock &&
 					(lastBlock.type === "text" || lastBlock.type === "image" || lastBlock.type === "tool_result")
 				) {
-					(lastBlock as any).cache_control = cacheControl;
+					lastBlock.cache_control = cacheControl;
 				}
 			} else if (typeof lastMessage.content === "string") {
 				lastMessage.content = [
@@ -1219,7 +1223,7 @@ function convertMessages(
 						text: lastMessage.content,
 						cache_control: cacheControl,
 					},
-				] as any;
+				];
 			}
 		}
 	}
@@ -1273,7 +1277,15 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
 			return "error";
 		default:
-			// Handle unknown stop reasons gracefully (API may add new values)
-			throw new Error(`Unhandled stop reason: ${reason}`);
+			// (B12) Was `throw` — contradicted this very comment's own intent
+			// ("handle unknown stop reasons gracefully"). Anthropic has added
+			// pause_turn/refusal/sensitive over time; three cases in this switch
+			// are retrofits for exactly that pattern. The throw was caught by the
+			// outer handler and turned a fully-successful response with all
+			// content already accumulated into a bare {type:"error"} the next
+			// time the API adds a value. The raw reason is preserved separately
+			// via output.stopReasonRaw at the call site, so mapping to "stop"
+			// here loses no information.
+			return "stop";
 	}
 }

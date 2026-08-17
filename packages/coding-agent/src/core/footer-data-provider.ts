@@ -10,6 +10,7 @@ function resolveBranchWithGitSync(repoDir: string): string | null {
 		cwd: repoDir,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "ignore"],
+		windowsHide: true,
 	});
 	const branch = result.status === 0 ? result.stdout.trim() : "";
 	return branch || null;
@@ -24,6 +25,7 @@ function resolveBranchWithGitAsync(repoDir: string): Promise<string | null> {
 			{
 				cwd: repoDir,
 				encoding: "utf8",
+				windowsHide: true,
 			},
 			(error: ExecFileException | null, stdout: string) => {
 				if (error) {
@@ -138,7 +140,19 @@ export class FooterDataProvider {
 	}
 
 	private notifyBranchChange(): void {
-		for (const cb of this.branchChangeCallbacks) cb();
+		// (B4) One throwing subscriber must not prevent the rest from being
+		// notified, and must not propagate out of this call — a caller on a git
+		// branch switch (setCwd, a sync method) would otherwise throw synchronously
+		// to whatever invoked it, and in the async refreshGitBranchAsync() path it
+		// would become an unhandled rejection that daemon-mode.ts's
+		// unhandledRejection handler turns into process.exit(1) for every session.
+		for (const cb of this.branchChangeCallbacks) {
+			try {
+				cb();
+			} catch {
+				// A subscriber's own bug is not this provider's problem to propagate.
+			}
+		}
 	}
 
 	private scheduleRefresh(): void {
@@ -149,7 +163,9 @@ export class FooterDataProvider {
 		}
 		this.refreshTimer = setTimeout(() => {
 			this.refreshTimer = null;
-			void this.refreshGitBranchAsync();
+			// (B4) No .catch left this an unhandled rejection if resolveGitBranchAsync()
+			// ever threw — same daemon-crash risk as cron-jobs.ts's runDue() timer.
+			void this.refreshGitBranchAsync().catch(() => undefined);
 		}, FooterDataProvider.WATCH_DEBOUNCE_MS);
 	}
 

@@ -62,10 +62,11 @@ function spawnSupervisor(paths: {
 				ENG_4606_PID_PATH: paths.pidPath,
 				ENG_4606_SOCKET_PATH: paths.socketPath,
 				ENG_4606_TSX_PATH: tsxPath,
-				PI_OFFLINE: "1",
+				ZERO_OFFLINE: "1",
 				TSX_TSCONFIG_PATH: tsconfigPath,
 			},
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		},
 	);
 	const handle: SupervisorHandle = { child, stdout: "", stderr: "" };

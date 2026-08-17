@@ -1,4 +1,4 @@
-import { setKeybindings } from "@earendil-works/pi-tui";
+import { setKeybindings } from "@zero-agent/tui";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.js";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";

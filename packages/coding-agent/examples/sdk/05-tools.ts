@@ -10,7 +10,7 @@
  * extensions system using pi.registerTool().
  */
 
-import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, SessionManager } from "@zero-agent/coding-agent";
 
 // Default tool surface
 await createAgentSession({

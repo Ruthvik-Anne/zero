@@ -1,5 +1,5 @@
-import type { AgentEvent } from "@earendil-works/pi-agent-core";
-import { type AssistantMessage, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import type { AgentEvent } from "@zero-agent/agent-core";
+import { type AssistantMessage, fauxAssistantMessage } from "@zero-agent/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "../harness.js";
 

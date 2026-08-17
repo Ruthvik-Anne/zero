@@ -1,4 +1,4 @@
-import type { TUI } from "@earendil-works/pi-tui";
+import type { TUI } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import {

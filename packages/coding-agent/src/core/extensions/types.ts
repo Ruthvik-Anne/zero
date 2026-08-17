@@ -14,7 +14,7 @@ import type {
 	AgentToolUpdateCallback,
 	ThinkingLevel,
 	ToolExecutionMode,
-} from "@earendil-works/pi-agent-core";
+} from "@zero-agent/agent-core";
 import type {
 	Api,
 	AssistantMessageEvent,
@@ -27,7 +27,7 @@ import type {
 	SimpleStreamOptions,
 	TextContent,
 	ToolResultMessage,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -38,7 +38,7 @@ import type {
 	OverlayHandle,
 	OverlayOptions,
 	TUI,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../modes/interactive/theme/theme.js";
 import type { BashResult } from "../bash-executor.js";
@@ -48,6 +48,7 @@ import type { ExecOptions, ExecResult } from "../exec.js";
 import type { ReadonlyFooterDataProvider } from "../footer-data-provider.js";
 import type { KeybindingsManager } from "../keybindings.js";
 import type { CustomMessage } from "../messages.js";
+import type { SessionMode } from "../mode/session-mode.js";
 import type { ModelRegistry } from "../model-registry.js";
 import type {
 	BranchSummaryEntry,
@@ -84,6 +85,13 @@ export interface ExtensionUIDialogOptions {
 	signal?: AbortSignal;
 	/** Timeout in milliseconds. Dialog auto-dismisses with live countdown display. */
 	timeout?: number;
+	/**
+	 * `input()` only. Render as a password-masked field (typed characters echo
+	 * as `*`, not the real value) instead of a plain text input — used by the
+	 * "credential" ask_user variant (task #78). Ignored by non-TUI UI contexts
+	 * (RPC/MCP), which have no local terminal rendering to mask.
+	 */
+	masked?: boolean;
 }
 
 /** Placement for extension widgets. */
@@ -219,12 +227,12 @@ export interface ExtensionUIContext {
 	 * - `keybindings`: KeybindingsManager for app-level keybindings
 	 *
 	 * For full app keybinding support (escape, ctrl+d, model switching, etc.),
-	 * extend `CustomEditor` from `@earendil-works/pi-coding-agent` and call
+	 * extend `CustomEditor` from `@zero-agent/coding-agent` and call
 	 * `super.handleInput(data)` for keys you don't handle.
 	 *
 	 * @example
 	 * ```ts
-	 * import { CustomEditor } from "@earendil-works/pi-coding-agent";
+	 * import { CustomEditor } from "@zero-agent/coding-agent";
 	 *
 	 * class VimEditor extends CustomEditor {
 	 *   private mode: "normal" | "insert" = "insert";
@@ -286,6 +294,30 @@ export interface CompactOptions {
 }
 
 /**
+ * (task #78) Host-side resolver for the "credential" ask_user variant's
+ * opaque `zero-cred://<name>/<hex>` placeholder tokens. Bound once per
+ * session (agent-session.ts's `_bindExtensionCore`) so tool-definition-
+ * wrapper.ts's execution choke point can swap a validly-issued placeholder
+ * for its decrypted plaintext immediately before a bash/ipython call runs —
+ * strictly after harm-check has already scanned the placeholder-only text.
+ */
+export interface VaultPlaceholderResolver {
+	/**
+	 * Replace every placeholder in `text` that was actually issued for this
+	 * session with its decrypted plaintext; any other occurrence (fabricated,
+	 * mismatched, or from a different session) is left as literal text.
+	 */
+	resolvePlaceholders(text: string): Promise<string>;
+	/**
+	 * (task #84) The reverse direction: replace any known, currently-active
+	 * decrypted secret value found verbatim in `text` with its placeholder
+	 * token, before `text` is persisted or transmitted anywhere. Best-effort,
+	 * exact-substring only — see `scrubKnownSecrets` in vault.ts.
+	 */
+	scrubKnownSecrets(text: string): Promise<string>;
+}
+
+/**
  * Context passed to extension event handlers.
  */
 export interface ExtensionContext {
@@ -317,6 +349,19 @@ export interface ExtensionContext {
 	compact(options?: CompactOptions): void;
 	/** Get the current effective system prompt. */
 	getSystemPrompt(): string;
+	/** Current plan/auto/manual mode (module I). Consulted by the native harm-check gate. */
+	mode: SessionMode;
+	/**
+	 * (D10) Per-session override for module F's soft-block gate. When explicitly
+	 * `false`, a soft-block fails closed exactly like the no-UI case, regardless
+	 * of `hasUI` — module J (MCP server mode) is the only caller that ever sets
+	 * this, since an MCP client's `answer()` call can't be verified as a human
+	 * who actually reviewed the consequence line. Unset behaves as `true` (every
+	 * other mode's existing interactive-confirm behavior, unchanged).
+	 */
+	allowRiskyActions?: boolean;
+	/** (task #78) Undefined only if the vault feature was never bound for this session (should not normally happen). */
+	vault?: VaultPlaceholderResolver;
 }
 
 /**
@@ -1456,6 +1501,9 @@ export interface ExtensionContextActions {
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
+	getSessionMode: () => SessionMode;
+	/** (D10) Optional — defaults to always-true when omitted. See ExtensionContext.allowRiskyActions. */
+	getAllowRiskyActions?: () => boolean;
 }
 
 /**

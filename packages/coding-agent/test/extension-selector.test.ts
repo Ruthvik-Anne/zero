@@ -1,4 +1,4 @@
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ExtensionSelectorComponent } from "../src/modes/interactive/components/extension-selector.js";

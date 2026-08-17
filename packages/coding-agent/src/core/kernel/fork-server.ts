@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
+import { registerSessionResourceCleanup } from "@zero-agent/ai";
 import { FORK_SERVER_SCRIPT } from "./fork-server-script.js";
 
 const READY_TIMEOUT_MS = 30_000;
@@ -40,10 +40,10 @@ export class ForkServerUnavailable extends Error {
 }
 
 // On by default on Linux (fork-without-exec is unsafe on macOS);
-// PRIME_AGENT_KERNEL_FORKSERVER=0 opts out.
+// ZERO_KERNEL_FORKSERVER=0 opts out.
 export function isForkServerEnabled(): boolean {
 	if (process.platform !== "linux") return false;
-	return process.env.PRIME_AGENT_KERNEL_FORKSERVER !== "0";
+	return process.env.ZERO_KERNEL_FORKSERVER !== "0";
 }
 
 // A forkserver template is defined solely by the interpreter — the imported
@@ -175,6 +175,7 @@ class ForkServer {
 				const proc = spawn(this.params.python, ["-c", FORK_SERVER_SCRIPT, socketPath], {
 					env: this.launchEnv,
 					stdio: ["ignore", "ignore", "pipe"],
+					windowsHide: true,
 				});
 				this.proc = proc;
 				proc.stderr?.on("data", (buf: Buffer) => {

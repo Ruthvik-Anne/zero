@@ -1,5 +1,5 @@
 """Web search skill."""
 
-from .websearch import run
+from .websearch import research, run
 
-__all__ = ["run"]
+__all__ = ["run", "research"]

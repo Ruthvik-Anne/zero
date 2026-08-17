@@ -1,12 +1,12 @@
 # ACP Mode
 
-ACP mode makes Prime Agent an [Agent Client Protocol](https://agentclientprotocol.com) agent, speaking JSON-RPC 2.0 over newline-delimited JSON on stdin/stdout. Any ACP client — an editor like Zed or VS Code, or an evaluation harness — can drive it without knowing anything Prime Agent-specific.
+ACP mode makes Zero an [Agent Client Protocol](https://agentclientprotocol.com) agent, speaking JSON-RPC 2.0 over newline-delimited JSON on stdin/stdout. Any ACP client — an editor like Zed or VS Code, or an evaluation harness — can drive it without knowing anything Zero-specific.
 
 ```bash
-prime-agent --mode acp
+zero --mode acp
 ```
 
-Use ACP mode when something external needs to *drive* a session interactively: prompt, watch tool calls stream, cancel a turn. For batch runs where you want every event dumped and an exit code, [JSON event stream mode](json.md) is a better fit. [RPC mode](rpc.md) remains available and exposes Prime Agent's own richer command surface.
+Use ACP mode when something external needs to *drive* a session interactively: prompt, watch tool calls stream, cancel a turn. For batch runs where you want every event dumped and an exit code, [JSON event stream mode](json.md) is a better fit. [RPC mode](rpc.md) remains available and exposes Zero's own richer command surface.
 
 ## Transport
 
@@ -24,7 +24,7 @@ Use ACP mode when something external needs to *drive* a session interactively: p
 | `session/cancel` | Notification; aborts the addressed session's turn. |
 | `session/close` | Releases the session and frees the connection for a new one. |
 
-One session per connection is a deliberate limit: Prime Agent's underlying session is fixed at process startup, so a second concurrent session would silently share its conversation, working directory, and model. A second `session/new` is refused rather than pretending to isolate. Start another process for a second session.
+One session per connection is a deliberate limit: Zero's underlying session is fixed at process startup, so a second concurrent session would silently share its conversation, working directory, and model. A second `session/new` is refused rather than pretending to isolate. Start another process for a second session.
 
 Likewise `session/prompt` refuses a concurrent turn while one is running, and the working directory cannot be changed after startup — a client-supplied `cwd` that differs from the agent's real one is reported back in `_meta` rather than silently ignored.
 
@@ -32,7 +32,7 @@ Likewise `session/prompt` refuses a concurrent turn while one is running, and th
 
 Session activity arrives as `session/update` notifications:
 
-| Prime Agent activity | ACP update |
+| Zero activity | ACP update |
 |---|---|
 | assistant text | `agent_message_chunk` |
 | reasoning | `agent_thought_chunk` |
@@ -40,11 +40,11 @@ Session activity arrives as `session/update` notifications:
 | tool finishes | `tool_call_update` (`completed` / `failed`) |
 | shell output | `tool_call` plus incremental `tool_call_update` |
 
-IPython is Prime Agent's model-facing tool, so a cell is a `tool_call` of kind `execute` whose `rawInput` carries the cell source.
+IPython is Zero's model-facing tool, so a cell is a `tool_call` of kind `execute` whose `rawInput` carries the cell source.
 
-## Prime Agent extensions
+## Zero extensions
 
-Prime Agent has capabilities ACP has no field for: subagents, autonomous quality gates, goals, heartbeats, continual-harness refinement, compaction, and rich IPython output. These travel in a reverse-domain `_meta` envelope:
+Zero has capabilities ACP has no field for: subagents, autonomous quality gates, goals, heartbeats, continual-harness refinement, compaction, and rich IPython output. These travel in a reverse-domain `_meta` envelope:
 
 ```json
 {
@@ -57,7 +57,7 @@ Prime Agent has capabilities ACP has no field for: subagents, autonomous quality
 }
 ```
 
-A standard ACP client ignores `_meta` entirely and still works. A Prime Agent-aware client, or a harness that cares about subagent trees and gate attempts, reads it. Nothing non-standard is ever added to an ACP object root, which the protocol reserves for future fields.
+A standard ACP client ignores `_meta` entirely and still works. A Zero-aware client, or a harness that cares about subagent trees and gate attempts, reads it. Nothing non-standard is ever added to an ACP object root, which the protocol reserves for future fields.
 
 ## Stop reasons
 

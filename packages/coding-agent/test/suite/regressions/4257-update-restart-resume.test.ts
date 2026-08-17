@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent } from "@zero-agent/ai";
+import { fauxAssistantMessage } from "@zero-agent/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDaemonUpdateRestartManifestPath } from "../../../src/config.js";
 import type { SessionActionRecoverySnapshot } from "../../../src/core/agent-session.js";

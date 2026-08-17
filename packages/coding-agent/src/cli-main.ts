@@ -16,7 +16,7 @@ export async function runCli(): Promise<void> {
 	}
 
 	process.title = APP_NAME;
-	process.env.PI_CODING_AGENT = "true";
+	process.env.ZERO_CODING_AGENT = "true";
 	process.emitWarning = (() => {}) as typeof process.emitWarning;
 
 	installOwnedSessionWorkerOwnerWatch();

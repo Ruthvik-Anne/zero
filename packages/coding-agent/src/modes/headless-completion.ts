@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { AssistantMessage } from "@zero-agent/ai";
 import type { AgentSession } from "../core/agent-session.js";
 import {
 	type AgentAutonomousStatus,

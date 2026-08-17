@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@earendil-works/pi-agent-core";
-import { type AssistantMessage, getModel, type Usage } from "@earendil-works/pi-ai";
+import { Agent } from "@zero-agent/agent-core";
+import { type AssistantMessage, getModel, type Usage } from "@zero-agent/ai";
 import stripAnsi from "strip-ansi";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.js";

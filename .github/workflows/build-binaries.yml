@@ -1,4 +1,4 @@
-name: Release Prime Agent
+name: Release Zero
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
         type: string
 
 concurrency:
-  group: release-prime-agent
+  group: release-zero
   cancel-in-progress: false
   queue: max
 
@@ -151,32 +151,32 @@ jobs:
       - name: Pack production release
         if: env.PUBLISH_PRODUCTION == 'true'
         env:
-          PRIME_AGENT_DOWNLOAD_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          ZERO_DOWNLOAD_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
         run: |
-          test -n "$PRIME_AGENT_DOWNLOAD_BASE_URL"
+          test -n "$ZERO_DOWNLOAD_BASE_URL"
           npm run release:pack -- \
             --channel stable \
             --version "$PRODUCTION_VERSION" \
-            --base-url "$PRIME_AGENT_DOWNLOAD_BASE_URL" \
+            --base-url "$ZERO_DOWNLOAD_BASE_URL" \
             --out-dir packages/coding-agent/release/production
 
       - name: Pack beta release
         if: env.PUBLISH_BETA == 'true'
         env:
-          PRIME_AGENT_DOWNLOAD_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          ZERO_DOWNLOAD_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
         run: |
-          test -n "$PRIME_AGENT_DOWNLOAD_BASE_URL"
+          test -n "$ZERO_DOWNLOAD_BASE_URL"
           npm run release:pack -- \
             --channel beta \
             --version "$BETA_VERSION" \
-            --base-url "$PRIME_AGENT_DOWNLOAD_BASE_URL" \
+            --base-url "$ZERO_DOWNLOAD_BASE_URL" \
             --out-dir packages/coding-agent/release/beta
 
       - name: Upload production artifacts
         if: env.PUBLISH_PRODUCTION == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: prime-agent-production
+          name: zero-production
           path: packages/coding-agent/release/production/artifacts/*
           if-no-files-found: error
 
@@ -184,7 +184,7 @@ jobs:
         if: env.PUBLISH_BETA == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: prime-agent-beta
+          name: zero-beta
           path: packages/coding-agent/release/beta/artifacts/*
           if-no-files-found: error
 
@@ -216,14 +216,14 @@ jobs:
         if: env.PUBLISH_PRODUCTION == 'true'
         uses: actions/download-artifact@v8
         with:
-          name: prime-agent-production
+          name: zero-production
           path: release-artifacts/production
 
       - name: Download beta artifacts
         if: env.PUBLISH_BETA == 'true'
         uses: actions/download-artifact@v8
         with:
-          name: prime-agent-beta
+          name: zero-beta
           path: release-artifacts/beta
 
       - name: Prepare installer
@@ -238,10 +238,10 @@ jobs:
           if (!baseUrl) throw new Error("INSTALL_BASE_URL is required");
           const installer = fs.readFileSync("install.sh", "utf8");
           const renderInstaller = (channel) => installer
-            .replaceAll("__PRIME_AGENT_DOWNLOAD_BASE_URL__", baseUrl)
-            .replaceAll("__PRIME_AGENT_DEFAULT_RELEASE_CHANNEL__", channel);
-          fs.writeFileSync("/tmp/prime-agent-install.sh", renderInstaller("stable"));
-          fs.writeFileSync("/tmp/prime-agent-install-beta.sh", renderInstaller("beta"));
+            .replaceAll("__ZERO_DOWNLOAD_BASE_URL__", baseUrl)
+            .replaceAll("__ZERO_DEFAULT_RELEASE_CHANNEL__", channel);
+          fs.writeFileSync("/tmp/zero-install.sh", renderInstaller("stable"));
+          fs.writeFileSync("/tmp/zero-install-beta.sh", renderInstaller("beta"));
           NODE
 
       - name: Extract production release notes
@@ -257,7 +257,7 @@ jobs:
         run: |
           PRODUCTION_DIR=release-artifacts/production
           RELEASE_PREFIX="releases/v${PRODUCTION_VERSION}"
-          TARBALL="$PRODUCTION_DIR/prime-agent-${PRODUCTION_VERSION}.tgz"
+          TARBALL="$PRODUCTION_DIR/zero-${PRODUCTION_VERSION}.tgz"
 
           test -f "$TARBALL"
           test -f "$PRODUCTION_DIR/SHA256SUMS"
@@ -288,12 +288,12 @@ jobs:
             --content-type text/plain \
             --cache-control no-cache
 
-          aws s3 cp /tmp/prime-agent-install.sh "s3://${R2_BUCKET}/install.sh" \
+          aws s3 cp /tmp/zero-install.sh "s3://${R2_BUCKET}/install.sh" \
             --endpoint-url "$R2_ENDPOINT_URL" \
             --content-type text/x-shellscript \
             --cache-control no-cache
 
-          aws s3 cp /tmp/prime-agent-install-beta.sh "s3://${R2_BUCKET}/install-beta.sh" \
+          aws s3 cp /tmp/zero-install-beta.sh "s3://${R2_BUCKET}/install-beta.sh" \
             --endpoint-url "$R2_ENDPOINT_URL" \
             --content-type text/x-shellscript \
             --cache-control no-cache
@@ -325,7 +325,7 @@ jobs:
         run: |
           BETA_DIR=release-artifacts/beta
           RELEASE_PREFIX="releases/v${BETA_VERSION}"
-          TARBALL="$BETA_DIR/prime-agent-${BETA_VERSION}.tgz"
+          TARBALL="$BETA_DIR/zero-${BETA_VERSION}.tgz"
 
           test -f "$TARBALL"
           test -f "$BETA_DIR/SHA256SUMS"
@@ -369,12 +369,12 @@ jobs:
             --content-type text/plain \
             --cache-control no-cache
 
-          aws s3 cp /tmp/prime-agent-install.sh "s3://${R2_BUCKET}/install.sh" \
+          aws s3 cp /tmp/zero-install.sh "s3://${R2_BUCKET}/install.sh" \
             --endpoint-url "$R2_ENDPOINT_URL" \
             --content-type text/x-shellscript \
             --cache-control no-cache
 
-          aws s3 cp /tmp/prime-agent-install-beta.sh "s3://${R2_BUCKET}/install-beta.sh" \
+          aws s3 cp /tmp/zero-install-beta.sh "s3://${R2_BUCKET}/install-beta.sh" \
             --endpoint-url "$R2_ENDPOINT_URL" \
             --content-type text/x-shellscript \
             --cache-control no-cache

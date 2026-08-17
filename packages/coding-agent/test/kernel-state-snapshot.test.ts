@@ -11,7 +11,7 @@ import {
 } from "../src/core/kernel/state-snapshot.js";
 
 // Kept in sync with the marker the Python helpers print.
-const MARKER = "__PRIME_AGENT_KERNEL_STATE__";
+const MARKER = "__ZERO_KERNEL_STATE__";
 
 describe("kernel state snapshot paths", () => {
 	it("places snapshot + manifest inside the session artifact directory", () => {
@@ -98,6 +98,61 @@ describe("buildSnapshotCode", () => {
 		// rlm and the IPython display names must never be serialized.
 		expect(code).toContain('"rlm"');
 		expect(code).toContain(`print(${JSON.stringify(MARKER)}`);
+	});
+
+	it("sets restrictive (0o600) permissions on the payload file before the atomic rename", () => {
+		expect(code).toContain("os.chmod(tmp, 0o600)");
+		// Defense-in-depth on top of the exclusion check, not instead of it —
+		// the chmod must precede the rename into the real path.
+		const chmodIndex = code.indexOf("os.chmod(tmp, 0o600)");
+		const replaceIndex = code.indexOf("os.replace(tmp,");
+		expect(chmodIndex).toBeGreaterThan(-1);
+		expect(chmodIndex).toBeLessThan(replaceIndex);
+	});
+
+	// Finding #1: without an exclusion list, no secret material to guard
+	// against — the generated source must still be well-formed (an empty
+	// Python list), and per the "no-op cost for the common case" requirement,
+	// the per-variable str(value) check must be gated behind it.
+	describe("with no excluded secrets (default)", () => {
+		it("embeds an empty Python list and gates the per-variable check on it", () => {
+			expect(code).toContain("_excluded_secrets = []");
+			expect(code).toContain("if _excluded_secrets:");
+		});
+	});
+
+	describe("with excluded secrets", () => {
+		const secretCode = buildSnapshotCode("/state/sess.dill", "/state/sess.json", DEFAULT_SNAPSHOT_MAX_BYTES, [
+			"sk-live-abc123",
+			'has"quote',
+		]);
+
+		it("embeds each excluded secret as a properly-escaped Python string literal", () => {
+			expect(secretCode).toContain(JSON.stringify("sk-live-abc123"));
+			expect(secretCode).toContain(JSON.stringify('has"quote'));
+			expect(secretCode).toContain(
+				`_excluded_secrets = [${JSON.stringify("sk-live-abc123")}, ${JSON.stringify('has"quote')}]`,
+			);
+		});
+
+		it("checks str(value) against the excluded secrets before dill.dumps, and skips defensively on error", () => {
+			const strIndex = secretCode.indexOf("_value_str = _b.str(value)");
+			const dumpsIndex = secretCode.indexOf("dill.dumps(value)");
+			expect(strIndex).toBeGreaterThan(-1);
+			expect(strIndex).toBeLessThan(dumpsIndex);
+			expect(secretCode).toContain("_contains_secret = True");
+			expect(secretCode).toContain('"reason": "excluded: contains vault credential material"');
+		});
+
+		it("deduplicates and drops empty-string secrets, which would otherwise match every variable", () => {
+			const withDupesAndEmpty = buildSnapshotCode(
+				"/state/sess.dill",
+				"/state/sess.json",
+				DEFAULT_SNAPSHOT_MAX_BYTES,
+				["dup", "dup", ""],
+			);
+			expect(withDupesAndEmpty).toContain(`_excluded_secrets = [${JSON.stringify("dup")}]`);
+		});
 	});
 });
 

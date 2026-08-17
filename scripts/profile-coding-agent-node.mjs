@@ -300,6 +300,7 @@ async function runBuild() {
 			env: process.env,
 			stdio: ["ignore", "pipe", "pipe"],
 			shell: process.platform === "win32",
+			windowsHide: true,
 		},
 	);
 
@@ -368,8 +369,8 @@ function createBenchmarkEnv(options, isolatedAgentDir) {
 		env[startupBenchmarkEnvName] = "1";
 	}
 	if (options.offline) {
-		env.PI_OFFLINE = "1";
-		env.PI_SKIP_VERSION_CHECK = "1";
+		env.ZERO_OFFLINE = "1";
+		env.ZERO_SKIP_VERSION_CHECK = "1";
 	}
 	return env;
 }
@@ -390,6 +391,7 @@ async function runTuiBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 		env: createBenchmarkEnv(options, isolatedAgentDir),
 		stdio: ["inherit", "ignore", "pipe"],
 		shell: process.platform === "win32" && runtime === "bun",
+		windowsHide: true,
 	});
 
 	let stderr = "";
@@ -449,6 +451,7 @@ async function runRpcBenchmarkRun({ runtime, runIndex, measuredIndex, options, p
 		env: createBenchmarkEnv(options, isolatedAgentDir),
 		stdio: ["pipe", "pipe", "pipe"],
 		shell: process.platform === "win32" && runtime === "bun",
+		windowsHide: true,
 	});
 
 	let stdoutBuffer = "";

@@ -80,6 +80,7 @@ function runSubagent(prompt: string, cwd: string): Promise<{ success: boolean }>
 		const child = spawn("pi", ["--mode", "json", "--tools", "read,write", "-p", prompt], {
 			cwd,
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		});
 
 		let textBuffer = "";

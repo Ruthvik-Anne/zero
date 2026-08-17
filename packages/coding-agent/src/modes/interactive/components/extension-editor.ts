@@ -16,7 +16,7 @@ import {
 	Spacer,
 	Text,
 	type TUI,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import type { KeybindingsManager } from "../../../core/keybindings.js";
 import { getEditorTheme, theme } from "../theme/theme.js";
 import { DynamicBorder } from "./dynamic-border.js";
@@ -127,6 +127,7 @@ export class ExtensionEditorComponent extends Container implements Focusable {
 			const result = spawnSync(editor, [...editorArgs, tmpFile], {
 				stdio: "inherit",
 				shell: process.platform === "win32",
+				windowsHide: true,
 			});
 
 			if (result.status === 0) {

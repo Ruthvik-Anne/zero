@@ -2,7 +2,7 @@
  * Simple text input component for extensions.
  */
 
-import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
+import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@zero-agent/tui";
 import { theme } from "../theme/theme.js";
 import { CountdownTimer } from "./countdown-timer.js";
 import { DynamicBorder } from "./dynamic-border.js";
@@ -11,6 +11,8 @@ import { keyHint } from "./keybinding-hints.js";
 export interface ExtensionInputOptions {
 	tui?: TUI;
 	timeout?: number;
+	/** Render as a password-masked field (task #78's "credential" ask_user variant). */
+	masked?: boolean;
 }
 
 export class ExtensionInputComponent extends Container implements Focusable {
@@ -61,6 +63,7 @@ export class ExtensionInputComponent extends Container implements Focusable {
 		}
 
 		this.input = new Input();
+		this.input.masked = opts?.masked ?? false;
 		this.addChild(this.input);
 		this.addChild(new Spacer(1));
 		this.addChild(

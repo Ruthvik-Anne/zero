@@ -144,6 +144,11 @@ async def run(prompt: str, **kwargs: Any) -> RLMSpawnHandle:
     """Spawn a recursive Prime Agent child and return once its task is admitted.
 
     ``model`` selects a child with an exact ``provider/model`` selector.
+    ``isolation="worktree"`` gives the child a fresh git worktree instead of
+    the shared cwd. ``modelClass="same"`` or ``"smaller"`` routes the child to
+    a live-available, cheaper model ranked by classification class and price
+    instead of exactly inheriting the parent's model; mutually exclusive with
+    ``model``. See docs/rlm-runtime.md for the full option reference.
     """
     if not isinstance(prompt, str):
         raise TypeError(f"prompt must be str, got {type(prompt).__name__}")

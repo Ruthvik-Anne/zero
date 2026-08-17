@@ -44,7 +44,7 @@ export async function checkForPackageUpdates(options: {
 	agentDir: string;
 	settingsManager: SettingsManager;
 }): Promise<string[]> {
-	if (process.env.PI_OFFLINE) {
+	if (process.env.ZERO_OFFLINE) {
 		return [];
 	}
 
@@ -68,6 +68,7 @@ export async function checkTmuxKeyboardSetup(): Promise<string | undefined> {
 		return new Promise((resolve) => {
 			const proc = spawn("tmux", ["show", "-gv", option], {
 				stdio: ["ignore", "pipe", "ignore"],
+				windowsHide: true,
 			});
 			let stdout = "";
 			const timer = setTimeout(() => {

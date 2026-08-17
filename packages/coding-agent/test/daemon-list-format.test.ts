@@ -1,4 +1,4 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@zero-agent/ai";
 import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
 import { formatSessionListTable } from "../src/cli/daemon-list-format.js";

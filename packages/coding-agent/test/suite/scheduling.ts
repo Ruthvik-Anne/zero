@@ -1,5 +1,5 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentTool } from "@zero-agent/agent-core";
+import type { ExtensionAPI } from "@zero-agent/coding-agent";
 import { Type } from "typebox";
 import { createHarness, type Harness } from "./harness.js";
 

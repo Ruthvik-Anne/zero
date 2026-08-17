@@ -9,7 +9,7 @@ import { getSlashCommandContext } from "../src/slash-command-context.js";
 
 const resolveFdPath = (): string | null => {
 	const command = process.platform === "win32" ? "where" : "which";
-	const result = spawnSync(command, ["fd"], { encoding: "utf-8" });
+	const result = spawnSync(command, ["fd"], { encoding: "utf-8", windowsHide: true });
 	if (result.status !== 0 || !result.stdout) {
 		return null;
 	}

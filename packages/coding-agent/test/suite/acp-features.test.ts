@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import { fauxAssistantMessage, fauxToolCall } from "@zero-agent/ai";
 import { describe, expect, it, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../../src/config.js";
 import type { AgentSessionRuntime } from "../../src/core/agent-session-runtime.js";
@@ -411,7 +411,7 @@ describe("ACP mode preserves prime-agent features", () => {
 
 	it("surfaces a real /refine outcome to the ACP client", async () => {
 		// Global refinement writes under the agent dir. Use the real env var name
-		// (derived from package piConfig, so PRIME_AGENT_CODING_AGENT_DIR) rather
+		// (derived from package piConfig, so ZERO_CODING_AGENT_DIR) rather
 		// than a hardcoded guess, and set it before the session exists: this test
 		// must never touch the developer's real harness state.
 		const previousAgentDir = process.env[ENV_AGENT_DIR];

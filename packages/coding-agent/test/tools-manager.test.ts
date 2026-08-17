@@ -31,7 +31,7 @@ import {
 } from "../src/utils/tools-manager.js";
 
 const originalPath = process.env.PATH;
-const originalOffline = process.env.PI_OFFLINE;
+const originalOffline = process.env.ZERO_OFFLINE;
 const pathDir = join(toolState.toolsDir, "path");
 
 function writeExecutable(filePath: string, exitCode = 0): void {
@@ -51,7 +51,7 @@ describe("tools manager", () => {
 		rmSync(toolState.toolsDir, { recursive: true, force: true });
 		mkdirSync(pathDir, { recursive: true });
 		process.env.PATH = pathDir;
-		delete process.env.PI_OFFLINE;
+		delete process.env.ZERO_OFFLINE;
 		toolState.platform = "linux";
 		toolState.architecture = "x64";
 		toolState.extractZip = async () => {};
@@ -61,8 +61,8 @@ describe("tools manager", () => {
 		vi.unstubAllGlobals();
 		if (originalPath === undefined) delete process.env.PATH;
 		else process.env.PATH = originalPath;
-		if (originalOffline === undefined) delete process.env.PI_OFFLINE;
-		else process.env.PI_OFFLINE = originalOffline;
+		if (originalOffline === undefined) delete process.env.ZERO_OFFLINE;
+		else process.env.ZERO_OFFLINE = originalOffline;
 		rmSync(toolState.toolsDir, { recursive: true, force: true });
 	});
 
@@ -81,14 +81,14 @@ describe("tools manager", () => {
 	});
 
 	it("reports offline and Termux provisioning constraints", async () => {
-		process.env.PI_OFFLINE = "1";
+		process.env.ZERO_OFFLINE = "1";
 		await expect(ensureToolWithStatus("rg")).resolves.toMatchObject({
 			status: "unavailable",
 			reason: "offline",
 			platform: "linux",
 		});
 
-		delete process.env.PI_OFFLINE;
+		delete process.env.ZERO_OFFLINE;
 		toolState.platform = "android";
 		await expect(ensureToolWithStatus("rg")).resolves.toMatchObject({
 			status: "unavailable",

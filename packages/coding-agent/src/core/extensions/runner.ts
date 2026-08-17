@@ -2,12 +2,13 @@
  * Extension runner - executes extensions and manages their lifecycle.
  */
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model } from "@earendil-works/pi-ai";
-import type { KeyId } from "@earendil-works/pi-tui";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { ImageContent, Model } from "@zero-agent/ai";
+import type { KeyId } from "@zero-agent/tui";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.js";
 import type { ResourceDiagnostic } from "../diagnostics.js";
 import type { KeybindingsConfig } from "../keybindings.js";
+import { DEFAULT_SESSION_MODE, type SessionMode } from "../mode/session-mode.js";
 import type { ModelRegistry } from "../model-registry.js";
 import type { SessionManager } from "../session-manager.js";
 import type { BuildSystemPromptOptions } from "../system-prompt.js";
@@ -55,6 +56,7 @@ import type {
 	ToolResultEventResult,
 	UserBashEvent,
 	UserBashEventResult,
+	VaultPlaceholderResolver,
 } from "./types.js";
 
 // Extension shortcuts compete with canonical keybinding ids from keybindings.json.
@@ -236,6 +238,8 @@ export class ExtensionRunner {
 	private getContextUsageFn: () => ContextUsage | undefined = () => undefined;
 	private compactFn: (options?: CompactOptions) => void = () => {};
 	private getSystemPromptFn: () => string = () => "";
+	private getSessionModeFn: () => SessionMode = () => DEFAULT_SESSION_MODE;
+	private getAllowRiskyActionsFn: () => boolean = () => true;
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -245,6 +249,7 @@ export class ExtensionRunner {
 	private shortcutDiagnostics: ResourceDiagnostic[] = [];
 	private commandDiagnostics: ResourceDiagnostic[] = [];
 	private staleMessage: string | undefined;
+	private vaultResolver: VaultPlaceholderResolver | undefined;
 
 	constructor(
 		extensions: Extension[],
@@ -295,6 +300,8 @@ export class ExtensionRunner {
 		this.getContextUsageFn = contextActions.getContextUsage;
 		this.compactFn = contextActions.compact;
 		this.getSystemPromptFn = contextActions.getSystemPrompt;
+		this.getSessionModeFn = contextActions.getSessionMode;
+		this.getAllowRiskyActionsFn = contextActions.getAllowRiskyActions ?? (() => true);
 
 		// Flush provider registrations queued during extension loading
 		for (const { name, config, extensionPath } of this.runtime.pendingProviderRegistrations) {
@@ -350,6 +357,11 @@ export class ExtensionRunner {
 		this.navigateTreeHandler = async () => ({ cancelled: false });
 		this.switchSessionHandler = async () => ({ cancelled: false });
 		this.reloadHandler = async () => {};
+	}
+
+	/** (task #78) Bind the vault placeholder resolver — called once per (re)build from `_bindExtensionCore`. */
+	bindVault(resolver: VaultPlaceholderResolver | undefined): void {
+		this.vaultResolver = resolver;
 	}
 
 	setUIContext(uiContext?: ExtensionUIContext): void {
@@ -627,6 +639,18 @@ export class ExtensionRunner {
 			getSystemPrompt: () => {
 				runner.assertActive();
 				return runner.getSystemPromptFn();
+			},
+			get mode() {
+				runner.assertActive();
+				return runner.getSessionModeFn();
+			},
+			get allowRiskyActions() {
+				runner.assertActive();
+				return runner.getAllowRiskyActionsFn();
+			},
+			get vault() {
+				runner.assertActive();
+				return runner.vaultResolver;
 			},
 		};
 	}

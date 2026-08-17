@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Api, Model } from "@earendil-works/pi-ai";
-import { completeSimple } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { Api, Model } from "@zero-agent/ai";
+import { completeSimple } from "@zero-agent/ai";
 import type { ModelRegistry } from "../../core/model-registry.js";
 import type { AgentStatus, AgentTaskState } from "../../core/session-manager.js";
 import type { ActiveSessionState } from "./active-session-state.js";
@@ -8,9 +8,6 @@ import type { ActiveSessionState } from "./active-session-state.js";
 const SWEEP_INTERVAL_MS = 25_000;
 // Collapse a tool-use loop's rapid turn_end bursts into one summarization.
 const SETTLE_DEBOUNCE_MS = 2_000;
-
-const SUMMARY_MODEL_PROVIDER = "prime-inference";
-const SUMMARY_MODEL_ID = "qwen/qwen3-30b-a3b-instruct-2507";
 
 const SUMMARY_CONTEXT_MESSAGES = 8;
 const SUMMARY_MAX_CHARS_PER_MESSAGE = 600;
@@ -37,12 +34,14 @@ export interface AgentStatusResult {
 	taskState?: AgentTaskState;
 }
 
-/** Resolve the cheap summary model, or undefined when it has no configured auth. */
-export function resolveSummaryModel(registry: ModelRegistry): Model<Api> | undefined {
-	const model = registry.find(SUMMARY_MODEL_PROVIDER, SUMMARY_MODEL_ID);
-	if (model && registry.hasConfiguredAuth(model)) {
-		return model;
-	}
+/**
+ * Resolve the cheap summary model, or undefined when it has no configured auth.
+ *
+ * The daemon status-summary feature has no default model configured since
+ * Prime Inference was removed; this would need a settings-configurable model
+ * to be reintroduced.
+ */
+export function resolveSummaryModel(_registry: ModelRegistry): Model<Api> | undefined {
 	return undefined;
 }
 

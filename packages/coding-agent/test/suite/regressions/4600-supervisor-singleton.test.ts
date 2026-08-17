@@ -141,10 +141,11 @@ function spawnFixture(
 			ENG_4600_GENERATION: options.generation,
 			ENG_4600_REGISTRY_DIR: paths.registryDir,
 			ENG_4600_SOCKET_PATH: paths.socketPath,
-			PI_OFFLINE: "1",
+			ZERO_OFFLINE: "1",
 			TSX_TSCONFIG_PATH: tsconfigPath,
 		},
 		stdio: ["ignore", "pipe", "pipe", "ipc"],
+		windowsHide: true,
 	});
 	const handle: FixtureHandle = {
 		child,
@@ -177,10 +178,11 @@ function spawnRealSupervisor(
 				...extraEnv,
 				[supervisorRegistryDirEnv]: paths.registryDir,
 				[ENV_AGENT_DIR]: paths.agentDir,
-				PI_OFFLINE: "1",
+				ZERO_OFFLINE: "1",
 				TSX_TSCONFIG_PATH: tsconfigPath,
 			},
 			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
 		},
 	);
 	const handle: FixtureHandle = {

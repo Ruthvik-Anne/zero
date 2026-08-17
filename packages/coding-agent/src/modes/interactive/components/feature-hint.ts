@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, truncateToWidth, visibleWidth } from "@zero-agent/tui";
 import { theme } from "../theme/theme.js";
 
 const LABEL = "Hint:";

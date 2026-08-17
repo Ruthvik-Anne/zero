@@ -1,4 +1,4 @@
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent } from "@zero-agent/ai";
 import type { CustomMessage } from "./messages.js";
 
 export const GOAL_STATE_CUSTOM_TYPE = "thread_goal_state";
@@ -9,6 +9,24 @@ export const MAX_THREAD_GOAL_OBJECTIVE_CHARS = 4000;
 
 export type GoalStatus = "idle" | "active" | "paused" | "budget_limited" | "complete" | "error";
 export type GoalContextKind = "continuation" | "budget_limit" | "objective_updated";
+
+/**
+ * A single decomposed unit of the goal — Claude-Code-style task-list anti-drift:
+ * re-injected every turn via `continuationPrompt` below, the same mechanism that
+ * already re-presents the objective every turn, not a second injection path.
+ */
+export interface SubGoal {
+	id: string;
+	text: string;
+	done: boolean;
+}
+
+/** Definition-of-done for the goal: `goal.complete()` refuses while any entry here is unmet. */
+export interface AcceptanceCriterion {
+	id: string;
+	text: string;
+	met: boolean;
+}
 
 export interface GoalState {
 	active: boolean;
@@ -23,6 +41,8 @@ export interface GoalState {
 	updatedAt?: number;
 	lastReason?: string;
 	lastError?: string;
+	subGoals?: SubGoal[];
+	acceptanceCriteria?: AcceptanceCriterion[];
 }
 
 /** Goal payload returned to the kernel-side goal skill. Keys are Python-conventional snake_case. */
@@ -35,6 +55,8 @@ export type SerializedGoal = {
 	time_used_seconds: number;
 	created_at?: number;
 	updated_at?: number;
+	sub_goals?: SubGoal[];
+	acceptance_criteria?: AcceptanceCriterion[];
 };
 
 /** Reply payload for goal.* host requests from the IPython kernel. */
@@ -93,6 +115,77 @@ export function validateGoalBudget(value: number | undefined): number | undefine
 	return value;
 }
 
+const MAX_SUB_GOALS = 50;
+const MAX_ACCEPTANCE_CRITERIA = 20;
+const MAX_ITEM_TEXT_CHARS = 500;
+
+function randomItemId(prefix: string): string {
+	return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Parse kernel-provided sub-goals: an array of plain strings, or `{text, done?}` objects. */
+export function validateSubGoals(value: unknown): SubGoal[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) {
+		throw new Error("sub_goals must be an array");
+	}
+	if (value.length > MAX_SUB_GOALS) {
+		throw new Error(`sub_goals must have at most ${MAX_SUB_GOALS} entries`);
+	}
+	return value.map((item) => {
+		if (typeof item === "string") {
+			const text = item.trim();
+			if (!text) throw new Error("sub_goals entries must not be empty");
+			return { id: randomItemId("sg"), text: text.slice(0, MAX_ITEM_TEXT_CHARS), done: false };
+		}
+		if (typeof item === "object" && item !== null && typeof (item as { text?: unknown }).text === "string") {
+			const record = item as { id?: unknown; text: string; done?: unknown };
+			const text = record.text.trim();
+			if (!text) throw new Error("sub_goals entries must not be empty");
+			return {
+				id: typeof record.id === "string" && record.id ? record.id : randomItemId("sg"),
+				text: text.slice(0, MAX_ITEM_TEXT_CHARS),
+				done: record.done === true,
+			};
+		}
+		throw new Error("sub_goals entries must be a string or {text, done?} object");
+	});
+}
+
+/** Parse kernel-provided acceptance criteria: an array of plain strings, or `{text, met?}` objects. */
+export function validateAcceptanceCriteria(value: unknown): AcceptanceCriterion[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) {
+		throw new Error("acceptance_criteria must be an array");
+	}
+	if (value.length > MAX_ACCEPTANCE_CRITERIA) {
+		throw new Error(`acceptance_criteria must have at most ${MAX_ACCEPTANCE_CRITERIA} entries`);
+	}
+	return value.map((item) => {
+		if (typeof item === "string") {
+			const text = item.trim();
+			if (!text) throw new Error("acceptance_criteria entries must not be empty");
+			return { id: randomItemId("ac"), text: text.slice(0, MAX_ITEM_TEXT_CHARS), met: false };
+		}
+		if (typeof item === "object" && item !== null && typeof (item as { text?: unknown }).text === "string") {
+			const record = item as { id?: unknown; text: string; met?: unknown };
+			const text = record.text.trim();
+			if (!text) throw new Error("acceptance_criteria entries must not be empty");
+			return {
+				id: typeof record.id === "string" && record.id ? record.id : randomItemId("ac"),
+				text: text.slice(0, MAX_ITEM_TEXT_CHARS),
+				met: record.met === true,
+			};
+		}
+		throw new Error("acceptance_criteria entries must be a string or {text, met?} object");
+	});
+}
+
+/** `goal.complete()` refuses while this is non-empty. */
+export function unmetAcceptanceCriteria(goal: GoalState): AcceptanceCriterion[] {
+	return (goal.acceptanceCriteria ?? []).filter((criterion) => !criterion.met);
+}
+
 export function goalTokenDeltaForUsage(usage: { input: number; output: number }): number {
 	return Math.max(0, usage.input) + Math.max(0, usage.output);
 }
@@ -141,6 +234,8 @@ export function goalHostResponse(goal: GoalState, includeCompletionReport: boole
 		time_used_seconds: goal.timeUsedSeconds,
 		created_at: goal.createdAt,
 		updated_at: goal.updatedAt,
+		sub_goals: goal.subGoals,
+		acceptance_criteria: goal.acceptanceCriteria,
 	};
 
 	return {
@@ -204,6 +299,29 @@ function goalContextPrompt(goal: GoalState, kind: GoalContextKind): string {
 	}
 }
 
+/**
+ * Renders the live task list (subGoals) and definition-of-done (acceptanceCriteria)
+ * every turn — the anti-drift mechanism. Claude-Code-style task tracking and goal
+ * decomposition are the same underlying state here, re-injected via the exact
+ * re-injection this file already fires every turn, not a second tool/pipeline.
+ */
+function taskListSection(goal: GoalState): string {
+	const lines: string[] = [];
+	if (goal.subGoals && goal.subGoals.length > 0) {
+		lines.push("", "Task list (update via `await goal.update(sub_goals=[...])`):");
+		for (const item of goal.subGoals) {
+			lines.push(`- [${item.done ? "x" : " "}] ${escapeXmlText(item.text)}`);
+		}
+	}
+	if (goal.acceptanceCriteria && goal.acceptanceCriteria.length > 0) {
+		lines.push("", "Acceptance criteria (goal.complete() refuses while any are unmet):");
+		for (const item of goal.acceptanceCriteria) {
+			lines.push(`- [${item.met ? "x" : " "}] ${escapeXmlText(item.text)}`);
+		}
+	}
+	return lines.join("\n");
+}
+
 function continuationPrompt(goal: GoalState): string {
 	const budget = goal.tokenBudget === undefined ? "none" : String(goal.tokenBudget);
 	const remaining =
@@ -221,12 +339,13 @@ Goal state:
 - tokens used: ${goal.tokensUsed}
 - token budget: ${budget}
 - remaining tokens: ${remaining}
+${taskListSection(goal)}
 
 The goal persists across turns. Ending one turn does not reduce or redefine the objective. If the goal is not complete yet, make concrete progress toward the full objective.
 
-Before marking the goal complete, audit the current state against every requirement in the objective. Do not rely on intent, partial progress, memory of earlier work, or a plausible final answer as proof of completion. If the objective is achieved, run \`await goal.complete()\` in ipython so usage accounting is preserved.
+Before marking the goal complete, audit the current state against every requirement in the objective and every acceptance criterion above. Do not rely on intent, partial progress, memory of earlier work, or a plausible final answer as proof of completion. If the objective is achieved, run \`await goal.complete()\` in ipython so usage accounting is preserved.
 
-Do not call \`goal.complete()\` unless the goal is complete. Do not mark a goal complete merely because the budget is nearly exhausted or because you are stopping work.`;
+Do not call \`goal.complete()\` unless the goal is complete and every acceptance criterion is met — it will refuse otherwise. Do not mark a goal complete merely because the budget is nearly exhausted or because you are stopping work.`;
 }
 
 function budgetLimitPrompt(goal: GoalState): string {

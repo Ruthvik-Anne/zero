@@ -262,6 +262,7 @@ describe("buildSystemPrompt", () => {
 		const harnessState: HarnessState = {
 			schema: 1,
 			entries: {
+				guardrail: {},
 				prompt: {
 					focused_edits: {
 						id: "focused_edits",
@@ -409,6 +410,7 @@ describe("buildSystemPrompt", () => {
 		const harnessState: HarnessState = {
 			schema: 1,
 			entries: {
+				guardrail: {},
 				prompt: {},
 				memory: memoryEntries,
 				skill: {},
@@ -461,6 +463,7 @@ describe("buildSystemPrompt", () => {
 		const harnessState: HarnessState = {
 			schema: 1,
 			entries: {
+				guardrail: {},
 				prompt: {},
 				memory: {},
 				skill: {},
@@ -508,6 +511,7 @@ describe("buildSystemPrompt", () => {
 		const harnessState: HarnessState = {
 			schema: 1,
 			entries: {
+				guardrail: {},
 				prompt: {},
 				memory: {},
 				skill: {},
@@ -552,6 +556,7 @@ describe("buildSystemPrompt", () => {
 		const harnessState: HarnessState = {
 			schema: 1,
 			entries: {
+				guardrail: {},
 				prompt: {},
 				memory: {
 					custom_memory: {

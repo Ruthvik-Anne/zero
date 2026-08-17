@@ -6,8 +6,8 @@ import {
 	createMcpOAuthProvider,
 	getCatalogEntry,
 	registerBuiltinMcpOAuthProviders,
-} from "@earendil-works/pi-ai/mcp";
-import { registerOAuthProvider, unregisterOAuthProvider } from "@earendil-works/pi-ai/oauth";
+} from "@zero-agent/ai/mcp";
+import { registerOAuthProvider, unregisterOAuthProvider } from "@zero-agent/ai/oauth";
 import type { AuthStorage } from "../auth-storage.js";
 import type { McpServerConfig } from "../settings-manager.js";
 
@@ -19,16 +19,28 @@ export interface McpManagerOptions {
 	beginLogin?: (server: string) => Promise<void>;
 }
 
-/** A resolved integration: a catalog/user entry plus its provider id. */
+/**
+ * A resolved integration: a catalog/user entry plus its provider id.
+ *
+ * module J: stdio transport support. HTTP integrations still authenticate via
+ * the host (OAuth or a bearer env var); a stdio integration's "credential" is
+ * the local command itself, so it's always considered configured once
+ * declared — there's no host-side auth step to gate it on.
+ */
 interface ResolvedIntegration {
 	server: string;
 	label: string;
-	url: string;
+	transport: "http" | "stdio";
+	url?: string;
 	usesOAuth: boolean;
 	bearerTokenEnvVar?: string;
 	enabled?: boolean;
 	/** Extra static HTTP headers from the user config. */
 	headers?: Record<string, string>;
+	/** stdio only: the command to spawn, its args, and extra env vars. */
+	command?: string;
+	args?: string[];
+	env?: Record<string, string>;
 	/** True when this came from Settings.mcpServers (may override a catalog name). */
 	userDeclared?: boolean;
 }
@@ -65,15 +77,30 @@ export class McpManager {
 			integrations.set(entry.server, {
 				server: entry.server,
 				label: entry.label,
+				transport: "http",
 				url: entry.url,
 				usesOAuth: entry.oauth?.kind === "oauth",
 			});
 		}
 		for (const [server, config] of Object.entries(this.getUserServers() ?? {})) {
-			if (config.type !== "http") continue; // stdio servers self-manage in Python
+			if (config.type === "stdio") {
+				integrations.set(server, {
+					server,
+					label: server,
+					transport: "stdio",
+					usesOAuth: false,
+					enabled: config.enabled,
+					command: config.command,
+					args: config.args,
+					env: config.env,
+					userDeclared: true,
+				});
+				continue;
+			}
 			integrations.set(server, {
 				server,
 				label: server,
+				transport: "http",
 				url: config.url,
 				usesOAuth: config.oauth === true,
 				bearerTokenEnvVar: config.bearerTokenEnvVar,
@@ -100,8 +127,10 @@ export class McpManager {
 		for (const integration of this.integrations.values()) {
 			if (!integration.userDeclared) continue;
 			const id = this.providerId(integration.server);
-			if (integration.usesOAuth) {
+			if (integration.usesOAuth && integration.url) {
 				// Register pointing at the user's URL (overrides a catalog default too).
+				// usesOAuth is only ever true for the http transport, so url is always
+				// set here — the check is for the type-checker, not runtime behavior.
 				current.add(id);
 				registerOAuthProvider(
 					createMcpOAuthProvider({
@@ -126,6 +155,9 @@ export class McpManager {
 	/** True when valid credentials exist for the integration (drives enablement). */
 	private isAuthed(integration: ResolvedIntegration): boolean {
 		if (integration.enabled === false) return false;
+		// A stdio integration's "credential" is the local command itself — there is
+		// no host-side auth step to gate it on, unlike an HTTP integration.
+		if (integration.transport === "stdio") return Boolean(integration.command);
 		if (integration.bearerTokenEnvVar && process.env[integration.bearerTokenEnvVar]?.trim()) {
 			return true;
 		}
@@ -165,14 +197,22 @@ export class McpManager {
 				if (!key) throw new Error(`Could not refresh credentials for ${server}`);
 				return {};
 			},
-			// Resolved config so the kernel skill connects to the same URL the host
-			// registered/authenticated (honors a user's mcpServers `url` override).
+			// Resolved config so the kernel skill connects the same way the host
+			// registered/authenticated (honors a user's mcpServers override), for
+			// either transport: HTTP gets {type, url, headers?}, stdio gets
+			// {type, command, args?, env?} — the skill never hardcodes either.
 			"mcp.config": async (payload) => {
 				const server = String(payload.server ?? "");
 				if (!server) throw new Error("mcp.config requires a server");
 				const integration = this.integrations.get(server);
 				if (!integration) return {};
-				const config: Record<string, unknown> = { url: integration.url };
+				if (integration.transport === "stdio") {
+					const config: Record<string, unknown> = { type: "stdio", command: integration.command };
+					if (integration.args && integration.args.length > 0) config.args = integration.args;
+					if (integration.env && Object.keys(integration.env).length > 0) config.env = integration.env;
+					return config;
+				}
+				const config: Record<string, unknown> = { type: "http", url: integration.url };
 				if (integration.headers && Object.keys(integration.headers).length > 0) {
 					config.headers = integration.headers;
 				}
@@ -194,12 +234,19 @@ export class McpManager {
 	}
 
 	/** Status for the /mcp list command. */
-	listStatus(): Array<{ server: string; label: string; enabled: boolean; usesOAuth: boolean }> {
+	listStatus(): Array<{
+		server: string;
+		label: string;
+		enabled: boolean;
+		usesOAuth: boolean;
+		transport: "http" | "stdio";
+	}> {
 		return Array.from(this.integrations.values()).map((integration) => ({
 			server: integration.server,
 			label: integration.label,
 			enabled: this.isAuthed(integration),
 			usesOAuth: integration.usesOAuth,
+			transport: integration.transport,
 		}));
 	}
 }

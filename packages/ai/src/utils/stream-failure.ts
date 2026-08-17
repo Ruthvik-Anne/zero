@@ -17,6 +17,7 @@ export type StreamFailureKind =
 	| "auth"
 	| "invalid_request"
 	| "malformed_response"
+	| "network_error"
 	| "unknown";
 
 export interface StreamFailureInfo {
@@ -27,6 +28,8 @@ export interface StreamFailureInfo {
 	requestId?: string;
 	/** Truncated raw provider payload for post-mortems. */
 	raw?: string;
+	/** Retry-After the provider asked for, in ms (from a header or an equivalent error-body field). */
+	retryAfterMs?: number;
 }
 
 export class StreamFailureError extends Error {
@@ -48,6 +51,7 @@ const KIND_MESSAGES: Record<StreamFailureKind, string> = {
 	auth: "Provider authentication failed",
 	invalid_request: "Provider rejected the request",
 	malformed_response: "Provider returned a malformed response",
+	network_error: "Network error while contacting provider",
 	unknown: "Provider stream failed",
 };
 
@@ -84,6 +88,14 @@ export function classifyStreamFailure(providerErrorType?: string, status?: numbe
 	) {
 		return "server_error";
 	}
+	// (D12) A dropped connection mid-handshake (Node's own error .code, or a
+	// fetch/undici error message) has no provider error body at all — it never
+	// hit "unavailable"/5xx above, and previously fell all the way through to
+	// "unknown", which router/index.ts's RETRYABLE_FAILURE_KINDS doesn't retry.
+	// These are exactly the transient case the router's fallback chain exists for.
+	if (/econnreset|econnrefused|etimedout|enotfound|eai_again|epipe|fetch failed|socket hang up/.test(type)) {
+		return "network_error";
+	}
 	return "unknown";
 }
 
@@ -114,6 +126,60 @@ export function truncateRawPayload(raw: string): string {
 	return raw.length > MAX_RAW_LENGTH ? `${raw.slice(0, MAX_RAW_LENGTH)}…` : raw;
 }
 
+/** Header lookup that works for both a `Headers` instance (case-insensitive `.get`) and a plain record. */
+function lookupHeader(headers: unknown, name: string): string | undefined {
+	if (headers && typeof (headers as Headers).get === "function") {
+		return (headers as Headers).get(name) ?? undefined;
+	}
+	if (headers && typeof headers === "object") {
+		const lowerName = name.toLowerCase();
+		for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+			if (key.toLowerCase() === lowerName) return typeof value === "string" ? value : undefined;
+		}
+	}
+	return undefined;
+}
+
+/** Retry-After can be delta-seconds ("120") or an HTTP-date; both resolve to a ms delay from now. */
+function parseRetryAfterSeconds(value: string): number | undefined {
+	const trimmed = value.trim();
+	if (/^\d+$/.test(trimmed)) {
+		const seconds = Number(trimmed);
+		return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+	}
+	const dateMs = Date.parse(trimmed);
+	return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - Date.now());
+}
+
+/**
+ * Provider-supplied retry timing, in ms. Checks, in order: the millisecond
+ * header some providers emit (`retry-after-ms`), the standard `Retry-After`
+ * header (delta-seconds or an HTTP-date), then equivalent fields some SDKs
+ * surface directly on the parsed error body instead of (or in addition to)
+ * a header.
+ */
+function extractRetryAfterMs(
+	headers: unknown,
+	body: { retry_after?: unknown; retryAfter?: unknown; retryAfterMs?: unknown } | undefined,
+): number | undefined {
+	const msHeader = lookupHeader(headers, "retry-after-ms");
+	if (msHeader !== undefined) {
+		const ms = Number(msHeader);
+		if (Number.isFinite(ms) && ms >= 0) return ms;
+	}
+	const secondsHeader = lookupHeader(headers, "retry-after");
+	if (secondsHeader !== undefined) {
+		const ms = parseRetryAfterSeconds(secondsHeader);
+		if (ms !== undefined) return ms;
+	}
+	if (typeof body?.retryAfterMs === "number" && Number.isFinite(body.retryAfterMs)) return body.retryAfterMs;
+	const bodyRetryAfterSeconds = body?.retry_after ?? body?.retryAfter;
+	if (typeof bodyRetryAfterSeconds === "number" && Number.isFinite(bodyRetryAfterSeconds)) {
+		return bodyRetryAfterSeconds * 1000;
+	}
+	return undefined;
+}
+
 function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; detail?: string } {
 	if (error instanceof StreamFailureError) return { info: error.info };
 	if (!(error instanceof Error)) return { info: { kind: "unknown" } };
@@ -134,7 +200,17 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 
 	// Error bodies come nested differently per SDK: Anthropic/OpenAI expose
 	// `error.error = {type|code, message}` (sometimes doubly nested).
-	let body = err.error as { type?: unknown; code?: unknown; message?: unknown; error?: unknown } | undefined;
+	let body = err.error as
+		| {
+				type?: unknown;
+				code?: unknown;
+				message?: unknown;
+				error?: unknown;
+				retry_after?: unknown;
+				retryAfter?: unknown;
+				retryAfterMs?: unknown;
+		  }
+		| undefined;
 	if (body && typeof body === "object" && body.error && typeof body.error === "object") {
 		body = body.error as { type?: unknown; code?: unknown; message?: unknown };
 	}
@@ -159,6 +235,7 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 				: undefined;
 	const rawRequestId = err.requestID ?? err.request_id ?? err.$metadata?.requestId ?? headerRequestId;
 	const requestId = typeof rawRequestId === "string" ? rawRequestId : undefined;
+	const retryAfterMs = extractRetryAfterMs(headers, body);
 
 	return {
 		info: {
@@ -166,6 +243,7 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 			providerErrorType,
 			status,
 			requestId,
+			retryAfterMs,
 		},
 		detail: typeof bodyMessage === "string" ? bodyMessage : undefined,
 	};
@@ -189,7 +267,11 @@ export function extractStreamFailureInfo(error: unknown): StreamFailureInfo {
 export function formatStreamFailureMessage(error: unknown): string {
 	if (error instanceof StreamFailureError) return error.message;
 	const { info, detail } = extractStreamFailureParts(error);
-	if (info.kind === "unknown") {
+	// (D12) network_error has no provider error body to build a useful qualifier
+	// from (providerErrorType/status/detail are all typically undefined) — the
+	// raw message ("fetch failed", "ECONNRESET", ...) is more informative than
+	// the generic label, same reasoning as the "unknown" passthrough below.
+	if (info.kind === "unknown" || info.kind === "network_error") {
 		return error instanceof Error ? error.message : JSON.stringify(error);
 	}
 	return streamFailureMessage(info, detail);

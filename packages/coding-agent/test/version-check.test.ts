@@ -7,10 +7,10 @@ import {
 	isNewerPackageVersion,
 } from "../src/utils/version-check.js";
 
-const defaultPrimeAgentDownloadBaseUrl = "https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev";
-const originalSkipVersionCheck = process.env.PI_SKIP_VERSION_CHECK;
-const originalOffline = process.env.PI_OFFLINE;
-const originalPrimeAgentDownloadBaseUrl = process.env.PRIME_AGENT_DOWNLOAD_BASE_URL;
+const testDownloadBaseUrl = "https://downloads.example.test/zero";
+const originalSkipVersionCheck = process.env.ZERO_SKIP_VERSION_CHECK;
+const originalOffline = process.env.ZERO_OFFLINE;
+const originalDownloadBaseUrl = process.env.ZERO_DOWNLOAD_BASE_URL;
 
 function restoreEnv(name: string, value: string | undefined): void {
 	if (value === undefined) {
@@ -22,9 +22,9 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
-	restoreEnv("PI_SKIP_VERSION_CHECK", originalSkipVersionCheck);
-	restoreEnv("PI_OFFLINE", originalOffline);
-	restoreEnv("PRIME_AGENT_DOWNLOAD_BASE_URL", originalPrimeAgentDownloadBaseUrl);
+	restoreEnv("ZERO_SKIP_VERSION_CHECK", originalSkipVersionCheck);
+	restoreEnv("ZERO_OFFLINE", originalOffline);
+	restoreEnv("ZERO_DOWNLOAD_BASE_URL", originalDownloadBaseUrl);
 });
 
 describe("version checks", () => {
@@ -37,7 +37,16 @@ describe("version checks", () => {
 		expect(isNewerPackageVersion("0.70.6", "0.70.5")).toBe(true);
 	});
 
-	it("returns only newer versions", async () => {
+	it("skips the version check entirely when no download base URL is configured (Zero's default)", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getLatestPiVersion("1.2.3")).resolves.toBeUndefined();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("returns only newer versions once a download base URL is configured", async () => {
+		process.env.ZERO_DOWNLOAD_BASE_URL = testDownloadBaseUrl;
 		const fetchMock = vi.fn(async () => Response.json({ version: "v1.2.3" }));
 		vi.stubGlobal("fetch", fetchMock);
 
@@ -45,16 +54,17 @@ describe("version checks", () => {
 		await expect(checkForNewPiVersion("1.2.2")).resolves.toBe("1.2.3");
 	});
 
-	it("uses the Prime Agent release manifest with a Prime Agent user agent", async () => {
+	it("uses the configured release manifest with a Zero user agent", async () => {
+		process.env.ZERO_DOWNLOAD_BASE_URL = testDownloadBaseUrl;
 		const fetchMock = vi.fn(async () => Response.json({ version: "v1.2.4" }));
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestPiVersion("1.2.3")).resolves.toBe("1.2.4");
 		expect(fetchMock).toHaveBeenCalledWith(
-			`${defaultPrimeAgentDownloadBaseUrl}/latest.json`,
+			`${testDownloadBaseUrl}/latest.json`,
 			expect.objectContaining({
 				headers: expect.objectContaining({
-					"User-Agent": expect.stringMatching(/^prime-agent\/1\.2\.3 /),
+					"User-Agent": expect.stringMatching(/^zero\/1\.2\.3 /),
 					accept: "application/json",
 				}),
 			}),
@@ -62,32 +72,35 @@ describe("version checks", () => {
 	});
 
 	it("keeps beta installations on the beta release manifest", async () => {
+		process.env.ZERO_DOWNLOAD_BASE_URL = testDownloadBaseUrl;
 		const fetchMock = vi.fn(async () => Response.json({ version: "v1.2.4-beta.124.1.abcdef0" }));
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestPiVersion("1.2.4-beta.123.1.1234567")).resolves.toBe("1.2.4-beta.124.1.abcdef0");
-		expect(fetchMock).toHaveBeenCalledWith(`${defaultPrimeAgentDownloadBaseUrl}/beta.json`, expect.any(Object));
+		expect(fetchMock).toHaveBeenCalledWith(`${testDownloadBaseUrl}/beta.json`, expect.any(Object));
 	});
 
 	it("returns the active package and tarball install spec from the release manifest", async () => {
+		process.env.ZERO_DOWNLOAD_BASE_URL = testDownloadBaseUrl;
 		const fetchMock = vi.fn(async () =>
 			Response.json({
-				package: "prime-agent",
-				tarball: "releases/v1.2.4/prime-agent-1.2.4.tgz",
+				package: "zero",
+				tarball: "releases/v1.2.4/zero-1.2.4.tgz",
 				version: "v1.2.4",
 			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestPiRelease("1.2.3")).resolves.toEqual({
-			installSpec: `${defaultPrimeAgentDownloadBaseUrl}/releases/v1.2.4/prime-agent-1.2.4.tgz`,
-			packageName: "prime-agent",
+			installSpec: `${testDownloadBaseUrl}/releases/v1.2.4/zero-1.2.4.tgz`,
+			packageName: "zero",
 			version: "1.2.4",
 		});
 	});
 
 	it("skips api calls when version checks are disabled", async () => {
-		process.env.PI_SKIP_VERSION_CHECK = "1";
+		process.env.ZERO_DOWNLOAD_BASE_URL = testDownloadBaseUrl;
+		process.env.ZERO_SKIP_VERSION_CHECK = "1";
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 

@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { UserMessage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import type { UserMessage } from "@zero-agent/ai";
 import type { InputSource } from "./extensions/index.js";
 import type { CustomMessage } from "./messages.js";
 import type { SessionSlashCommand } from "./slash-commands.js";

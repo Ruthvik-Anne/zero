@@ -88,9 +88,9 @@ async function runCli(
 			...process.env,
 			TSX_TSCONFIG_PATH: repoTsconfigPath,
 			[ENV_AGENT_DIR]: options.agentDir,
-			PI_SKIP_VERSION_CHECK: "1",
-			PRIME_AGENT_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "0",
-			PRIME_AGENT_KERNEL_FORKSERVER: "0",
+			ZERO_SKIP_VERSION_CHECK: "1",
+			ZERO_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "0",
+			ZERO_KERNEL_FORKSERVER: "0",
 			RLM_DEPTH: "0",
 			// The test deliberately RE-INJECTS the worker role env var
 			// (via options.environment, applied last) to prove the
@@ -107,6 +107,7 @@ async function runCli(
 			...options.environment,
 		},
 		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
 	});
 	children.add(child);
 	let stdout = "";

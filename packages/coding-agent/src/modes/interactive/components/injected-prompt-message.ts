@@ -1,13 +1,5 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import {
-	Container,
-	Markdown,
-	type MarkdownTheme,
-	Spacer,
-	Text,
-	truncateToWidth,
-	visibleWidth,
-} from "@earendil-works/pi-tui";
+import type { AgentMessage } from "@zero-agent/agent-core";
+import { Container, Markdown, type MarkdownTheme, Spacer, Text, truncateToWidth, visibleWidth } from "@zero-agent/tui";
 import { GOAL_CONTEXT_CUSTOM_TYPE, type GoalContextDetails } from "../../../core/goals.js";
 import {
 	type CustomMessage,

@@ -1,11 +1,5 @@
 import { isAbsolute, relative } from "node:path";
-import {
-	type Component,
-	truncateToWidth,
-	VersionedRenderCache,
-	visibleWidth,
-	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+import { type Component, truncateToWidth, VersionedRenderCache, visibleWidth, wrapTextWithAnsi } from "@zero-agent/tui";
 import { formatAgentMessageParticipant } from "../../../core/agent-messages.js";
 import { previewIpythonCode } from "../../../core/tools/code-preview.js";
 import { generateDiffString } from "../../../core/tools/edit-diff.js";

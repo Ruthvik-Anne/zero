@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import { DaemonAgentConnection } from "../../../src/modes/agent-connection/daemon-agent-connection.js";
 import type { AgentConnectionEvent, AgentConnectionState } from "../../../src/modes/agent-connection/types.js";

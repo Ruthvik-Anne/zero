@@ -8,7 +8,7 @@ import {
 	type TextContent,
 	type ThinkingBudgets,
 	type Transport,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.js";
 import type {
 	AfterToolCallContext,
@@ -606,8 +606,19 @@ export class Agent {
 		if (!signal) {
 			throw new Error("Agent listener invoked outside active run");
 		}
+		// (B10) A throwing listener used to propagate out of emit(...), unwind
+		// runLoop, and land in handleRunFailure, which synthesized a fake
+		// stopReason: "error" — a rendering bug in one subscriber (e.g. a TUI
+		// listener) killed the whole turn, and any listener registered later in
+		// this Set (e.g. session persistence) never saw this event or any
+		// subsequent one. One listener's own bug must not take down every other
+		// listener's ability to observe the run.
 		for (const listener of this.listeners) {
-			await listener(event, signal);
+			try {
+				await listener(event, signal);
+			} catch (error) {
+				console.error("Agent event listener threw; continuing without it for this event", error);
+			}
 		}
 	}
 }

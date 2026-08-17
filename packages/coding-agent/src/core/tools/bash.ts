@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import type { AgentTool } from "@zero-agent/agent-core";
+import { Container, Text, truncateToWidth } from "@zero-agent/tui";
 import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
@@ -77,6 +77,7 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 					detached: process.platform !== "win32",
 					env: env ?? getShellEnv(),
 					stdio: ["ignore", "pipe", "pipe"],
+					windowsHide: true,
 				});
 				if (child.pid) trackDetachedChildPid(child.pid);
 				let timedOut = false;

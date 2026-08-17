@@ -1,6 +1,8 @@
-import { getPiUserAgent } from "./pi-user-agent.js";
+import { getZeroUserAgent } from "./zero-user-agent.js";
 
-const DEFAULT_PRIME_AGENT_DOWNLOAD_BASE_URL = "https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev";
+// No default: Zero has no release CDN of its own (unlike upstream's Prime
+// Intellect-hosted bucket) — self-update/version-check is opt-in via
+// ZERO_DOWNLOAD_BASE_URL, never silently querying a third party's release feed.
 const STABLE_VERSION_MANIFEST_PATH = "latest.json";
 const BETA_VERSION_MANIFEST_PATH = "beta.json";
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
@@ -85,11 +87,9 @@ export function isNewerPackageVersion(candidateVersion: string, currentVersion: 
 	return candidateVersion.trim() !== currentVersion.trim();
 }
 
-function getPrimeAgentDownloadBaseUrl(): string {
-	return (process.env.PRIME_AGENT_DOWNLOAD_BASE_URL?.trim() || DEFAULT_PRIME_AGENT_DOWNLOAD_BASE_URL).replace(
-		/\/+$/,
-		"",
-	);
+function getZeroDownloadBaseUrl(): string | undefined {
+	const configured = process.env.ZERO_DOWNLOAD_BASE_URL?.trim();
+	return configured ? configured.replace(/\/+$/, "") : undefined;
 }
 
 function normalizeReleaseVersion(version: string): string {
@@ -115,12 +115,13 @@ export async function getLatestPiRelease(
 	currentVersion: string,
 	options: { timeoutMs?: number } = {},
 ): Promise<LatestPiRelease | undefined> {
-	if (process.env.PI_SKIP_VERSION_CHECK || process.env.PI_OFFLINE) return undefined;
+	if (process.env.ZERO_SKIP_VERSION_CHECK || process.env.ZERO_OFFLINE) return undefined;
 
-	const baseUrl = getPrimeAgentDownloadBaseUrl();
+	const baseUrl = getZeroDownloadBaseUrl();
+	if (!baseUrl) return undefined;
 	const response = await fetch(`${baseUrl}/${getReleaseManifestPath(currentVersion)}`, {
 		headers: {
-			"User-Agent": getPiUserAgent(currentVersion),
+			"User-Agent": getZeroUserAgent(currentVersion),
 			accept: "application/json",
 		},
 		signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_VERSION_CHECK_TIMEOUT_MS),

@@ -5,10 +5,11 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
-import { Agent } from "@earendil-works/pi-agent-core";
-import type { FauxModelDefinition, FauxProviderRegistration, FauxResponseStep, Model } from "@earendil-works/pi-ai";
-import { registerFauxProvider } from "@earendil-works/pi-ai";
+import type { AgentMessage, AgentTool } from "@zero-agent/agent-core";
+import { Agent } from "@zero-agent/agent-core";
+import type { FauxModelDefinition, FauxProviderRegistration, FauxResponseStep, Model } from "@zero-agent/ai";
+import { registerFauxProvider } from "@zero-agent/ai";
+import type { LoopAuditorConfig } from "../../src/core/advisor/loop-auditor.js";
 import type { AgentSessionMessageController } from "../../src/core/agent-messages.js";
 import type { AgentObserveController } from "../../src/core/agent-observe.js";
 import { AgentSession, type AgentSessionEvent, type AutoRefineReviewer } from "../../src/core/agent-session.js";
@@ -79,6 +80,7 @@ export interface HarnessOptions {
 	autoRefineReviewer?: AutoRefineReviewer;
 	serializedRefine?: boolean;
 	initialGoal?: { objective: string; tokenBudget?: number };
+	loopAuditor?: LoopAuditorConfig;
 }
 
 export interface Harness {
@@ -203,6 +205,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		autoRefineReviewer: options.autoRefineReviewer,
 		serializedRefine: options.serializedRefine,
 		initialGoal: options.initialGoal,
+		loopAuditor: options.loopAuditor,
 	});
 
 	const events: AgentSessionEvent[] = [];
@@ -231,8 +234,21 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 			fauxProvider.unregister();
 			if (existsSync(tempDir)) {
 				// Spawned fixture processes may still be flushing their final registry
-				// writes; retry briefly instead of failing the suite on ENOTEMPTY.
-				rmSync(tempDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+				// writes; retry briefly instead of failing the suite on ENOTEMPTY. On
+				// Windows, a just-exited detached subprocess that used tempDir as its
+				// cwd can also leave the directory transiently undeletable (EPERM) for
+				// longer than any reasonable retry budget here — that's a cleanup
+				// leftover, not a test-correctness problem, so it's swallowed rather
+				// than failing whichever test happens to be running when afterEach
+				// fires.
+				try {
+					rmSync(tempDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+				} catch (error) {
+					const code = (error as NodeJS.ErrnoException).code;
+					if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+						throw error;
+					}
+				}
 			}
 		},
 	};

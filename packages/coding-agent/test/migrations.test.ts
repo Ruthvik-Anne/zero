@@ -2,8 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ENV_AGENT_DIR } from "../src/config.js";
-import { migrateLegacySessionDirsToSessionRoot, migrateSessionsFromAgentRoot } from "../src/migrations.js";
+import { CONFIG_DIR_NAME, ENV_AGENT_DIR } from "../src/config.js";
+import {
+	migrateLegacyConfigDir,
+	migrateLegacySessionDirsToSessionRoot,
+	migrateSessionsFromAgentRoot,
+} from "../src/migrations.js";
 
 describe("session migrations", () => {
 	const tempDirs: string[] = [];
@@ -103,5 +107,60 @@ describe("session migrations", () => {
 
 		expect(existsSync(nestedFile)).toBe(true);
 		expect(existsSync(join(sessionsDir, "session-2.jsonl"))).toBe(false);
+	});
+});
+
+describe("legacy config-dir migration (A1)", () => {
+	const tempDirs: string[] = [];
+
+	afterEach(() => {
+		for (const dir of tempDirs.splice(0)) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	function makeBaseDir(): string {
+		const baseDir = mkdtempSync(join(tmpdir(), "zero-legacy-config-dir-"));
+		tempDirs.push(baseDir);
+		return baseDir;
+	}
+
+	it("moves an existing .prime/agent to .zero/agent, preserving contents", () => {
+		const baseDir = makeBaseDir();
+		const legacyDir = join(baseDir, ".prime", "agent");
+		mkdirSync(legacyDir, { recursive: true });
+		writeFileSync(join(legacyDir, "auth.json"), '{"anthropic":{"type":"api_key","key":"secret"}}', {
+			mode: 0o600,
+		});
+
+		migrateLegacyConfigDir(baseDir, "test");
+
+		const currentDir = join(baseDir, CONFIG_DIR_NAME);
+		expect(existsSync(legacyDir)).toBe(false);
+		expect(existsSync(currentDir)).toBe(true);
+		expect(readFileSync(join(currentDir, "auth.json"), "utf8")).toContain("secret");
+	});
+
+	it("does nothing when there is no legacy directory (fresh install)", () => {
+		const baseDir = makeBaseDir();
+
+		expect(() => migrateLegacyConfigDir(baseDir, "test")).not.toThrow();
+		expect(existsSync(join(baseDir, CONFIG_DIR_NAME))).toBe(false);
+	});
+
+	it("never merges or overwrites when both the legacy and current dirs already exist", () => {
+		const baseDir = makeBaseDir();
+		const legacyDir = join(baseDir, ".prime", "agent");
+		const currentDir = join(baseDir, CONFIG_DIR_NAME);
+		mkdirSync(legacyDir, { recursive: true });
+		writeFileSync(join(legacyDir, "marker.txt"), "legacy");
+		mkdirSync(currentDir, { recursive: true });
+		writeFileSync(join(currentDir, "marker.txt"), "current");
+
+		migrateLegacyConfigDir(baseDir, "test");
+
+		expect(existsSync(legacyDir)).toBe(true);
+		expect(readFileSync(join(legacyDir, "marker.txt"), "utf8")).toBe("legacy");
+		expect(readFileSync(join(currentDir, "marker.txt"), "utf8")).toBe("current");
 	});
 });

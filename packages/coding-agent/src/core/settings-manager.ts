@@ -1,4 +1,4 @@
-import type { ServiceTier, Transport } from "@earendil-works/pi-ai";
+import type { ServiceTier, Transport } from "@zero-agent/ai";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
@@ -31,6 +31,18 @@ export interface ProviderRetrySettings {
 	timeoutMs?: number; // SDK/provider request timeout in milliseconds
 	maxRetries?: number; // SDK/provider retry attempts
 	maxRetryDelayMs?: number; // default: 60000 (max server-requested delay before failing)
+}
+
+/**
+ * One ordered fallback candidate for the provider router (module G). Tried, in
+ * order, after the session's active model, only on a rate-limit/overloaded/
+ * server-error failure — never on a bad-request/auth/refusal failure, since
+ * switching providers doesn't fix those. Empty/unset preserves today's
+ * single-provider behavior exactly (no router overhead, no behavior change).
+ */
+export interface ProviderFallbackEntry {
+	provider: string;
+	modelId: string;
 }
 
 export interface RetrySettings {
@@ -139,6 +151,10 @@ export interface Settings {
 	telemetry?: TelemetrySettings;
 	branchSummary?: BranchSummarySettings;
 	retry?: RetrySettings;
+	/** Ordered provider/model fallback chain (module G router). Default: [] (no fallback). */
+	providerFallback?: ProviderFallbackEntry[];
+	/** module E: model the native advisor consults with. Default: unset, reuses the active session model. */
+	advisorModel?: { provider: string; modelId: string };
 	hideThinkingBlock?: boolean;
 	shellPath?: string; // Custom shell path (e.g., for Cygwin users on Windows)
 	quietStartup?: boolean;
@@ -243,39 +259,61 @@ export class FileSettingsStorage implements SettingsStorage {
 					throw error;
 				}
 				lastError = error;
-				const start = Date.now();
-				while (Date.now() - start < delayMs) {
-					// Sleep synchronously to avoid changing callers to async.
-				}
+				// (B8) Same fix as auth-storage.ts's identical busy-spin: a real
+				// OS-level wait instead of pegging a CPU core for the whole retry
+				// window. Still synchronous/blocking by design (this method's
+				// contract) — just no longer wasteful while blocked.
+				Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
 			}
 		}
 
 		throw (lastError as Error) ?? new Error("Failed to acquire settings lock");
 	}
 
+	// (B9) Was: lock only acquired if the file already existed at entry, and
+	// even then only right before the write — so on a fresh install (no
+	// settings.json yet), the read-modify computation for EVERY writer ran
+	// with no lock held at all. Two processes racing there both compute `next`
+	// from `current === undefined`, then whichever's lazy write-time lock
+	// acquisition loses last-writer-wins over the other's already-written
+	// content.
+	//
+	// Fixed with an optimistic-read / verify-under-lock pattern rather than
+	// locking (and creating the directory) unconditionally up front — a pure
+	// read call (fn always returns undefined) must NOT create the settings
+	// directory as a side effect (existing, intentional behavior, guarded by
+	// its own tests). Only once we know we're about to write do we take the
+	// lock and re-read; if another process wrote in between, recompute `next`
+	// from the fresh state instead of blindly overwriting it.
 	withLock(scope: SettingsScope, fn: (current: string | undefined) => string | undefined): void {
 		const path = scope === "global" ? this.globalSettingsPath : this.projectSettingsPath;
 		const dir = dirname(path);
 
+		const fileExistedAtEntry = existsSync(path);
 		let release: (() => void) | undefined;
 		try {
-			// Only create directory and lock if file exists or we need to write
-			const fileExists = existsSync(path);
-			if (fileExists) {
+			if (fileExistedAtEntry) {
 				release = this.acquireLockSyncWithRetry(path);
 			}
-			const current = fileExists ? readFileSync(path, "utf-8") : undefined;
-			const next = fn(current);
-			if (next !== undefined) {
-				// Only create directory when we actually need to write
-				if (!existsSync(dir)) {
-					mkdirSync(dir, { recursive: true });
-				}
-				if (!release) {
-					release = this.acquireLockSyncWithRetry(path);
-				}
-				writeFileSync(path, next, "utf-8");
+			const current = fileExistedAtEntry ? readFileSync(path, "utf-8") : undefined;
+			let next = fn(current);
+			if (next === undefined) {
+				return;
 			}
+			if (!existsSync(dir)) {
+				mkdirSync(dir, { recursive: true });
+			}
+			if (!release) {
+				release = this.acquireLockSyncWithRetry(path);
+				const freshCurrent = existsSync(path) ? readFileSync(path, "utf-8") : undefined;
+				if (freshCurrent !== current) {
+					next = fn(freshCurrent);
+					if (next === undefined) {
+						return;
+					}
+				}
+			}
+			writeFileSync(path, next, "utf-8");
 		} finally {
 			if (release) {
 				release();
@@ -830,10 +868,22 @@ export class SettingsManager {
 	}
 
 	getTelemetryEnabled(): boolean {
-		const globalEnabled = this.globalSettings.telemetry?.enabled ?? true;
-		const projectEnabled = this.projectSettings.telemetry?.enabled ?? true;
-		const runtimeEnabled = this.runtimeOverrides.telemetry?.enabled ?? true;
-		return globalEnabled && projectEnabled && runtimeEnabled;
+		// Opt-in, not opt-out: Zero has no telemetry backend of its own, and a fork
+		// must never default to sending events anywhere without explicit consent —
+		// so with NOTHING configured at any layer, this returns false.
+		//
+		// Once at least one layer opts in, the original "most restrictive wins"
+		// policy still applies (an explicit disable at any layer — global, project,
+		// or runtime — cannot be overridden by a less specific one): each layer
+		// that hasn't set a value is treated as permissive (true) for the AND below,
+		// so a single explicit enable is sufficient, but any explicit disable wins.
+		const global = this.globalSettings.telemetry?.enabled;
+		const project = this.projectSettings.telemetry?.enabled;
+		const runtime = this.runtimeOverrides.telemetry?.enabled;
+		if (global === undefined && project === undefined && runtime === undefined) {
+			return false;
+		}
+		return (global ?? true) && (project ?? true) && (runtime ?? true);
 	}
 
 	private getOrCreateGlobalTelemetrySettings(): TelemetrySettings {
@@ -935,6 +985,14 @@ export class SettingsManager {
 			maxRetries: this.settings.retry?.provider?.maxRetries,
 			maxRetryDelayMs: this.settings.retry?.provider?.maxRetryDelayMs ?? 60000,
 		};
+	}
+
+	getProviderFallback(): ProviderFallbackEntry[] {
+		return this.settings.providerFallback ?? [];
+	}
+
+	getAdvisorModel(): { provider: string; modelId: string } | undefined {
+		return this.settings.advisorModel;
 	}
 
 	getHideThinkingBlock(): boolean {
@@ -1124,7 +1182,7 @@ export class SettingsManager {
 		if (this.settings.terminal?.clearOnShrink !== undefined) {
 			return this.settings.terminal.clearOnShrink;
 		}
-		return process.env.PI_CLEAR_ON_SHRINK === "1";
+		return process.env.ZERO_CLEAR_ON_SHRINK === "1";
 	}
 
 	setClearOnShrink(enabled: boolean): void {
@@ -1138,8 +1196,8 @@ export class SettingsManager {
 
 	getFullscreen(): boolean {
 		// Env var overrides the setting (both directions) for one-off runs
-		if (process.env.PI_FULLSCREEN !== undefined) {
-			return process.env.PI_FULLSCREEN === "1";
+		if (process.env.ZERO_FULLSCREEN !== undefined) {
+			return process.env.ZERO_FULLSCREEN === "1";
 		}
 		return this.settings.terminal?.fullscreen ?? true;
 	}
@@ -1232,7 +1290,7 @@ export class SettingsManager {
 	}
 
 	getShowHardwareCursor(): boolean {
-		return this.settings.showHardwareCursor ?? process.env.PI_HARDWARE_CURSOR === "1";
+		return this.settings.showHardwareCursor ?? process.env.ZERO_HARDWARE_CURSOR === "1";
 	}
 
 	setShowHardwareCursor(enabled: boolean): void {

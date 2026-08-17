@@ -24,7 +24,7 @@
 
 - After code changes (not documentation changes): `npm run check` (get full output, no tail). Fix all errors, warnings, and infos before committing.
 - Note: `npm run check` does not run tests.
-- NEVER run: `npm run dev`, `npm run build`, `npm test`
+- NEVER run: `npm run dev`, `npm run build`, `npm test`. Exception: if a workspace package's `dist/` is missing entirely (e.g. a fresh clone, before any build has ever run), a one-time `npm run build` at the repo root is required and expected — CI does this before every test run too. This is not the "routine rebuild during iterative dev" this rule exists to prevent; do it once, then go back to never running it.
 - Only run specific tests if user instructs: `npx tsx ../../node_modules/vitest/dist/cli.js --run test/specific.test.ts`
 - Run tests from the package root, not the repo root.
 - If you create or modify a test file, you MUST run that test file and iterate until it passes.
@@ -75,29 +75,29 @@ When closing issues via commit:
 - If the user approves: create a feature branch, pull PR, rebase on main, apply adjustments, commit, merge into main, push, close PR, and leave a comment in the user's tone
 - We work in feature branches until everything is according to the user's requirements. Never merge PRs by yourself.
 
-## Testing Prime Agent Interactive Mode with tmux
+## Testing Zero Interactive Mode with tmux
 
-To test Prime Agent's TUI in a controlled terminal environment:
+To test Zero's TUI in a controlled terminal environment:
 
 ```bash
 # Create tmux session with specific dimensions
-tmux new-session -d -s prime-agent-test -x 80 -y 24
+tmux new-session -d -s zero-test -x 80 -y 24
 
-# Start Prime Agent from source
-tmux send-keys -t prime-agent-test "cd /Users/kevin/pi/prime-agent && ./prime-agent.sh" Enter
+# Start Zero from source
+tmux send-keys -t zero-test "cd /path/to/zero && ./zero.sh" Enter
 
 # Wait for startup, then capture output
-sleep 3 && tmux capture-pane -t prime-agent-test -p
+sleep 3 && tmux capture-pane -t zero-test -p
 
 # Send input
-tmux send-keys -t prime-agent-test "your prompt here" Enter
+tmux send-keys -t zero-test "your prompt here" Enter
 
 # Send special keys
-tmux send-keys -t prime-agent-test Escape
-tmux send-keys -t prime-agent-test C-o  # ctrl+o
+tmux send-keys -t zero-test Escape
+tmux send-keys -t zero-test C-o  # ctrl+o
 
 # Cleanup
-tmux kill-session -t prime-agent-test
+tmux kill-session -t zero-test
 ```
 
 You, yourself, are often running into a tmux session, so be careful when killing tmux sessions. Lots of other processes can be running on different tmux sessions/

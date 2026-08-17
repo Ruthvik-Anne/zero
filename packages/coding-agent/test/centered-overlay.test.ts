@@ -1,4 +1,4 @@
-import { type Component, type Focusable, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, type Focusable, type TUI, visibleWidth } from "@zero-agent/tui";
 import { describe, expect, it } from "vitest";
 import { CenteredOverlayComponent, showFullPaneOverlay } from "../src/modes/interactive/components/centered-overlay.js";
 

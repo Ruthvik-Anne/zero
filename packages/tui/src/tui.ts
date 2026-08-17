@@ -303,6 +303,9 @@ export class Container implements Component {
 export class TUI extends Container {
 	public terminal: Terminal;
 	private previousLines: string[] = [];
+	// Raw (pre-reset) values of previousLines, index-aligned, used to skip
+	// re-running applyLineResets on lines that haven't changed since last frame.
+	private previousRawLines: string[] = [];
 	private previousKittyImageIds = new Set<number>();
 	private previousWidth = 0;
 	private previousHeight = 0;
@@ -319,8 +322,8 @@ export class TUI extends Container {
 	private static readonly MIN_RENDER_INTERVAL_MS = 16;
 	private cursorRow = 0; // Logical cursor row (end of rendered content)
 	private hardwareCursorRow = 0; // Actual terminal cursor row (may differ due to IME positioning)
-	private showHardwareCursor = process.env.PI_HARDWARE_CURSOR === "1";
-	private clearOnShrink = process.env.PI_CLEAR_ON_SHRINK === "1"; // Clear empty rows when content shrinks (default: off)
+	private showHardwareCursor = process.env.ZERO_HARDWARE_CURSOR === "1";
+	private clearOnShrink = process.env.ZERO_CLEAR_ON_SHRINK === "1"; // Clear empty rows when content shrinks (default: off)
 	private maxLinesRendered = 0; // Track terminal's working area (max lines ever rendered)
 	private previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
 	private fullRedrawCount = 0;
@@ -1283,15 +1286,33 @@ export class TUI extends Container {
 
 	private static readonly SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07";
 
-	private applyLineResets(lines: string[]): string[] {
+	/**
+	 * Appends the reset sequence to every non-image line, mutating `lines` in
+	 * place. This runs on the entire flattened frame every render tick (e.g. on
+	 * every spinner frame), so for lines whose raw value is unchanged from the
+	 * previous frame, the previously computed reset-applied line is reused
+	 * instead of re-running normalizeTerminalOutput + string concatenation.
+	 * Returns the pre-reset ("raw") values so the caller can remember them for
+	 * the next frame's comparison.
+	 */
+	private applyLineResets(
+		lines: string[],
+		previousRawLines: string[] = [],
+		previousResetLines: string[] = [],
+	): string[] {
 		const reset = TUI.SEGMENT_RESET;
+		const rawLines = new Array<string>(lines.length);
 		for (let i = 0; i < lines.length; i++) {
 			const line = lines[i];
-			if (!isImageLine(line)) {
+			rawLines[i] = line;
+			if (isImageLine(line)) continue;
+			if (line === previousRawLines[i] && previousResetLines[i] !== undefined) {
+				lines[i] = previousResetLines[i];
+			} else {
 				lines[i] = normalizeTerminalOutput(line) + reset;
 			}
 		}
-		return lines;
+		return rawLines;
 	}
 
 	private collectKittyImageIds(lines: string[]): Set<number> {
@@ -1509,7 +1530,7 @@ export class TUI extends Container {
 		// Extract cursor position before applying line resets (marker must be found first)
 		const cursorPos = this.extractCursorPosition(newLines, height);
 
-		newLines = this.applyLineResets(newLines);
+		const newRawLines = this.applyLineResets(newLines, this.previousRawLines, this.previousLines);
 
 		// Helper to clear the viewport and repaint the current screen. Do not
 		// clear terminal scrollback: users rely on it to read long prior messages.
@@ -1572,6 +1593,7 @@ export class TUI extends Container {
 				this.previousViewportTop = windowStart;
 				this.positionHardwareCursor(cursorPos, newLines.length);
 				this.previousLines = newLines;
+				this.previousRawLines = newRawLines;
 				this.previousKittyImageIds = this.collectKittyImageIds(newLines);
 				this.previousWidth = width;
 				this.previousHeight = height;
@@ -1603,12 +1625,13 @@ export class TUI extends Container {
 			this.previousViewportTop = Math.max(0, bufferLength - height);
 			this.positionHardwareCursor(cursorPos, newLines.length);
 			this.previousLines = newLines;
+			this.previousRawLines = newRawLines;
 			this.previousKittyImageIds = this.collectKittyImageIds(newLines);
 			this.previousWidth = width;
 			this.previousHeight = height;
 		};
 
-		const debugRedraw = process.env.PI_DEBUG_REDRAW === "1";
+		const debugRedraw = process.env.ZERO_DEBUG_REDRAW === "1";
 		const logRedraw = (reason: string): void => {
 			if (!debugRedraw) return;
 			const logPath = path.join(os.homedir(), ".prime", "agent", "pi-debug.log");
@@ -1641,7 +1664,7 @@ export class TUI extends Container {
 
 		// Content shrunk below the working area and no overlays - re-render to clear empty rows
 		// (overlays need the padding, so only do this when no overlays are active)
-		// Configurable via setClearOnShrink() or PI_CLEAR_ON_SHRINK=0 env var
+		// Configurable via setClearOnShrink() or ZERO_CLEAR_ON_SHRINK=0 env var
 		if (this.clearOnShrink && newLines.length < this.maxLinesRendered && this.overlayStack.length === 0) {
 			logRedraw(`clearOnShrink (maxLinesRendered=${this.maxLinesRendered})`);
 			fullRender(true, preserveViewport);
@@ -1723,6 +1746,7 @@ export class TUI extends Container {
 			}
 			this.positionHardwareCursor(cursorPos, newLines.length);
 			this.previousLines = newLines;
+			this.previousRawLines = newRawLines;
 			this.previousKittyImageIds = this.collectKittyImageIds(newLines);
 			this.previousWidth = width;
 			this.previousHeight = height;
@@ -1843,7 +1867,7 @@ export class TUI extends Container {
 
 		buffer += "\x1b[?2026l"; // End synchronized output
 
-		if (process.env.PI_TUI_DEBUG === "1") {
+		if (process.env.ZERO_TUI_DEBUG === "1") {
 			const debugDir = "/tmp/tui";
 			fs.mkdirSync(debugDir, { recursive: true });
 			const debugPath = path.join(debugDir, `render-${Date.now()}-${Math.random().toString(36).slice(2)}.log`);
@@ -1888,6 +1912,7 @@ export class TUI extends Container {
 		this.positionHardwareCursor(cursorPos, newLines.length);
 
 		this.previousLines = newLines;
+		this.previousRawLines = newRawLines;
 		this.previousKittyImageIds = this.collectKittyImageIds(newLines);
 		this.previousWidth = width;
 		this.previousHeight = height;

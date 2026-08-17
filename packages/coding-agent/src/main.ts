@@ -7,11 +7,11 @@
 
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { type Api, type ImageContent, type Model, modelsAreEqual } from "@earendil-works/pi-ai";
-import { registerBuiltinMcpOAuthProviders } from "@earendil-works/pi-ai/mcp";
-import { ProcessTerminal, setKeybindings, TUI } from "@earendil-works/pi-tui";
+import { type Api, type ImageContent, type Model, modelsAreEqual } from "@zero-agent/ai";
+import { registerBuiltinMcpOAuthProviders } from "@zero-agent/ai/mcp";
+import { ProcessTerminal, setKeybindings, TUI } from "@zero-agent/tui";
 import chalk from "chalk";
-import { type Args, type Mode, parseArgs } from "./cli/args.js";
+import { type Args, parseArgs } from "./cli/args.js";
 import { formatTopLevelHelp } from "./cli/command-registry.js";
 import {
 	ensureInteractiveDaemonRunning,
@@ -100,6 +100,7 @@ import {
 	runAgentsViewMode,
 	runDaemonMode,
 	runDaemonSupervisorMode,
+	runMcpServerMode,
 	runPrintMode,
 	runPrintModeWithConnection,
 	runRpcMode,
@@ -189,7 +190,7 @@ function resolveAppMode(parsed: Args, stdinIsTTY: boolean): AppMode {
 	return "interactive";
 }
 
-function toPrintOutputMode(appMode: AppMode): Exclude<Mode, "rpc" | "acp" | "daemon"> {
+function toPrintOutputMode(appMode: AppMode): "text" | "json" {
 	return appMode === "json" ? "json" : "text";
 }
 
@@ -726,9 +727,7 @@ async function prepareRuntimeServices(options: {
 }): Promise<PreparedRuntimeServices> {
 	const { config, sessionManager } = options;
 	const effectiveAgentDir = config.agentDir ?? options.agentDir;
-	const authStorage = AuthStorage.create(join(effectiveAgentDir, "auth.json"), {
-		usePrimeCliConfig: effectiveAgentDir === options.agentDir,
-	});
+	const authStorage = AuthStorage.create(join(effectiveAgentDir, "auth.json"));
 	const services = await createAgentSessionServices({
 		cwd: options.cwd,
 		agentDir: effectiveAgentDir,
@@ -1042,10 +1041,10 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 	// Client and daemon are separate processes; both need these in their registry.
 	registerBuiltinMcpOAuthProviders();
-	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.PI_OFFLINE);
+	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.ZERO_OFFLINE);
 	if (offlineMode) {
-		process.env.PI_OFFLINE = "1";
-		process.env.PI_SKIP_VERSION_CHECK = "1";
+		process.env.ZERO_OFFLINE = "1";
+		process.env.ZERO_SKIP_VERSION_CHECK = "1";
 	}
 
 	const publicCommand = await handlePublicCommand(args);
@@ -1135,11 +1134,28 @@ export async function main(args: string[], options?: MainOptions) {
 	time("runMigrations");
 
 	const agentDir = getAgentDir();
+
+	// MCP server mode manages many independent task sessions, not one current
+	// session — it bypasses the single-session bootstrap entirely (same as
+	// daemon mode bypassing it below), rather than being threaded through
+	// AppMode/executionMode which every other branch assumes is one session.
+	if (parsed.mode === "mcp-server") {
+		// Keep the stdout->stderr takeover every other non-interactive mode
+		// uses (stray console.log from resourceLoader/extension/kernel startup
+		// must not land mid-JSON-RPC-frame) — runMcpServerMode routes the
+		// transport's actual protocol bytes through writeRawStdout, same as
+		// print-mode's JSON event stream.
+		takeOverStdout();
+		const exitCode = await runMcpServerMode({ cwd, agentDir });
+		if (exitCode !== 0) process.exitCode = exitCode;
+		return;
+	}
+
 	const startupSettingsManager = SettingsManager.create(cwd, agentDir);
 	reportDiagnostics(collectSettingsDiagnostics(startupSettingsManager, "startup session lookup"));
-	const startupBenchmark = isTruthyEnvFlag(process.env.PI_STARTUP_BENCHMARK);
+	const startupBenchmark = isTruthyEnvFlag(process.env.ZERO_STARTUP_BENCHMARK);
 	if (startupBenchmark && appMode !== "interactive") {
-		console.error(chalk.red("Error: PI_STARTUP_BENCHMARK only supports interactive mode"));
+		console.error(chalk.red("Error: ZERO_STARTUP_BENCHMARK only supports interactive mode"));
 		process.exit(1);
 	}
 	// Programmatic factories are process-local functions and cannot be serialized to a daemon worker.

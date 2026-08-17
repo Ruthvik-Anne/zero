@@ -37,7 +37,7 @@ export {
 	truncateTail,
 } from "./truncate.js";
 
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@zero-agent/agent-core";
 import type { ToolDefinition } from "../extensions/types.js";
 import { createIpythonTool, createIpythonToolDefinition, type IpythonToolOptions } from "./ipython.js";
 

@@ -415,6 +415,29 @@ describe("TUI differential rendering", () => {
 		tui.stop();
 	});
 
+	it("keeps the reset suffix on an unchanged line across a later render (spinner case)", async () => {
+		// Only the second line changes between renders. The first line's
+		// reset-applied output is reused from the previous frame instead of
+		// being recomputed, so this asserts the reused value still carries the
+		// reset suffix rather than leaking the italic style into "Plain".
+		const terminal = new VirtualTerminal(20, 6);
+		const tui = new TUI(terminal);
+		const component = new TestComponent();
+		tui.addChild(component);
+
+		component.lines = ["\x1b[3mItalic", "Plain"];
+		tui.start();
+		await terminal.waitForRender();
+		assert.strictEqual(getCellItalic(terminal, 1, 0), 0);
+
+		component.lines = ["\x1b[3mItalic", "Plain, updated"];
+		tui.requestRender();
+		await terminal.waitForRender();
+
+		assert.strictEqual(getCellItalic(terminal, 1, 0), 0);
+		tui.stop();
+	});
+
 	it("expands tabs before writing rendered lines to the terminal", async () => {
 		const terminal = new LoggingVirtualTerminal(40, 6);
 		const tui = new TUI(terminal);

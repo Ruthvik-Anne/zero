@@ -1,6 +1,6 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import type { TUI } from "@earendil-works/pi-tui";
+import type { AgentTool } from "@zero-agent/agent-core";
+import { fauxAssistantMessage, fauxToolCall } from "@zero-agent/ai";
+import type { TUI } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";

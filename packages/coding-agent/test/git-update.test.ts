@@ -20,6 +20,7 @@ function git(args: string[], cwd: string): string {
 	const result = spawnSync("git", args, {
 		cwd,
 		encoding: "utf-8",
+		windowsHide: true,
 	});
 	if (result.status !== 0) {
 		throw new Error(`Command failed: git ${args.join(" ")}\n${result.stderr}`);
@@ -133,6 +134,7 @@ describe("DefaultPackageManager git update", () => {
 				const result = spawnSync(command, args, {
 					cwd: options?.cwd,
 					encoding: "utf-8",
+					windowsHide: true,
 				});
 				if (result.status !== 0) {
 					throw new Error(`Command failed: ${command} ${args.join(" ")}\n${result.stderr}`);
@@ -197,6 +199,7 @@ describe("DefaultPackageManager git update", () => {
 				const result = spawnSync(command, args, {
 					cwd: options?.cwd,
 					encoding: "utf-8",
+					windowsHide: true,
 				});
 				if (result.status !== 0) {
 					throw new Error(`Command failed: ${command} ${args.join(" ")}\n${result.stderr}`);
@@ -396,7 +399,7 @@ describe("DefaultPackageManager git update", () => {
 			createCommit(remoteDir, "extension.ts", "// v2", "Second commit");
 
 			// The project-scope install path should not exist before or after update
-			const projectGitDir = join(tempDir, ".prime", "agent", "git", "github.com", "test", "extension");
+			const projectGitDir = join(tempDir, ".zero", "agent", "git", "github.com", "test", "extension");
 			expect(existsSync(projectGitDir)).toBe(false);
 
 			await packageManager.update(gitSource);

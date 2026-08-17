@@ -7,7 +7,7 @@
  *   npx tsx test/assistant-message-streaming-bench.ts
  */
 import { performance } from "node:perf_hooks";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@zero-agent/ai";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
 

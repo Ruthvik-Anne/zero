@@ -1,4 +1,4 @@
-import { type Component, type Focusable, getKeybindings, Spacer, TruncatedText } from "@earendil-works/pi-tui";
+import { type Component, type Focusable, getKeybindings, Spacer, TruncatedText } from "@zero-agent/tui";
 import type { AgentHeartbeatManagementAction } from "../../../core/cron-jobs.js";
 import type { AgentConnectionHeartbeat } from "../../agent-connection/types.js";
 import { theme } from "../theme/theme.js";

@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-ai",
+	"name": "@zero-agent/ai",
 	"version": "0.7.1",
 	"description": "Unified LLM API with automatic model discovery and provider configuration",
 	"type": "module",
@@ -53,10 +53,14 @@
 		"./bedrock-provider": {
 			"types": "./dist/bedrock-provider.d.ts",
 			"import": "./dist/bedrock-provider.js"
+		},
+		"./router": {
+			"types": "./dist/router/index.d.ts",
+			"import": "./dist/router/index.js"
 		}
 	},
 	"bin": {
-		"pi-ai": "./dist/cli.js"
+		"zero-ai": "./dist/cli.js"
 	},
 	"files": [
 		"dist",
@@ -65,10 +69,14 @@
 	"scripts": {
 		"clean": "shx rm -rf dist",
 		"generate-models": "npx tsx scripts/generate-models.ts",
-		"build": "npm run generate-models && tsgo -p tsconfig.build.json",
+		"generate-model-classification": "npx tsx scripts/generate-model-classification.ts",
+		"build": "node scripts/ensure-models-generated.mjs && tsgo -p tsconfig.build.json",
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
 		"dev:tsc": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
 		"test": "vitest --run",
+		"test:unit": "vitest --run --exclude \"test/**/*.live.test.ts\"",
+		"test:live": "vitest --run --testTimeout=30000 live.test.ts",
+		"test:watch": "vitest --exclude \"test/**/*.live.test.ts\"",
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {

@@ -1,4 +1,4 @@
-import type { AutocompleteItem } from "@earendil-works/pi-tui";
+import type { AutocompleteItem } from "@zero-agent/tui";
 import { describe, expect, it } from "vitest";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";
 

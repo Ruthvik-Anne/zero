@@ -23,7 +23,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { type Api, getLogger, type Model } from "@earendil-works/pi-ai";
+import { type Api, getLogger, type Model } from "@zero-agent/ai";
 import { createCliSubprocessEnv, createCliSubprocessLaunchSpec } from "../../cli/subprocess-launch.js";
 import {
 	appendRotatingLog,
@@ -820,6 +820,7 @@ export class AgentDaemon {
 				detached: true,
 				env: environment,
 				stdio: "ignore",
+				windowsHide: true,
 			});
 			child.unref();
 			const deadline = Date.now() + 10_000;
@@ -2361,6 +2362,7 @@ export class AgentDaemon {
 					rlmSessionDir: options.sessionDir,
 					rlmParentNodeId: options.rlmParentNodeId,
 					rlmParentAgent: options.parentSession.sessionName ?? options.parentSession.sessionId,
+					mode: options.mode,
 				},
 				runtimeMetadata: {
 					kind: "subagent",
@@ -2757,6 +2759,13 @@ export class AgentDaemon {
 								: 1),
 						rlmMaxDepth: entry.rlmMaxDepth,
 						rlmParentNodeId: entry.rlmParentNodeId ?? entry.childId,
+						// (finding #3) A completed child rehydrated for further work must not
+						// silently default to auto mode when the reactivating parent is
+						// currently in plan mode — this only sets the child's *initial* mode
+						// (AgentSession's constructor only applies it while no session_mode_state
+						// entry has been persisted for this session yet), so an already-persisted
+						// mode on the child's own branch still wins.
+						mode: parentState.runtime.session.getSessionMode(),
 					},
 					runtimeMetadata: {
 						kind: "subagent",

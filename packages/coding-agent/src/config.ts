@@ -34,7 +34,7 @@ export const isBunBinary =
 /** Detect if Bun is the runtime (compiled binary or bun run) */
 export const isBunRuntime = !!process.versions.bun;
 
-export const SELF_UPDATE_INTERACTIVE_CHILD_ENV = "PRIME_AGENT_INTERACTIVE_SELF_UPDATE";
+export const SELF_UPDATE_INTERACTIVE_CHILD_ENV = "ZERO_INTERACTIVE_SELF_UPDATE";
 export const SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE = 75;
 
 // =============================================================================
@@ -210,6 +210,7 @@ function readCommandOutput(
 		encoding: "utf-8",
 		stdio: ["ignore", "pipe", "pipe"],
 		shell: shouldUseWindowsShell(command),
+		windowsHide: true,
 	});
 	if (result.status === 0) return result.stdout.trim() || undefined;
 	if (options.requireSuccess) {
@@ -327,7 +328,8 @@ export function getSelfUpdateUnavailableInstruction(
 ): string {
 	const method = detectInstallMethod();
 	if (method === "bun-binary") {
-		return `Download from: https://github.com/PrimeIntellect-ai/prime-agent/releases/latest`;
+		// TODO: repoint once the Zero fork's own repo/release page exists.
+		return `Download from your Zero release source's latest release.`;
 	}
 	if (method === "homebrew") {
 		return `Update with: brew upgrade ${APP_NAME}`;
@@ -363,7 +365,7 @@ export function getUpdateInstruction(packageName: string): string {
  */
 export function getPackageDir(): string {
 	// Allow override via environment variable (useful for Nix/Guix where store paths tokenize poorly)
-	const envDir = process.env.PI_PACKAGE_DIR;
+	const envDir = process.env.ZERO_PACKAGE_DIR;
 	if (envDir) {
 		if (envDir === "~") return homedir();
 		if (envDir.startsWith("~/")) return homedir() + envDir.slice(1);
@@ -497,17 +499,17 @@ const pkg = JSON.parse(readFileSync(getPackageJsonPath(), "utf-8")) as PackageJs
 
 const piConfigName: string | undefined = pkg.piConfig?.name;
 const envPrefix =
-	(piConfigName || "pi")
+	(piConfigName || "zero")
 		.toUpperCase()
 		.replace(/[^A-Z0-9]+/g, "_")
-		.replace(/^_+|_+$/g, "") || "PI";
-export const PACKAGE_NAME: string = pkg.name || "@earendil-works/pi-coding-agent";
-export const APP_NAME: string = piConfigName || "pi";
-export const APP_TITLE: string = piConfigName ? APP_NAME : "π";
-export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".prime/agent";
+		.replace(/^_+|_+$/g, "") || "ZERO";
+export const PACKAGE_NAME: string = pkg.name || "@zero-agent/coding-agent";
+export const APP_NAME: string = piConfigName || "zero";
+export const APP_TITLE: string = APP_NAME;
+export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".zero/agent";
 export const VERSION: string = pkg.version || "0.0.0";
 
-// e.g., PI_CODING_AGENT_DIR or PRIME_AGENT_CODING_AGENT_DIR
+// e.g., ZERO_CODING_AGENT_DIR
 export const ENV_AGENT_DIR = `${envPrefix}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${envPrefix}_SESSION_DIR`;
 export const ENV_LEGACY_SESSION_DIR = `${envPrefix}_CODING_AGENT_SESSION_DIR`;
@@ -518,19 +520,21 @@ export function expandTildePath(path: string): string {
 	return path;
 }
 
-const DEFAULT_SHARE_VIEWER_URL = "https://pi.dev/session/";
+// No default: Zero has no hosted session-share viewer of its own (unlike upstream's
+// pi.dev), so this is opt-in only via ZERO_SHARE_VIEWER_URL — never silently point a
+// Zero fork at a third party's infra.
 
-/** Get the share viewer URL for a gist ID */
-export function getShareViewerUrl(gistId: string): string {
-	const baseUrl = process.env.PI_SHARE_VIEWER_URL || DEFAULT_SHARE_VIEWER_URL;
-	return `${baseUrl}#${gistId}`;
+/** Get the share viewer URL for a gist ID, or undefined when no viewer is configured. */
+export function getShareViewerUrl(gistId: string): string | undefined {
+	const baseUrl = process.env.ZERO_SHARE_VIEWER_URL;
+	return baseUrl ? `${baseUrl}#${gistId}` : undefined;
 }
 
 // =============================================================================
-// User Config Paths (~/.prime/agent/*)
+// User Config Paths (~/.zero/agent/*)
 // =============================================================================
 
-/** Get the agent config directory (e.g., ~/.prime/agent/) */
+/** Get the agent config directory (e.g., ~/.zero/agent/) */
 export function getAgentDir(): string {
 	const envDir = process.env[ENV_AGENT_DIR];
 	if (envDir) {
@@ -544,7 +548,7 @@ export function getCustomThemesDir(): string {
 	return join(getAgentDir(), "themes");
 }
 
-/** Directory where daemon and client diagnostic logs are written (e.g. ~/.prime/agent/logs/). */
+/** Directory where daemon and client diagnostic logs are written (e.g. ~/.zero/agent/logs/). */
 export function getLogsDir(): string {
 	return join(getAgentDir(), "logs");
 }

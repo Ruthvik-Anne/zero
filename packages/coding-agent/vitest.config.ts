@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 const aiSrcIndex = fileURLToPath(new URL("../ai/src/index.ts", import.meta.url));
 const aiSrcOAuth = fileURLToPath(new URL("../ai/src/oauth.ts", import.meta.url));
 const aiSrcMcp = fileURLToPath(new URL("../ai/src/mcp.ts", import.meta.url));
+const aiSrcRouter = fileURLToPath(new URL("../ai/src/router/index.ts", import.meta.url));
 const agentSrcIndex = fileURLToPath(new URL("../agent/src/index.ts", import.meta.url));
 const tuiSrcIndex = fileURLToPath(new URL("../tui/src/index.ts", import.meta.url));
 
@@ -34,9 +35,16 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: [
+			{ find: /^@zero-agent\/ai$/, replacement: aiSrcIndex },
+			{ find: /^@zero-agent\/ai\/oauth$/, replacement: aiSrcOAuth },
+			{ find: /^@zero-agent\/ai\/mcp$/, replacement: aiSrcMcp },
+			{ find: /^@zero-agent\/ai\/router$/, replacement: aiSrcRouter },
+			{ find: /^@zero-agent\/agent-core$/, replacement: agentSrcIndex },
+			{ find: /^@zero-agent\/tui$/, replacement: tuiSrcIndex },
 			{ find: /^@earendil-works\/pi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@earendil-works\/pi-ai\/oauth$/, replacement: aiSrcOAuth },
 			{ find: /^@earendil-works\/pi-ai\/mcp$/, replacement: aiSrcMcp },
+			{ find: /^@earendil-works\/pi-ai\/router$/, replacement: aiSrcRouter },
 			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@earendil-works\/pi-tui$/, replacement: tuiSrcIndex },
 			{ find: /^@mariozechner\/pi-ai$/, replacement: aiSrcIndex },

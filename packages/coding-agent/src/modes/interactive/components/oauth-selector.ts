@@ -6,9 +6,8 @@ import {
 	getKeybindings,
 	Spacer,
 	TruncatedText,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import type { AuthStatus, AuthStorage } from "../../../core/auth-storage.js";
-import { PRIME_INFERENCE_PROVIDER_ID } from "../../../core/prime-inference-auth.js";
 import { theme } from "../theme/theme.js";
 import {
 	getMenuListLayout,
@@ -203,10 +202,6 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 			const rankDelta = this.getProviderSortRank(a) - this.getProviderSortRank(b);
 			if (rankDelta !== 0) {
 				return rankDelta;
-			}
-			if (this.mode === "login" && a.id !== b.id) {
-				if (a.id === PRIME_INFERENCE_PROVIDER_ID) return -1;
-				if (b.id === PRIME_INFERENCE_PROVIDER_ID) return 1;
 			}
 			return compareAuthSelectorProviders(a, b);
 		});

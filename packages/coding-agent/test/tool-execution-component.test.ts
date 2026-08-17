@@ -1,4 +1,4 @@
-import { Container, resetCapabilitiesCache, setCapabilities, Text, TUI } from "@earendil-works/pi-tui";
+import { Container, resetCapabilitiesCache, setCapabilities, Text, TUI } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, test } from "vitest";

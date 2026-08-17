@@ -1,4 +1,4 @@
-import { setKeybindings, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { setKeybindings, type TUI, visibleWidth } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.js";
@@ -216,7 +216,7 @@ describe("ConfigurationMenuComponent", () => {
 	it("keeps the active marker visible across supported themes", async () => {
 		const menu = await createMenu();
 
-		for (const themeName of ["dark", "light", "prime"] as const) {
+		for (const themeName of ["dark", "light", "zero"] as const) {
 			initTheme(themeName);
 			const rendered = menu.render(120).join("\n");
 			expect(stripAnsi(rendered)).toContain("[▶ Providers]");

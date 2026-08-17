@@ -1,5 +1,5 @@
-import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
+import { Agent, type AgentMessage } from "@zero-agent/agent-core";
+import type { AssistantMessage, Model, UserMessage } from "@zero-agent/ai";
 
 export type SideQuestionStatus = "running" | "complete" | "cancelled" | "error";
 
@@ -24,8 +24,8 @@ export interface SideQuestionRun {
 const SIDE_QUESTION_INSTRUCTION =
 	"Answer this side question using only the conversation context above. Do not use tools. The user may send follow-up side questions; none of this side conversation is added to the main session.";
 
-function sideQuestionPrompt(question: string, isFirstTurn: boolean): string {
-	const body = isFirstTurn ? `${SIDE_QUESTION_INSTRUCTION}\n\n${question}` : question;
+function sideQuestionPrompt(question: string, isFirstTurn: boolean, instruction: string): string {
+	const body = isFirstTurn ? `${instruction}\n\n${question}` : question;
 	return `<side_question>\n${body}\n</side_question>`;
 }
 
@@ -45,8 +45,23 @@ export function startSideQuestion(
 	question: string,
 	onEvent: (event: SideQuestionEvent) => void | Promise<void>,
 	previousTurns: SideQuestionTurn[] = [],
+	/**
+	 * Overrides the first-turn framing instruction. Used by module E's advisor
+	 * (`advisor.ts`) to reuse this exact side-conversation mechanism — cloning
+	 * the live conversation into a tool-less side Agent — with a review-oriented
+	 * framing instead of the default "answer this side question" one. Defaults
+	 * to the original instruction, so every existing caller is unaffected.
+	 */
+	instruction: string = SIDE_QUESTION_INSTRUCTION,
+	/**
+	 * Overrides which model answers — module E's advisor uses this to route to a
+	 * stronger/different reviewer model (Claude Code's own advisor is backed by
+	 * a stronger model than the main loop) instead of the active session model.
+	 * Defaults to `parent.state.model`, so existing callers are unaffected.
+	 */
+	overrideModel?: Model<any>,
 ): SideQuestionRun {
-	const model = parent.state.model;
+	const model = overrideModel ?? parent.state.model;
 	if (!model) {
 		throw new Error("Select a model before asking a side question");
 	}
@@ -56,7 +71,7 @@ export function startSideQuestion(
 	const previousTurnMessages: AgentMessage[] = previousTurns.flatMap((turn, index) => [
 		{
 			role: "user",
-			content: [{ type: "text", text: sideQuestionPrompt(turn.question, index === 0) }],
+			content: [{ type: "text", text: sideQuestionPrompt(turn.question, index === 0, instruction) }],
 			timestamp: Date.now(),
 		} satisfies UserMessage,
 		{
@@ -119,7 +134,7 @@ export function startSideQuestion(
 		await emit("running");
 	});
 
-	const prompt = sideQuestionPrompt(question, previousTurns.length === 0);
+	const prompt = sideQuestionPrompt(question, previousTurns.length === 0, instruction);
 	const done = Promise.resolve()
 		.then(() => emit("running"))
 		.then(async () => {

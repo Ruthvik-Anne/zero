@@ -1,4 +1,4 @@
-import { Container } from "@earendil-works/pi-tui";
+import { Container } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { AgentActivityTracker } from "../src/modes/interactive/agent-activity.js";

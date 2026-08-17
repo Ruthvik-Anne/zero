@@ -234,6 +234,45 @@ describe("FooterDataProvider reftable branch detection", () => {
 		}
 	});
 
+	// B4: one throwing subscriber must not stop the rest from being notified, and
+	// must not escape as an unhandled rejection through the debounced async refresh.
+	it("still notifies later listeners after an earlier one throws", async () => {
+		const { worktreeDir, reftableDir } = createReftableWorktree(tempDir);
+		process.chdir(worktreeDir);
+
+		const provider = new FooterDataProvider(worktreeDir);
+		try {
+			expect(provider.getGitBranch()).toBe("main");
+			resolvedBranch = "bar";
+			const throwingListener = vi.fn(() => {
+				throw new Error("boom");
+			});
+			const goodListener = vi.fn();
+			provider.onBranchChange(throwingListener);
+			provider.onBranchChange(goodListener);
+
+			const unhandledRejections: unknown[] = [];
+			const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason);
+			process.on("unhandledRejection", onUnhandledRejection);
+
+			try {
+				writeFileSync(join(reftableDir, "tables.list"), "1\n");
+				await waitFor(() => vi.mocked(execFile).mock.calls.length === 1);
+				await waitFor(() => provider.getGitBranch() === "bar");
+				// Give any unhandled rejection a microtask/macrotask to surface.
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			} finally {
+				process.off("unhandledRejection", onUnhandledRejection);
+			}
+
+			expect(throwingListener).toHaveBeenCalledTimes(1);
+			expect(goodListener).toHaveBeenCalledTimes(1);
+			expect(unhandledRejections).toEqual([]);
+		} finally {
+			provider.dispose();
+		}
+	});
+
 	it("retries git watchers 5 seconds after an async fs.watch error", async () => {
 		vi.useFakeTimers();
 		const repoDir = createPlainRepo(tempDir);

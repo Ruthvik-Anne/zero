@@ -1,4 +1,4 @@
-import { type AssistantMessage, type AssistantMessageEvent, EventStream, getModel } from "@earendil-works/pi-ai";
+import { type AssistantMessage, type AssistantMessageEvent, EventStream, getModel } from "@zero-agent/ai";
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -157,8 +157,16 @@ describe("Agent", () => {
 		expect(agent.state.isStreaming).toBe(false);
 	});
 
-	it("can commit only a prefix of a prompt batch when a listener fails", async () => {
-		const agent = new Agent();
+	it("commits the full prompt batch even when a listener fails on an intermediate message", async () => {
+		const agent = new Agent({
+			streamFn: () => {
+				const stream = new MockAssistantStream();
+				queueMicrotask(() => {
+					stream.push({ type: "done", reason: "stop", message: createAssistantMessage("ok") });
+				});
+				return stream;
+			},
+		});
 		const first: AgentMessage = {
 			role: "user",
 			content: [{ type: "text", text: "first" }],
@@ -169,6 +177,7 @@ describe("Agent", () => {
 			content: [{ type: "text", text: "second" }],
 			timestamp: Date.now(),
 		};
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 		agent.subscribe((event) => {
 			if (event.type === "message_end" && event.message === first) {
 				throw new Error("listener failed between batched messages");
@@ -177,9 +186,18 @@ describe("Agent", () => {
 
 		await agent.prompt([first, second]);
 
+		// (B10) A throwing listener must not take down every other listener's
+		// ability to observe the run, and must not truncate the batch it was
+		// notified about — only the failing listener's own view of this one
+		// event is lost; everything else proceeds normally.
 		expect(agent.state.messages).toContain(first);
-		expect(agent.state.messages).not.toContain(second);
-		expect(agent.state.errorMessage).toBe("listener failed between batched messages");
+		expect(agent.state.messages).toContain(second);
+		expect(agent.state.errorMessage).toBeUndefined();
+		expect(consoleError).toHaveBeenCalledWith(
+			"Agent event listener threw; continuing without it for this event",
+			expect.objectContaining({ message: "listener failed between batched messages" }),
+		);
+		consoleError.mockRestore();
 	});
 
 	it("waitForIdle should wait for async subscribers", async () => {
@@ -401,7 +419,7 @@ describe("Agent", () => {
 		expect(agent.state.isStreaming).toBe(false);
 	});
 
-	it("should preserve the original failure when the recovery agent_end listener throws", async () => {
+	it("does not let a listener's own failure (including on agent_end) corrupt the run's result", async () => {
 		const agent = new Agent({
 			streamFn: () => {
 				const stream = new MockAssistantStream();
@@ -412,6 +430,7 @@ describe("Agent", () => {
 			},
 		});
 		const events: string[] = [];
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 		agent.subscribe((event) => {
 			events.push(event.type);
 			if (event.type === "agent_end") {
@@ -424,15 +443,27 @@ describe("Agent", () => {
 
 		await expect(agent.prompt("hello")).resolves.toBeUndefined();
 
+		// (B10) Listener failures — including on agent_end — are caught and
+		// logged, never propagated into the run's own state or the message the
+		// provider actually returned.
 		expect(events).toContain("agent_end");
-		expect(agent.state.errorMessage).toBe("original listener failure");
+		expect(agent.state.errorMessage).toBeUndefined();
 		const lastMessage = agent.state.messages.at(-1);
 		expect(lastMessage?.role).toBe("assistant");
 		if (lastMessage?.role === "assistant") {
-			expect(lastMessage.stopReason).toBe("error");
-			expect(lastMessage.errorMessage).toBe("original listener failure");
+			expect(lastMessage.stopReason).toBe("stop");
+			expect(lastMessage.errorMessage).toBeUndefined();
 		}
 		expect(agent.state.isStreaming).toBe(false);
+		expect(consoleError).toHaveBeenCalledWith(
+			"Agent event listener threw; continuing without it for this event",
+			expect.objectContaining({ message: "original listener failure" }),
+		);
+		expect(consoleError).toHaveBeenCalledWith(
+			"Agent event listener threw; continuing without it for this event",
+			expect.objectContaining({ message: "agent_end listener failed" }),
+		);
+		consoleError.mockRestore();
 	});
 
 	it("should not drain steering messages when aborting before a queued poll", async () => {

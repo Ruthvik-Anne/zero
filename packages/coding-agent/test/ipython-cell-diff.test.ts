@@ -1,4 +1,4 @@
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@zero-agent/tui";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { renderRichDiff } from "../src/modes/interactive/components/diff.js";
 import { IPythonCellComponent } from "../src/modes/interactive/components/ipython-cell.js";

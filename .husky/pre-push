@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# (C4) The full repo-wide check (biome + tsgo + installer-render +
+# browser-smoke) — moved here from pre-commit, which now only runs the fast
+# staged-files subset. This still catches everything before it leaves the
+# machine; it just doesn't slow down every single local commit.
+
+echo "Running full checks before push..."
+npm run check
+if [ $? -ne 0 ]; then
+  echo "Checks failed. Please fix the errors before pushing."
+  exit 1
+fi

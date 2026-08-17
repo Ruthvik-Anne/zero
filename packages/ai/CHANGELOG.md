@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Fixed the OpenAI-compatible provider trusting an unvalidated `choice.usage` fallback and `reasoning_details` entries from the raw provider response; malformed values are now skipped instead of risking bad usage/cost numbers or a crash.
+- Fixed OpenRouter error metadata being appended to the error message with no length cap, letting a broken upstream provider dump unbounded text into the TUI.
+- Fixed session resume crashing when replaying a redacted-thinking block from a session saved before the signature field existed.
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05

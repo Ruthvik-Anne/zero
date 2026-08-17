@@ -30,6 +30,32 @@ describe("parseAgentCronSchedule", () => {
 		expect(parseAgentCronSchedule("*/30 * * * *", start).nextRunAt.toISOString()).toBe("2026-01-01T13:00:00.000Z");
 	});
 
+	// Cron field matching must be pure UTC arithmetic — using local-time
+	// getters/setters against a UTC-anchored `after` would drift the result by
+	// the host's UTC offset whenever it isn't a whole number of hours (e.g.
+	// UTC+5:30). These assertions are UTC-anchored on both ends, so they hold
+	// regardless of which timezone the test runner's host happens to be in —
+	// a regression back to local-time getters would fail this on such a host,
+	// but would NOT be caught by a whole-hour-offset (e.g. UTC, US, EU) runner.
+	it("matches minute/day/month/weekday fields in UTC regardless of host timezone", () => {
+		// Half-hour-offset-exposing case: from :34, the next */30 boundary is
+		// :00 of the following hour, not :30 — a local-time bug lands on :30
+		// only on a host whose UTC offset itself has a 30-minute component.
+		expect(parseAgentCronSchedule("*/30 * * * *", new Date("2026-01-01T12:34:00.000Z")).nextRunAt.toISOString()).toBe(
+			"2026-01-01T13:00:00.000Z",
+		);
+		// Day/month/weekday-equivalent case: a daily 00:00 cron evaluated 15
+		// minutes before UTC midnight must roll over to the next UTC calendar
+		// day — a local-getDate()/getDay() bug would instead roll over at local
+		// midnight, which falls on a different UTC instant for any non-UTC host.
+		const dailyMidnight = parseAgentCronSchedule("0 0 * * *", new Date("2026-01-01T23:45:00.000Z"));
+		expect(dailyMidnight.nextRunAt.toISOString()).toBe("2026-01-02T00:00:00.000Z");
+		// 2026-01-02 is a Friday (UTC day-of-week 5); a Monday-only cron must
+		// skip straight to the following Monday, not match the wrong UTC day.
+		const nextMonday = parseAgentCronSchedule("0 0 * * 1", new Date("2026-01-01T23:45:00.000Z"));
+		expect(nextMonday.nextRunAt.toISOString()).toBe("2026-01-05T00:00:00.000Z");
+	});
+
 	it("parses recurring heartbeat intervals with seconds", () => {
 		const parsed = parseAgentCronSchedule("every 30s", start);
 

@@ -108,7 +108,7 @@ describe("herdrAgentStateExtension", () => {
 		"HERDR_PANE_ID",
 		"HERDR_PI_IDLE_DEBOUNCE_MS",
 		"HERDR_PI_RETRY_GRACE_MS",
-		"PRIME_AGENT_CODING_AGENT_DIR",
+		"ZERO_CODING_AGENT_DIR",
 	];
 
 	for (const key of envKeys) {
@@ -232,7 +232,7 @@ describe("herdrAgentStateExtension", () => {
 		process.env.HERDR_PANE_ID = "w1:p1";
 		process.env.HERDR_PI_IDLE_DEBOUNCE_MS = "10";
 		// Isolate from any real agent dir that may contain the file-based integration.
-		process.env.PRIME_AGENT_CODING_AGENT_DIR = tempDir;
+		process.env.ZERO_CODING_AGENT_DIR = tempDir;
 
 		const { pi, handlers } = createMockPi();
 		herdrAgentStateExtension(pi);
@@ -491,7 +491,7 @@ describe("herdrAgentStateExtension", () => {
 		process.env.HERDR_ENV = "1";
 		process.env.HERDR_SOCKET_PATH = socketPath;
 		process.env.HERDR_PANE_ID = "w1:p1";
-		process.env.PRIME_AGENT_CODING_AGENT_DIR = tempDir;
+		process.env.ZERO_CODING_AGENT_DIR = tempDir;
 
 		const ctx = { sessionManager: { getSessionFile: () => undefined, getSessionId: () => "s" } };
 

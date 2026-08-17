@@ -12,7 +12,7 @@ import {
 	type Rgb,
 	rgbTo256,
 	type SelectListTheme,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import chalk from "chalk";
 import { type Static, type TProperties, Type } from "typebox";
 import type { Validator } from "typebox/compile";
@@ -602,11 +602,11 @@ let BUILTIN_THEMES: Record<string, ThemeJson> | undefined;
 function getBuiltinThemes(): Record<string, ThemeJson> {
 	if (!BUILTIN_THEMES) {
 		const themesDir = getThemesDir();
-		const primePath = path.join(themesDir, "prime.json");
+		const zeroPath = path.join(themesDir, "zero.json");
 		const darkPath = path.join(themesDir, "dark.json");
 		const lightPath = path.join(themesDir, "light.json");
 		BUILTIN_THEMES = {
-			prime: JSON.parse(fs.readFileSync(primePath, "utf-8")) as ThemeJson,
+			zero: JSON.parse(fs.readFileSync(zeroPath, "utf-8")) as ThemeJson,
 			dark: JSON.parse(fs.readFileSync(darkPath, "utf-8")) as ThemeJson,
 			light: JSON.parse(fs.readFileSync(lightPath, "utf-8")) as ThemeJson,
 		};
@@ -812,8 +812,8 @@ function detectTerminalBackground(): "dark" | "light" {
 }
 
 function getDefaultTheme(): string {
-	// Prime brand is dark-first; only fall back to light when the terminal is light.
-	return detectTerminalBackground() === "light" ? "light" : "prime";
+	// Zero's brand is dark-first; only fall back to light when the terminal is light.
+	return detectTerminalBackground() === "light" ? "light" : "zero";
 }
 
 // ============================================================================
@@ -821,7 +821,7 @@ function getDefaultTheme(): string {
 // ============================================================================
 
 // Use globalThis to share theme across module loaders (tsx + jiti in dev mode)
-const THEME_KEY = Symbol.for("@earendil-works/pi-coding-agent:theme");
+const THEME_KEY = Symbol.for("@zero-agent/coding-agent:theme");
 
 // Export theme as a getter that reads from globalThis
 // This ensures all module instances (tsx, jiti) see the same theme
@@ -954,7 +954,7 @@ function startThemeWatcher(): void {
 	// Only watch if it's a custom theme (not built-in)
 	if (
 		!currentThemeName ||
-		currentThemeName === "prime" ||
+		currentThemeName === "zero" ||
 		currentThemeName === "dark" ||
 		currentThemeName === "light"
 	) {
@@ -1354,7 +1354,7 @@ export function getEditorTheme(): EditorTheme {
 	};
 }
 
-export function getSettingsListTheme(): import("@earendil-works/pi-tui").SettingsListTheme {
+export function getSettingsListTheme(): import("@zero-agent/tui").SettingsListTheme {
 	return {
 		label: (text: string, selected: boolean) => (selected ? theme.fg("accent", text) : text),
 		value: (text: string, selected: boolean) => (selected ? theme.fg("accent", text) : theme.fg("muted", text)),

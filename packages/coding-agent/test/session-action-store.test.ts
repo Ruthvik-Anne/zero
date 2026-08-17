@@ -1,4 +1,4 @@
-import type { UserMessage } from "@earendil-works/pi-ai";
+import type { UserMessage } from "@zero-agent/ai";
 import { describe, expect, it } from "vitest";
 import {
 	type ActionLifecycle,

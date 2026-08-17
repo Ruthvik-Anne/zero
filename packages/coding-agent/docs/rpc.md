@@ -2,12 +2,12 @@
 
 RPC mode enables headless operation of the coding agent via a JSON protocol over stdin/stdout. This is useful for embedding the agent in other applications, IDEs, or custom UIs.
 
-**Note for Node.js/TypeScript users**: If you're building a Node.js application, consider using `AgentSession` directly from `@earendil-works/pi-coding-agent` instead of spawning a subprocess. See [`src/core/agent-session.ts`](../src/core/agent-session.ts) for the API. For a subprocess-based TypeScript client, see [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts).
+**Note for Node.js/TypeScript users**: If you're building a Node.js application, consider using `AgentSession` directly from `@zero-agent/coding-agent` instead of spawning a subprocess. See [`src/core/agent-session.ts`](../src/core/agent-session.ts) for the API. For a subprocess-based TypeScript client, see [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts).
 
 ## Starting RPC Mode
 
 ```bash
-prime-agent --mode rpc [options]
+zero --mode rpc [options]
 ```
 
 Common options:
@@ -759,9 +759,9 @@ Response:
   "success": true,
   "data": {
     "commands": [
-      {"name": "session-name", "description": "Set or clear session name", "source": "extension", "path": "/home/user/.prime/agent/extensions/session.ts"},
-      {"name": "fix-tests", "description": "Fix failing tests", "source": "prompt", "location": "project", "path": "/home/user/myproject/.prime/agent/prompts/fix-tests.md"},
-      {"name": "skill:brave-search", "description": "Web search via Brave API", "source": "skill", "location": "user", "path": "/home/user/.prime/agent/skills/brave-search/SKILL.md"}
+      {"name": "session-name", "description": "Set or clear session name", "source": "extension", "path": "/home/user/.zero/agent/extensions/session.ts"},
+      {"name": "fix-tests", "description": "Fix failing tests", "source": "prompt", "location": "project", "path": "/home/user/myproject/.zero/agent/prompts/fix-tests.md"},
+      {"name": "skill:brave-search", "description": "Web search via Brave API", "source": "skill", "location": "user", "path": "/home/user/.zero/agent/skills/brave-search/SKILL.md"}
     ]
   }
 }
@@ -775,8 +775,8 @@ Each command has:
   - `"prompt"`: Loaded from a prompt template `.md` file
   - `"skill"`: Loaded from a skill directory (name is prefixed with `skill:`)
 - `location`: Where it was loaded from (optional, not present for extensions):
-  - `"user"`: User-level (`~/.prime/agent/`)
-  - `"project"`: Project-level (`./.prime/agent/`)
+  - `"user"`: User-level (`~/.zero/agent/`)
+  - `"project"`: Project-level (`./.zero/agent/`)
   - `"path"`: Explicit path via CLI or settings
 - `path`: Absolute file path to the command source (optional)
 
@@ -1181,7 +1181,7 @@ Set the terminal window/tab title. Fire-and-forget.
   "type": "extension_ui_request",
   "id": "uuid-8",
   "method": "setTitle",
-  "title": "Prime Agent - my project"
+  "title": "Zero - my project"
 }
 ```
 
@@ -1368,7 +1368,7 @@ import subprocess
 import json
 
 proc = subprocess.Popen(
-    ["prime-agent", "--mode", "rpc", "--no-session"],
+    ["zero", "--mode", "rpc", "--no-session"],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     text=True
@@ -1407,7 +1407,7 @@ For a complete example of handling the extension UI protocol, see [`examples/rpc
 const { spawn } = require("child_process");
 const { StringDecoder } = require("string_decoder");
 
-const agent = spawn("prime-agent", ["--mode", "rpc", "--no-session"]);
+const agent = spawn("zero", ["--mode", "rpc", "--no-session"]);
 
 function attachJsonlReader(stream, onLine) {
     const decoder = new StringDecoder("utf8");

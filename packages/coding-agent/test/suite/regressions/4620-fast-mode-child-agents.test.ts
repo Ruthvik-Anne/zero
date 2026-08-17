@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@zero-agent/ai";
 import { describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../../src/core/session-manager.js";
 import { startSideQuestion } from "../../../src/core/side-question.js";

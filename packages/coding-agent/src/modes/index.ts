@@ -117,6 +117,7 @@ export {
 	type PromptStash,
 	type PromptStashState,
 } from "./interactive/prompt-stash-state.js";
+export { type McpServerModeOptions, runMcpServerMode } from "./mcp-server/mcp-server-mode.js";
 export { type PrintModeOptions, runPrintMode, runPrintModeWithConnection } from "./print-mode.js";
 export { type ModelInfo, RpcClient, type RpcClientOptions, type RpcEventListener } from "./rpc/rpc-client.js";
 export { runRpcMode, runRpcModeWithConnection } from "./rpc/rpc-mode.js";

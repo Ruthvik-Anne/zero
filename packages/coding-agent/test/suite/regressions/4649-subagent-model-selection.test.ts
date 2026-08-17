@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@zero-agent/ai";
 import { describe, expect, it, vi } from "vitest";
 import type { HostRequestHandlers } from "../../../src/core/kernel/index.js";
 import { SessionManager } from "../../../src/core/session-manager.js";
@@ -104,32 +104,6 @@ describe("ENG-4649 subagent model selection", () => {
 				`Requested subagent model "${codexProvider}/unsupported-model" is unavailable, unauthenticated, or expired`,
 			);
 			expect((await harness.session.listRlmSubagents()).subagents).toEqual([]);
-		} finally {
-			vi.unstubAllGlobals();
-			harness.cleanup();
-		}
-	});
-
-	it("includes private Prime models authorized for the selected team", async () => {
-		const harness = await createHarness({ provider, models: [{ id: "parent-model" }] });
-		const fetchModels = vi.fn(
-			async () =>
-				new Response(JSON.stringify({ data: [{ id: "internal/glm-5.2-fast" }] }), {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				}),
-		);
-		vi.stubGlobal("fetch", fetchModels);
-		try {
-			harness.authStorage.set("prime-inference", {
-				type: "api_key",
-				key: "prime-key",
-				primeTeam: { teamId: "engineering-team", name: "Prime Engineering" },
-			});
-
-			const discovered = await harness.session.findRlmModels("glm 5.2", 8);
-			expect(discovered.models.map((model) => model.selector)).toContain("prime-inference/internal/glm-5.2-fast");
-			expect(fetchModels).toHaveBeenCalledOnce();
 		} finally {
 			vi.unstubAllGlobals();
 			harness.cleanup();

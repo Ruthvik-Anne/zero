@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, ThinkingLevel } from "@zero-agent/agent-core";
 import {
 	type Api,
 	type AssistantMessage,
@@ -17,8 +17,8 @@ import {
 	type ServiceTier,
 	supportsFastMode,
 	type ToolCall,
-} from "@earendil-works/pi-ai";
-import { BUILTIN_MCP_CATALOG } from "@earendil-works/pi-ai/mcp";
+} from "@zero-agent/ai";
+import { BUILTIN_MCP_CATALOG } from "@zero-agent/ai/mcp";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -29,7 +29,7 @@ import type {
 	OverlayHandle,
 	OverlayOptions,
 	SlashCommand,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -46,7 +46,7 @@ import {
 	TUI,
 	truncateToWidth,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import { spawn, spawnSync } from "child_process";
 import {
 	buildDaemonUpdateRestartReport,
@@ -109,10 +109,10 @@ import {
 	SESSION_SLASH_COMMAND_CUSTOM_TYPE,
 	SESSION_SLASH_COMMAND_RESULT_CUSTOM_TYPE,
 } from "../../core/messages.js";
+import { DEFAULT_SESSION_MODE } from "../../core/mode/session-mode.js";
 import { findExactModelReferenceMatch, resolveModelScopeFromModels } from "../../core/model-resolver.js";
 import { parseNewSessionCommand } from "../../core/new-session-command.js";
 import { resolvePrimeAgentTracesBaseUrl } from "../../core/prime-inference-auth.js";
-import { resolvePrimeInferencePostLoginModelAction } from "../../core/prime-inference-model-selection.js";
 import { parseCommandArgs } from "../../core/prompt-templates.js";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.js";
 import { SessionImportFileNotFoundError } from "../../core/session-import-errors.js";
@@ -130,7 +130,7 @@ import {
 	type TelemetryOnboardingOutcome,
 } from "../../core/telemetry.js";
 import { type TruncationResult, truncateTail } from "../../core/tools/truncate.js";
-import { PRIME_BUTTERFLY_LOGO } from "../../themes/prime-logo.js";
+import { ZERO_LOGO } from "../../themes/zero-logo.js";
 import { getChangelogPath, parseChangelog } from "../../utils/changelog.js";
 import { copyToClipboard } from "../../utils/clipboard.js";
 import { readClipboardImage } from "../../utils/clipboard-image.js";
@@ -170,7 +170,7 @@ import {
 	formatUpdateAvailableNotice,
 } from "../shared/startup-notices.js";
 import { AGENT_ACTIVITY_LABELS, AgentActivityTracker, formatTokenCount } from "./agent-activity.js";
-import { type AuthenticationResult, getAnthropicSubscriptionAuthWarning, ProviderAuthFlows } from "./auth-flows.js";
+import { getAnthropicSubscriptionAuthWarning, ProviderAuthFlows } from "./auth-flows.js";
 import { AgentMessageComponent } from "./components/agent-message.js";
 import { ArminComponent } from "./components/armin.js";
 import { AssistantMessageComponent } from "./components/assistant-message.js";
@@ -202,7 +202,6 @@ import { HeartbeatManagerComponent } from "./components/heartbeat-manager.js";
 import { InjectedPromptMessageComponent, isInjectedPromptMessage } from "./components/injected-prompt-message.js";
 import { formatKeyText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.js";
 import type { AuthSelectorProvider } from "./components/oauth-selector.js";
-import { PrimeOnboardingSplashComponent } from "./components/prime-onboarding-splash.js";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.js";
 import { SettingsSelectorComponent } from "./components/settings-selector.js";
 import { SideQuestionComponent } from "./components/side-question.js";
@@ -237,12 +236,7 @@ import type {
 	InteractiveModeLocalToolRendererDefinition,
 	InteractiveModeUiServices,
 } from "./interactive-mode-services.js";
-import {
-	isOnboardingModelReady,
-	type OnboardingStartupState,
-	shouldRunOnboarding,
-	shouldRunPrimeCliOnboardingSplash,
-} from "./onboarding.js";
+import { isOnboardingModelReady, type OnboardingStartupState, shouldRunOnboarding } from "./onboarding.js";
 import type { ClientPromptStashStore, PromptStash, PromptStashState } from "./prompt-stash-state.js";
 import { formatResumeHint } from "./resume-hint.js";
 import {
@@ -416,7 +410,7 @@ export class BrandSplashHeader implements Component {
 		private readonly verboseInstructions?: string,
 		private readonly options: BrandSplashHeaderOptions = {},
 	) {
-		this.logoRaw = (options.logo ?? PRIME_BUTTERFLY_LOGO).split("\n");
+		this.logoRaw = (options.logo ?? ZERO_LOGO).split("\n");
 		this.logoCanvasWidth = this.logoRaw.reduce((max, line) => Math.max(max, visibleWidth(line)), 0);
 	}
 
@@ -489,11 +483,6 @@ type GoalAnnouncementSnapshot = {
 };
 
 type ModelFallbackWarningAction = "show" | "suppress";
-
-interface OnboardingSplashHandle {
-	showProgress(message: string): void;
-	dismiss(): void;
-}
 
 const THINKING_LEVEL_DESCRIPTIONS: Record<ThinkingLevel, string> = {
 	off: "No reasoning",
@@ -1703,10 +1692,6 @@ export class InteractiveMode {
 		return shouldRunOnboarding(this.getOnboardingState());
 	}
 
-	private shouldRunPrimeCliOnboardingSplash(): boolean {
-		return shouldRunPrimeCliOnboardingSplash(this.getOnboardingState());
-	}
-
 	private markOnboardingShown(): void {
 		if (!this.settingsManager.getOnboardingShown()) {
 			this.settingsManager.setOnboardingShown(true);
@@ -1719,12 +1704,11 @@ export class InteractiveMode {
 		}
 
 		const startedAt = Date.now();
-		const showPrimeCliSplash = this.shouldRunPrimeCliOnboardingSplash();
 		let outcome: TelemetryOnboardingOutcome = "aborted";
 		try {
 			this.markOnboardingShown();
 			await this.settingsManager.flush();
-			await this.runOnboardingFlow(showPrimeCliSplash);
+			await this.runOnboardingFlow();
 			outcome = isOnboardingModelReady(this.getOnboardingState()) ? "success" : "aborted";
 			return true;
 		} catch (error) {
@@ -1746,47 +1730,9 @@ export class InteractiveMode {
 		}
 	}
 
-	private async showOnboardingModelSelection(splash: OnboardingSplashHandle): Promise<void> {
-		try {
-			await this.showConfigurationMenu("models");
-		} finally {
-			splash.dismiss();
-		}
-	}
-
-	private async runOnboardingFlow(showPrimeCliSplash = this.shouldRunPrimeCliOnboardingSplash()): Promise<void> {
+	private async runOnboardingFlow(): Promise<void> {
 		this.modelRegistry.refresh();
-		if (showPrimeCliSplash) {
-			const splash = await this.showOnboardingSplash("choose a model");
-			if (!splash) {
-				return;
-			}
-
-			await this.showOnboardingModelSelection(splash);
-			return;
-		}
-
-		const availableModels = await this.getModelCandidates();
-		if (availableModels.length > 0) {
-			await this.showConfigurationMenu("models");
-			return;
-		}
-
-		const splash = await this.showOnboardingSplash();
-		if (!splash) {
-			return;
-		}
-
-		splash.showProgress("Signing in to Prime Intellect...");
-		const authResult = await this.createAuthFlows().runPrimeInferenceLogin();
-		if (authResult.status !== "success") {
-			splash.dismiss();
-			return;
-		}
-
-		splash.showProgress("Preparing models...");
-		await this.prepareForModelSelectionAfterLogin(authResult);
-		await this.showOnboardingModelSelection(splash);
+		await this.showConfigurationMenu("models");
 	}
 
 	private getMarkdownThemeWithSettings(): MarkdownTheme {
@@ -3088,6 +3034,9 @@ export class InteractiveMode {
 				})();
 			},
 			getSystemPrompt: () => localSessionHost.getSystemPrompt(),
+			// Shortcut handlers don't need live mode today (no shortcut reads it yet); this
+			// context isn't the tool-execution choke point that actually gates on mode.
+			mode: DEFAULT_SESSION_MODE,
 		});
 
 		// Set up the extension shortcut handler on the default editor
@@ -3839,7 +3788,7 @@ export class InteractiveMode {
 					this.hideExtensionInput();
 					resolve(undefined);
 				},
-				{ tui: this.ui, timeout: opts?.timeout },
+				{ tui: this.ui, timeout: opts?.timeout, masked: opts?.masked },
 			);
 
 			this.editorContainer.clear();
@@ -7049,6 +6998,7 @@ export class InteractiveMode {
 			const result = spawnSync(editor, [...editorArgs, tmpFile], {
 				stdio: "inherit",
 				shell: process.platform === "win32",
+				windowsHide: true,
 			});
 
 			// On successful exit (status 0), replace editor content
@@ -7248,7 +7198,7 @@ export class InteractiveMode {
 					transport: this.settingsManager.getTransport(),
 					thinkingLevel: state.thinkingLevel,
 					availableThinkingLevels: state.availableThinkingLevels,
-					currentTheme: this.settingsManager.getTheme() || "prime",
+					currentTheme: this.settingsManager.getTheme() || "zero",
 					availableThemes: getAvailableThemes(),
 					hideThinkingBlock: this.hideThinkingBlock,
 					treeFilterMode: this.settingsManager.getTreeFilterMode(),
@@ -7848,7 +7798,6 @@ export class InteractiveMode {
 							return;
 						}
 
-						await this.prepareForModelSelectionAfterLogin(authResult);
 						menu.updateModels(
 							this.getCurrentModel(),
 							this.getCachedModelCandidates(),
@@ -8228,55 +8177,6 @@ export class InteractiveMode {
 		}
 	}
 
-	private showOnboardingSplash(continueActionLabel?: string): Promise<OnboardingSplashHandle | undefined> {
-		return new Promise((resolve) => {
-			let settled = false;
-			let dismissed = false;
-			let handle: OverlayHandle | undefined;
-			let selector: PrimeOnboardingSplashComponent | undefined;
-			const settle = (result: OnboardingSplashHandle | undefined) => {
-				if (settled) {
-					return;
-				}
-				settled = true;
-				resolve(result);
-			};
-			const dismiss = () => {
-				if (dismissed) {
-					return;
-				}
-				dismissed = true;
-				selector?.dispose();
-				handle?.hide();
-				this.ui.requestRender();
-			};
-			selector = new PrimeOnboardingSplashComponent(
-				() => {
-					selector?.dispose();
-					settle({
-						showProgress: (message) => selector?.showProgress(message),
-						dismiss,
-					});
-				},
-				() => {
-					dismiss();
-					settle(undefined);
-				},
-				{
-					getRows: () => this.ui.terminal.rows,
-					requestRender: () => this.ui.requestRender(),
-					...(continueActionLabel ? { continueActionLabel } : {}),
-				},
-			);
-			handle = this.ui.showOverlay(selector, {
-				width: "100%",
-				maxHeight: "100%",
-				row: 0,
-				col: 0,
-			});
-		});
-	}
-
 	private createAuthFlows(): ProviderAuthFlows {
 		return new ProviderAuthFlows({
 			ui: this.ui,
@@ -8294,45 +8194,6 @@ export class InteractiveMode {
 				void this.maybeWarnAboutAnthropicSubscriptionAuth();
 			},
 		});
-	}
-
-	private async prepareForModelSelectionAfterLogin(authResult: AuthenticationResult): Promise<boolean> {
-		const currentModel = this.getCurrentModel();
-		// The agent core uses unknown/unknown as its no-model sentinel.
-		const selectedModel =
-			currentModel?.provider === "unknown" && currentModel.id === "unknown" ? undefined : currentModel;
-		let action = resolvePrimeInferencePostLoginModelAction(authResult, selectedModel, this.modelRegistry);
-		if (!action.openModelPicker) {
-			return false;
-		}
-
-		if (!selectedModel) {
-			try {
-				const availableModels = await this.getConnectionAvailableModels();
-				action = resolvePrimeInferencePostLoginModelAction(authResult, selectedModel, {
-					find: (provider, modelId) =>
-						availableModels.find((model) => model.provider === provider && model.id === modelId) ??
-						this.modelRegistry.find(provider, modelId),
-				});
-			} catch {
-				// Preserve the registry fallback so selection can still report a specific failure below.
-			}
-		}
-
-		if (action.fallbackModel) {
-			try {
-				await this.applySelectedModel(action.fallbackModel);
-				await this.settingsManager.flush();
-			} catch (error) {
-				this.showError(
-					`Prime Inference login succeeded, but the default model could not be selected: ${error instanceof Error ? error.message : String(error)}`,
-				);
-			}
-		} else if (!selectedModel) {
-			this.showError("Prime Inference login succeeded, but the default GLM 5.2 model is unavailable.");
-		}
-
-		return true;
 	}
 
 	private async handleMcpCommand(args: string | undefined): Promise<void> {
@@ -8439,6 +8300,7 @@ export class InteractiveMode {
 				stdio: "inherit",
 				cwd: updateCwd,
 				env: updateEnv,
+				windowsHide: true,
 			},
 		);
 		const updateExitCode = updateResult.status ?? (updateResult.signal ? 1 : 0);
@@ -8490,6 +8352,7 @@ export class InteractiveMode {
 				stdio: "inherit",
 				cwd: updateCwd,
 				env: process.env,
+				windowsHide: true,
 			});
 			if (relaunchResult.error) {
 				console.error(`Failed to relaunch ${APP_NAME}: ${relaunchResult.error.message}`);
@@ -8703,7 +8566,7 @@ export class InteractiveMode {
 	private async handleShareCommand(): Promise<void> {
 		// Check if gh is available and logged in
 		try {
-			const authResult = spawnSync("gh", ["auth", "status"], { encoding: "utf-8" });
+			const authResult = spawnSync("gh", ["auth", "status"], { encoding: "utf-8", windowsHide: true });
 			if (authResult.status !== 0) {
 				this.showError("GitHub CLI is not logged in. Run 'gh auth login' first.");
 				return;
@@ -8752,7 +8615,7 @@ export class InteractiveMode {
 
 		try {
 			const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve) => {
-				proc = spawn("gh", ["gist", "create", "--public=false", tmpFile]);
+				proc = spawn("gh", ["gist", "create", "--public=false", tmpFile], { windowsHide: true });
 				let stdout = "";
 				let stderr = "";
 				proc.stdout?.on("data", (data) => {
@@ -8783,9 +8646,9 @@ export class InteractiveMode {
 				return;
 			}
 
-			// Create the preview URL
+			// Create the preview URL, if a viewer is configured (Zero has none by default).
 			const previewUrl = getShareViewerUrl(gistId);
-			this.showStatus(`Share URL: ${previewUrl}\nGist: ${gistUrl}`);
+			this.showStatus(previewUrl ? `Share URL: ${previewUrl}\nGist: ${gistUrl}` : `Gist: ${gistUrl}`);
 		} catch (error: unknown) {
 			if (!loader.signal.aborted) {
 				restoreEditor();

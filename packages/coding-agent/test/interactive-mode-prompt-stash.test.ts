@@ -1,4 +1,4 @@
-import type { ImageContent } from "@earendil-works/pi-ai";
+import type { ImageContent } from "@zero-agent/ai";
 import { describe, expect, it, type Mock, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.js";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";

@@ -5,6 +5,11 @@
 import { spawn } from "node:child_process";
 import { waitForChildProcess } from "../utils/child-process.js";
 
+// (B5) Same cap autonomous.ts's runChildProcess uses for the identical reason:
+// an extension/custom tool running a long-lived or chatty command must not
+// grow this process's memory without bound.
+const DEFAULT_MAX_OUTPUT_CHARS = 1024 * 1024;
+
 /**
  * Options for executing shell commands.
  */
@@ -20,6 +25,8 @@ export interface ExecOptions {
 	 * A key with an undefined value is unset in the child.
 	 */
 	env?: Record<string, string | undefined>;
+	/** Per-stream cap on accumulated stdout/stderr (default 1 MiB each). (B5) */
+	maxOutputChars?: number;
 }
 
 /**
@@ -30,6 +37,8 @@ export interface ExecResult {
 	stderr: string;
 	code: number;
 	killed: boolean;
+	/** True if stdout and/or stderr were cut off at maxOutputChars. (B5) */
+	outputTruncated: boolean;
 }
 
 function mergeExecEnv(env?: Record<string, string | undefined>): NodeJS.ProcessEnv | undefined {
@@ -65,11 +74,14 @@ export async function execCommand(
 			// Merge per-call env over the parent env so callers can scope vars
 			// (e.g. herdr pane identity) without mutating the shared process.env.
 			env: mergeExecEnv(options?.env),
+			windowsHide: true,
 		});
 
 		let stdout = "";
 		let stderr = "";
 		let killed = false;
+		let outputTruncated = false;
+		const maxOutputChars = options?.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
 		let timeoutId: NodeJS.Timeout | undefined;
 		let forceKillTimeoutId: NodeJS.Timeout | undefined;
 
@@ -103,12 +115,27 @@ export async function execCommand(
 			}, options.timeout);
 		}
 
-		proc.stdout?.on("data", (data) => {
-			stdout += data.toString();
+		// (B6) setEncoding uses Node's own streaming StringDecoder, so a chunk
+		// boundary landing mid-codepoint (any non-ASCII output — CJK paths,
+		// accented filenames, emoji) is buffered correctly across "data" events
+		// instead of decoding each chunk independently and emitting U+FFFD.
+		proc.stdout?.setEncoding("utf8");
+		proc.stderr?.setEncoding("utf8");
+
+		proc.stdout?.on("data", (chunk: string) => {
+			const remaining = maxOutputChars - stdout.length;
+			if (remaining > 0) {
+				stdout += chunk.slice(0, remaining);
+			}
+			outputTruncated ||= chunk.length > remaining;
 		});
 
-		proc.stderr?.on("data", (data) => {
-			stderr += data.toString();
+		proc.stderr?.on("data", (chunk: string) => {
+			const remaining = maxOutputChars - stderr.length;
+			if (remaining > 0) {
+				stderr += chunk.slice(0, remaining);
+			}
+			outputTruncated ||= chunk.length > remaining;
 		});
 
 		const cleanup = () => {
@@ -124,11 +151,11 @@ export async function execCommand(
 		waitForChildProcess(proc)
 			.then((code) => {
 				cleanup();
-				resolve({ stdout, stderr, code: code ?? 0, killed });
+				resolve({ stdout, stderr, code: code ?? 0, killed, outputTruncated });
 			})
 			.catch((_err) => {
 				cleanup();
-				resolve({ stdout, stderr, code: 1, killed });
+				resolve({ stdout, stderr, code: 1, killed, outputTruncated });
 			});
 	});
 }

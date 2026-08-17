@@ -20,7 +20,7 @@ const FORKSERVER_KERNEL_BOOT_CONCURRENCY = Math.min(
 );
 
 export function resolveKernelBootConcurrency(): number {
-	const raw = process.env.PRIME_AGENT_MAX_CONCURRENT_KERNEL_BOOTS;
+	const raw = process.env.ZERO_MAX_CONCURRENT_KERNEL_BOOTS;
 	const fallback = isForkServerEnabled() ? FORKSERVER_KERNEL_BOOT_CONCURRENCY : DEFAULT_KERNEL_BOOT_CONCURRENCY;
 	if (raw === undefined || !/^\d+$/.test(raw)) {
 		return fallback;

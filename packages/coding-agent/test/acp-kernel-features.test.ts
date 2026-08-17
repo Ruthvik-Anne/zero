@@ -54,7 +54,19 @@ describe("ACP mode over a real IPython kernel", () => {
 	afterEach(async () => {
 		await provisioner?.dispose();
 		provisioner = undefined;
-		rmSync(tempDir, { recursive: true, force: true });
+		// A just-killed real kernel subprocess (spawned with tempDir as its cwd)
+		// can leave tempDir transiently undeletable on Windows even after
+		// dispose() resolves — retry, and tolerate a leftover if it still hasn't
+		// released by then; this is a cleanup artifact, not a test-correctness
+		// problem. Mirrors test/suite/harness.ts's identical fix.
+		try {
+			rmSync(tempDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+				throw error;
+			}
+		}
 	});
 
 	it(

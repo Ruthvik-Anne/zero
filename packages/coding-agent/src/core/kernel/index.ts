@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
+import { registerSessionResourceCleanup } from "@zero-agent/ai";
 import { v4 as uuid } from "uuid";
 import { Dealer, Subscriber } from "zeromq";
 import { ensureKernelPython, type KernelBootstrapProgressHandler, type KernelPythonSkill } from "./bootstrap.js";
@@ -31,6 +31,11 @@ const IOPUB_SUBSCRIBE_DELAY_MS = 50;
 const DEFAULT_MAX_OUTPUT_CHARS = 65536;
 const HOST_REQUEST_DISPOSE_TIMEOUT_MS = 5000;
 const DEFAULT_SNAPSHOT_DEBOUNCE_MS = 1500;
+// (B5) kernelStderr grew unbounded, reset only in restart() — every consumer
+// only ever reads the last 1024 chars of it anyway (see the .slice(-1024)
+// call sites below). Matches fork-server.ts's own STDERR_TAIL_MAX for the
+// identical accumulator, just in the non-forked kernel path.
+const KERNEL_STDERR_TAIL_MAX = 4096;
 // How often to poll a forked kernel's pid for unexpected death.
 const FORKED_LIVENESS_POLL_MS = 1000;
 // Snapshot/restore cells can be large to (de)serialize; give them room beyond the user cap.
@@ -74,6 +79,15 @@ export interface KernelSnapshotConfig {
 	maxBytes?: number;
 	/** Debounce window for the auto-snapshot after a successful execution. Default 1500 ms. */
 	debounceMs?: number;
+	/**
+	 * (finding #1, task #78/#84 follow-up) Resolves to this session's currently
+	 * active decrypted vault credential plaintexts, fetched fresh on every
+	 * snapshot (issued credentials can change over the session's lifetime).
+	 * Passed to `buildSnapshotCode` as its exclusion list so a resolved secret
+	 * never gets pickled to disk. Omitted (or resolving empty) when no vault is
+	 * bound for this session — a no-op cost for the common case.
+	 */
+	getActiveCredentialValues?: () => Promise<string[]>;
 }
 
 export interface KernelManagerOptions {
@@ -564,7 +578,9 @@ export class KernelManager {
 	}
 
 	private appendKernelDiagnostic(message: string): void {
-		this.kernelStderr += `[kernel] ${message.endsWith("\n") ? message : `${message}\n`}`;
+		this.kernelStderr = `${this.kernelStderr}[kernel] ${message.endsWith("\n") ? message : `${message}\n`}`.slice(
+			-KERNEL_STDERR_TAIL_MAX,
+		);
 	}
 
 	async start(options: KernelStartOptions = {}): Promise<void> {
@@ -648,12 +664,13 @@ export class KernelManager {
 				cwd: this.options.cwd,
 				env: this.options.env ? { ...process.env, ...this.options.env } : process.env,
 				stdio: ["ignore", "pipe", "pipe"],
+				windowsHide: true,
 			});
 			this.kernel = kernel;
 
 			kernel.stderr?.on("data", (buf: Buffer) => {
 				const s = buf.toString();
-				this.kernelStderr += s;
+				this.kernelStderr = `${this.kernelStderr}${s}`.slice(-KERNEL_STDERR_TAIL_MAX);
 			});
 
 			kernel.on("error", (err) => {
@@ -1405,8 +1422,18 @@ export class KernelManager {
 	async snapshotState(): Promise<SnapshotResult | null> {
 		const cfg = this.options.snapshot;
 		if (!cfg || !this.isRunning) return null;
-		const code = buildSnapshotCode(cfg.path, cfg.manifestPath, cfg.maxBytes ?? DEFAULT_SNAPSHOT_MAX_BYTES);
 		try {
+			// Fetched fresh (not cached at construction) since issued credentials
+			// can change over the session's lifetime. A throw here (e.g. a vault
+			// read failure) falls through to the catch below — no snapshot is
+			// written rather than one written without its exclusion list.
+			const excludedSecrets = (await cfg.getActiveCredentialValues?.()) ?? [];
+			const code = buildSnapshotCode(
+				cfg.path,
+				cfg.manifestPath,
+				cfg.maxBytes ?? DEFAULT_SNAPSHOT_MAX_BYTES,
+				excludedSecrets,
+			);
 			const r = await this.enqueueExecute(code, { maxOutputChars: SNAPSHOT_MAX_OUTPUT_CHARS, internal: true });
 			if (r.status !== "ok") {
 				this.appendKernelDiagnostic(`state snapshot failed: ${r.error?.evalue ?? r.stderr}`);

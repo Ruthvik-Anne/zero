@@ -14,6 +14,44 @@ async function waitForFile(path: string): Promise<void> {
 	}
 }
 
+describe("execCommand output handling (B5/B6)", () => {
+	it("caps accumulated stdout and reports truncation", async () => {
+		const result = await execCommand(
+			process.execPath,
+			["-e", "process.stdout.write('x'.repeat(200))"],
+			process.cwd(),
+			{ maxOutputChars: 50 },
+		);
+
+		expect(result.stdout.length).toBe(50);
+		expect(result.outputTruncated).toBe(true);
+	});
+
+	it("does not report truncation when output stays under the cap", async () => {
+		const result = await execCommand(process.execPath, ["-e", "process.stdout.write('hi')"], process.cwd(), {
+			maxOutputChars: 50,
+		});
+
+		expect(result.stdout).toBe("hi");
+		expect(result.outputTruncated).toBe(false);
+	});
+
+	it("does not corrupt multi-byte UTF-8 output split across chunk boundaries", async () => {
+		// A run of emoji is long enough that Node's pipe chunking is likely to
+		// split a 4-byte codepoint across two "data" events on at least one run;
+		// setEncoding("utf8") must reassemble it correctly either way.
+		const result = await execCommand(
+			process.execPath,
+			["-e", "process.stdout.write('\u{1F600}'.repeat(2000))"],
+			process.cwd(),
+			{ maxOutputChars: 1024 * 1024 },
+		);
+
+		expect(result.stdout).toBe("\u{1F600}".repeat(2000));
+		expect(result.stdout).not.toContain("�");
+	});
+});
+
 describe.skipIf(process.platform === "win32")("execCommand", () => {
 	it("force kills a process that ignores SIGTERM and cleans up the fallback timer", async () => {
 		const testDir = mkdtempSync(join(tmpdir(), "prime-agent-exec-test-"));

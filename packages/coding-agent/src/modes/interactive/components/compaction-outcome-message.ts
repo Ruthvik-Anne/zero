@@ -1,4 +1,4 @@
-import { Box, Container, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Text } from "@zero-agent/tui";
 import type { CompactionOutcomeMessage } from "../../../core/messages.js";
 import { theme } from "../theme/theme.js";
 

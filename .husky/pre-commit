@@ -1,20 +1,33 @@
 #!/bin/sh
 
-# Get the staged files before running check so formatter changes can be restaged.
-STAGED_FILES=$(git diff --cached --name-only)
-
-echo "Running formatting, linting, and type checking..."
-npm run check
+# (C4) Scoped to staged files instead of the full `npm run check` (biome +
+# tsgo + installer-render + browser-smoke) on every commit — installer-render
+# alone takes ~60s. The full check still runs in CI (build-check job) and via
+# the pre-push hook, so nothing stops reaching main unchecked; this just
+# moves the slow integration-level checks off the commit-time hot path.
+#
+# (C5) git add -p safety: the old hand-rolled version of this hook re-added
+# every previously-staged file in full after running checks, which silently
+# swept any deliberately unstaged hunks (a `git add -p` partial stage) into
+# the commit too. lint-staged owns this problem properly — it hides unstaged
+# changes before running tasks and restores them after, with actual handling
+# for the case a formatter's edit and a hidden unstaged hunk land near each
+# other (verified empirically: a naive `git stash --keep-index` + manual
+# restage can produce a stash-pop merge conflict in exactly that case;
+# lint-staged is hardened against it, a hand-rolled version isn't worth
+# re-deriving).
+echo "Running lint-staged (biome on staged files)..."
+npx lint-staged
 if [ $? -ne 0 ]; then
-  echo "Checks failed. Please fix the errors before committing."
+  echo "Lint-staged checks failed. Please fix the errors before committing."
   exit 1
 fi
 
-# Restage files that were previously staged and may have been modified by formatting.
-for file in $STAGED_FILES; do
-  if [ -f "$file" ]; then
-    git add "$file"
-  fi
-done
+echo "Running type check..."
+npx tsgo --noEmit
+if [ $? -ne 0 ]; then
+  echo "Type check failed. Please fix the errors before committing."
+  exit 1
+fi
 
 echo "All pre-commit checks passed."

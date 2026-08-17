@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionManager } from "../src/core/session-manager.js";
 
 function git(cwd: string, ...args: string[]): string {
-	return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+	return execFileSync("git", args, { cwd, encoding: "utf8", windowsHide: true }).trim();
 }
 
 function commit(dir: string, message: string): string {

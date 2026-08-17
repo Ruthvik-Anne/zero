@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
+import { ENV_AGENT_DIR } from "../../config.js";
 import { getProcessStartId } from "../../core/session-lease.js";
 import { defaultDaemonSocketDir } from "./daemon-socket.js";
 
@@ -247,7 +248,17 @@ class DaemonShutdownAdmission {
 }
 
 function defaultDaemonSupervisorRegistryDir(environment: NodeJS.ProcessEnv = process.env): string {
-	return environment[DAEMON_SUPERVISOR_REGISTRY_DIR_ENV] ?? resolve(defaultDaemonSocketDir(), "supervisor-owners");
+	const explicit = environment[DAEMON_SUPERVISOR_REGISTRY_DIR_ENV];
+	if (explicit) return explicit;
+	// Scope the registry to the active agent dir when one is set (every test, and
+	// any real per-project override, already sets this) rather than always
+	// falling back to one machine-global directory. Unrelated agent dirs no
+	// longer contend for the same `.guard` lockfile/shutdown-admission lease,
+	// and concurrent test files get real isolation without each needing to know
+	// about DAEMON_SUPERVISOR_REGISTRY_DIR_ENV specifically.
+	const agentDir = environment[ENV_AGENT_DIR];
+	if (agentDir) return resolve(agentDir, "daemon-supervisor-owners");
+	return resolve(defaultDaemonSocketDir(), "supervisor-owners");
 }
 
 async function withDaemonSupervisorRegistryGuard<T>(registryDir: string, action: () => T | Promise<T>): Promise<T> {
@@ -389,10 +400,14 @@ export async function assertDaemonSupervisorOwnerCurrent(
 	return fingerprint;
 }
 
-export async function acquireDaemonShutdownAdmission(): Promise<DaemonShutdownAdmission> {
+export async function acquireDaemonShutdownAdmission(timeoutMs = 30_000): Promise<DaemonShutdownAdmission> {
 	const registryDir = defaultDaemonSupervisorRegistryDir();
 	const processStartId = getProcessStartId(process.pid);
+	const deadline = Date.now() + timeoutMs;
 	while (true) {
+		if (Date.now() >= deadline) {
+			throw new Error(`Timed out after ${timeoutMs}ms waiting for daemon shutdown admission`);
+		}
 		let acquired: DaemonShutdownAdmissionRecord | undefined;
 		await withDaemonSupervisorRegistryGuard(registryDir, () => {
 			if (readActiveShutdownAdmission(registryDir)) {

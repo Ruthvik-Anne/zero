@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
-AUTH_FILE="$HOME/.prime/agent/auth.json"
-AUTH_BACKUP="$HOME/.prime/agent/auth.json.bak"
+# Matches config.ts's getAgentDir(): ZERO_CODING_AGENT_DIR overrides the default
+# ~/.zero/agent, and the auth-isolation guard below must move the same file the
+# suite will actually resolve to, not the pre-rebrand ~/.prime/agent path.
+AGENT_DIR="${ZERO_CODING_AGENT_DIR:-$HOME/.zero/agent}"
+AUTH_FILE="$AGENT_DIR/auth.json"
+AUTH_BACKUP="$AGENT_DIR/auth.json.bak"
 
 # Restore auth.json on exit (success or failure)
 cleanup() {

@@ -28,7 +28,7 @@ import {
 	type GetContinuationMessagesContext,
 	type ShouldStopAfterTurnContext,
 	type ThinkingLevel,
-} from "@earendil-works/pi-agent-core";
+} from "@zero-agent/agent-core";
 import type {
 	Api,
 	AssistantMessage,
@@ -38,19 +38,30 @@ import type {
 	TextContent,
 	Usage,
 	UserMessage,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
-	getSupportedThinkingLevels,
 	isContextOverflow,
-	modelsAreEqual,
 	resetApiProviders,
 	supportsFastMode,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
+import type { ProviderCandidate } from "@zero-agent/ai/router";
+import { ClassificationStore, rankSameClassModels } from "@zero-agent/ai/router";
 import { theme } from "../modes/interactive/theme/theme.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
+import { consultAdvisor } from "./advisor/advisor.js";
+import {
+	buildLoopAuditQuestion,
+	createLoopAuditContextMessage,
+	createLoopAuditorState,
+	type LoopAuditorConfig,
+	type LoopAuditorState,
+	recordLoopAuditorTurn,
+	resetLoopAuditor,
+	shouldRunLoopAudit,
+} from "./advisor/loop-auditor.js";
 import {
 	AGENT_MESSAGE_CUSTOM_TYPE,
 	AGENT_MESSAGE_RECEIVED_PREVIEW_LABEL,
@@ -81,7 +92,18 @@ import {
 	normalizeObserveMaxChars,
 	ORCHESTRATION_HEARTBEAT_SKILL_NAME,
 } from "./agent-observe.js";
+import {
+	cycleModelOnSession,
+	cycleThinkingLevelOnSession,
+	getAvailableThinkingLevelsForSession,
+	pendingModelSelectEmit,
+	setModelOnSession,
+	setServiceTierOnSession,
+	setThinkingLevelOnSession,
+	supportsThinkingForSession,
+} from "./agent-session-model.js";
 import { flushAgentTraceUpload } from "./agent-traces.js";
+import { type AskUserResult, askUser, validateAskUserSpec } from "./ask-user/ask-user.js";
 import {
 	addLoginGuidanceToAuthError,
 	formatAuthenticationFailedMessage,
@@ -103,6 +125,8 @@ import {
 	setAutonomousEnabled,
 } from "./autonomous.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
+import { BrowserSession } from "./browser/browser-session.js";
+import { isGitRepo, listCheckpoints, rollbackCheckpoint } from "./checkpoint/checkpoint.js";
 import {
 	COMPACT_SKILL_NAME,
 	type CompactionResult,
@@ -123,7 +147,6 @@ import {
 } from "./context-tree.js";
 import type { AgentCronJob, AgentRlmHeartbeatController, AgentRlmHeartbeatStatusUpdate } from "./cron-jobs.js";
 import { normalizeHeartbeatDeliveryMode } from "./cron-jobs.js";
-import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.js";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.js";
 import {
@@ -166,9 +189,13 @@ import {
 	goalTokenDeltaForUsage,
 	isPersistedGoalState,
 	normalizeGoalState,
+	unmetAcceptanceCriteria,
+	validateAcceptanceCriteria,
 	validateGoalBudget,
 	validateGoalObjective,
+	validateSubGoals,
 } from "./goals.js";
+import { isKernelPythonLikelyCached } from "./kernel/bootstrap.js";
 import type { HostRequestHandlers, KernelSentAgentMessage } from "./kernel/index.js";
 import { type RestoreResult, snapshotPathIn } from "./kernel/state-snapshot.js";
 import type { McpManager } from "./mcp/mcp-manager.js";
@@ -188,6 +215,13 @@ import {
 	IPYTHON_STATE_RESTORED_CUSTOM_TYPE,
 	isSessionSlashCommandMessage,
 } from "./messages.js";
+import {
+	DEFAULT_SESSION_MODE,
+	isPersistedSessionMode,
+	parseModeSlashCommand,
+	SESSION_MODE_CUSTOM_TYPE,
+	type SessionMode,
+} from "./mode/session-mode.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { throwIfPromptAdmissionCancelled } from "./prompt-admission.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
@@ -270,7 +304,16 @@ import { createAllToolDefinitions } from "./tools/index.js";
 import { IpythonKernelProvisioner } from "./tools/ipython.js";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
 import { addAssistantUsage, emptyUsage } from "./usage.js";
+import {
+	getActiveCredentialValues,
+	listCredentialNames,
+	resolveVaultPlaceholders,
+	scrubKnownSecrets,
+	storeCredential,
+	VaultTokenRegistry,
+} from "./vault/vault.js";
 import { SERPER_CREDENTIAL_ID, SERPER_ENV_VAR, WEBSEARCH_SKILL_NAME } from "./websearch-credential.js";
+import { createWorktree, removeWorktree, type WorktreeInfo } from "./workspace/git-worktree.js";
 
 export type { GoalState, GoalStatus } from "./goals.js";
 export type { SessionStats } from "./session-stats.js";
@@ -494,6 +537,17 @@ export interface AgentSessionConfig {
 	 * is 0 and no persisted thread_goal_state entry exists in the branch.
 	 */
 	initialGoal?: { objective: string; tokenBudget?: number };
+	/** module E: periodic self-audit policy. Default: disabled (unchanged behavior). */
+	loopAuditor?: LoopAuditorConfig;
+	/**
+	 * module I: plan/auto/manual mode. Unlike initialGoal, this applies at ANY
+	 * rlmDepth — mode is a safety boundary, not a per-task objective, so an RLM
+	 * child must inherit it rather than silently defaulting to "auto" and
+	 * escaping a parent's plan-mode restriction. A fresh child session has no
+	 * persisted session_mode_state entry to load, so without this the child's
+	 * mode would default to DEFAULT_SESSION_MODE regardless of the parent's.
+	 */
+	mode?: SessionMode;
 }
 
 export interface ExtensionBindings {
@@ -898,7 +952,7 @@ export interface ModelCycleResult {
 	isScoped: boolean;
 }
 
-interface ModelSelectOptions {
+export interface ModelSelectOptions {
 	waitForExtensions?: boolean;
 }
 
@@ -959,7 +1013,7 @@ interface RlmSubagentModelSelection {
 // ============================================================================
 
 /** Standard thinking levels */
-const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+export const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /** Cap on the post-compaction kernel namespace probe so a wedged kernel can't stall recovery. */
 const KERNEL_STATE_LISTING_TIMEOUT_MS = 5000;
@@ -1081,7 +1135,8 @@ export class AgentSession {
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
 	readonly settingsManager: SettingsManager;
-	private _serviceTierPreference: ServiceTier;
+	/** Not private: read/written by ./agent-session-model.ts's model/thinking-level/service-tier helpers. */
+	_serviceTierPreference: ServiceTier;
 
 	private _scopedModels: Array<{
 		model: Model<any>;
@@ -1122,11 +1177,15 @@ export class AgentSession {
 
 	private _goalState: GoalState = emptyGoalState();
 	private _goalAccountingStartedAt: number | undefined = undefined;
+	private _sessionMode: SessionMode = DEFAULT_SESSION_MODE;
+	/** (D10) See ExtensionContext.allowRiskyActions. Not persisted — a per-run, in-memory override only module J (MCP tasks) ever sets. */
+	private _allowRiskyActions = true;
 	private _goalAccountedAssistantMessages = new WeakSet<AssistantMessage>();
 	private _goalAbortInProgress = false;
 	private _autonomousState: AutonomousRuntimeState;
 	private _autonomousContinuationSuppressionDepth = 0;
 	private _autonomousContinuationSuppressedMessages = new WeakSet<AgentMessage>();
+	private _loopAuditorState: LoopAuditorState;
 
 	// Compaction state
 	private _compactionAbortController: AbortController | undefined = undefined;
@@ -1163,15 +1222,18 @@ export class AgentSession {
 	private _extensionRunner!: ExtensionRunner;
 	private _execEnvProvider?: () => Record<string, string | undefined> | undefined;
 	private _turnIndex = 0;
-	private _modelSelectEmitQueue: Promise<void> = Promise.resolve();
-	private _modelSelectEmitQueueIdle = true;
-	private _modelSelectEmitContext = new AsyncLocalStorage<boolean>();
+	// Not private: read/written by ./agent-session-model.ts's model/thinking-level/service-tier helpers.
+	_modelSelectEmitQueue: Promise<void> = Promise.resolve();
+	_modelSelectEmitQueueIdle = true;
+	_modelSelectEmitContext = new AsyncLocalStorage<boolean>();
 
 	private _resourceLoader: ResourceLoader;
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
 	private _cwd: string;
 	private _agentDir?: string;
+	/** (task #78) Session-scoped, in-memory only — issued "credential" ask_user placeholder tokens. */
+	private readonly _vaultTokenRegistry = new VaultTokenRegistry();
 	private _extensionRunnerRef?: { current?: ExtensionRunner };
 	private _initialActiveToolNames?: string[];
 	private _allowedToolNames?: Set<string>;
@@ -1220,6 +1282,12 @@ export class AgentSession {
 	// Failed explicit deletes stay hidden from listings but retain their original
 	// selector so a later delete can retry cleanup without orphaning the runtime.
 	private _rlmChildCleanupFailures = new Map<string, RlmSubagentRegistryEntry>();
+	// module B: worktrees created for isolation:"worktree" children, removed once
+	// tracking for that child is torn down (see _removeRlmSubagentTracking).
+	private _rlmChildWorktrees = new Map<string, WorktreeInfo>();
+	// module J: one browser per session, lazily launched on first browser.* host
+	// request; closed in _disposeAsyncOnce alongside the ipython kernel.
+	private _browserSession: BrowserSession | undefined;
 	private _deletingRlmChildren = new Map<
 		string,
 		{
@@ -1235,6 +1303,10 @@ export class AgentSession {
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
+
+	// module G (task #19): shared classification store backing rlm.run's
+	// modelClass="same"|"smaller" opt-in for subagents.
+	private readonly _classificationStore = new ClassificationStore();
 
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
@@ -1331,6 +1403,17 @@ export class AgentSession {
 		this._autonomousState = createAutonomousRuntimeState(config.autonomous, {
 			cwd: this._cwd,
 		});
+		this._loopAuditorState = createLoopAuditorState(config.loopAuditor);
+		this._sessionMode = this._loadPersistedSessionMode();
+		// A fresh RLM child has no persisted session_mode_state entry to load (its
+		// branch is brand new), so without this it would silently default to
+		// DEFAULT_SESSION_MODE ("auto") regardless of the parent's actual mode —
+		// escaping a parent's plan-mode restriction entirely. Mode is a safety
+		// boundary, so unlike initialGoal this applies at any rlmDepth.
+		if (config.mode !== undefined && this._sessionMode === DEFAULT_SESSION_MODE) {
+			this._sessionMode = config.mode;
+			this._persistSessionMode(config.mode);
+		}
 		this._goalState = this._loadPersistedGoalState();
 		// Seed initial goal from CLI --goal flag, but only for top-level sessions
 		// and only when the branch contains only bootstrap entry types (model_change,
@@ -1386,6 +1469,51 @@ export class AgentSession {
 
 	setSubagentRuntimeHost(host?: SubagentRuntimeHost): void {
 		this._subagentRuntimeHost = host;
+	}
+
+	/**
+	 * module F → module D: true if a tool call within this turn was refused by
+	 * the native harm-check as a hard_block (see tool-definition-wrapper.ts's
+	 * `harmBlockedResult` — `details.harmBlocked`/`details.action` are set
+	 * there specifically so this check needs no re-run of the check itself and
+	 * no audit-log read). Scans the tool-result messages appended immediately
+	 * after `message` in the transcript, which is where a turn's tool results land.
+	 */
+	private _turnHasHardBlockedToolResult(message: AssistantMessage): boolean {
+		const messages = this.agent.state.messages;
+		const index = messages.indexOf(message as (typeof messages)[number]);
+		if (index === -1) return false;
+		for (let i = index + 1; i < messages.length; i++) {
+			const entry = messages[i];
+			if (entry.role !== "toolResult") continue;
+			const details = entry.details as { harmBlocked?: boolean; action?: string } | undefined;
+			if (details?.harmBlocked && details.action === "hard_block") {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * module G integration: resolve the settings-configured provider fallback
+	 * chain into candidates usable by a router call (e.g. `planRefinement`'s
+	 * refinement LLM call). Mirrors sdk.ts's `streamFn` wiring exactly — an
+	 * entry that doesn't resolve to a known model or has no usable credentials
+	 * is skipped rather than failing the whole chain.
+	 */
+	private async _buildProviderFallbackCandidates(): Promise<ProviderCandidate[]> {
+		const candidates: ProviderCandidate[] = [];
+		for (const entry of this.settingsManager.getProviderFallback()) {
+			const fallbackModel = this._modelRegistry.find(entry.provider, entry.modelId);
+			if (!fallbackModel) continue;
+			const fallbackAuth = await this._modelRegistry.getApiKeyAndHeaders(fallbackModel);
+			if (!fallbackAuth.ok) continue;
+			candidates.push({
+				model: fallbackModel,
+				options: { apiKey: fallbackAuth.apiKey, headers: fallbackAuth.headers },
+			});
+		}
+		return candidates;
 	}
 
 	private async _getRequiredRequestAuth(model: Model<any>): Promise<{
@@ -1483,8 +1611,8 @@ export class AgentSession {
 	// Event Subscription
 	// =========================================================================
 
-	/** Emit an event to all listeners */
-	private _emit(event: AgentSessionEvent): void {
+	/** Emit an event to all listeners. Not private: called from ./agent-session-model.ts. */
+	_emit(event: AgentSessionEvent): void {
 		for (const l of this._eventListeners) {
 			try {
 				l(event);
@@ -1590,6 +1718,54 @@ export class AgentSession {
 			return { maxDepth: parseDepth(env, 1, "RLM_MAX_DEPTH"), source: "env" };
 		}
 		return { maxDepth: 1, source: "default" };
+	}
+
+	/** module I: plan/auto/manual mode, persisted the same way goal state is. */
+	private _loadPersistedSessionMode(): SessionMode {
+		const branch = this.sessionManager.getBranch();
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i];
+			if (
+				entry.type === "custom" &&
+				entry.customType === SESSION_MODE_CUSTOM_TYPE &&
+				isPersistedSessionMode(entry.data)
+			) {
+				return entry.data.mode;
+			}
+		}
+		return DEFAULT_SESSION_MODE;
+	}
+
+	private _reloadSessionModeFromBranch(): void {
+		this._sessionMode = this._loadPersistedSessionMode();
+	}
+
+	private _persistSessionMode(mode: SessionMode): void {
+		this.sessionManager.appendCustomEntry(SESSION_MODE_CUSTOM_TYPE, { mode });
+	}
+
+	/** Current plan/auto/manual mode (module I). Read by the harm-check gate via ExtensionContext. */
+	getSessionMode(): SessionMode {
+		return this._sessionMode;
+	}
+
+	/** Switches mode and persists it. Returns the previous mode. */
+	setSessionMode(mode: SessionMode): SessionMode {
+		const previous = this._sessionMode;
+		if (mode === previous) return previous;
+		this._sessionMode = mode;
+		this._persistSessionMode(mode);
+		return previous;
+	}
+
+	/** (D10) See ExtensionContext.allowRiskyActions. */
+	getAllowRiskyActions(): boolean {
+		return this._allowRiskyActions;
+	}
+
+	/** module J: called once, before any tool call, to fail closed on soft-block for a task session that hasn't been explicitly granted risk-approval authority. */
+	setAllowRiskyActions(value: boolean): void {
+		this._allowRiskyActions = value;
 	}
 
 	private _loadPersistedGoalState(): GoalState {
@@ -1778,7 +1954,12 @@ export class AgentSession {
 		this._emitQueueUpdate();
 	}
 
-	private _startGoal(objectiveText: string, tokenBudget: number | undefined): GoalState {
+	private _startGoal(
+		objectiveText: string,
+		tokenBudget: number | undefined,
+		subGoals?: unknown,
+		acceptanceCriteria?: unknown,
+	): GoalState {
 		const objective = validateGoalObjective(objectiveText);
 		const budget = validateGoalBudget(tokenBudget);
 		const now = Date.now();
@@ -1793,6 +1974,8 @@ export class AgentSession {
 			continuationsUsed: 0,
 			createdAt: now,
 			updatedAt: now,
+			subGoals: validateSubGoals(subGoals),
+			acceptanceCriteria: validateAcceptanceCriteria(acceptanceCriteria),
 		};
 		this._goalAccountingStartedAt = now;
 		this._setGoalState(goal);
@@ -1996,6 +2179,42 @@ export class AgentSession {
 		}
 		this._emitAutonomousStatus();
 		return true;
+	}
+
+	/** `/mode` (show current), `/mode plan|auto|manual` (switch). module I. */
+	private _handleModeSlashCommand(text: string): string {
+		// `text` is the full raw command ("/mode manual") — re-parse to get just the
+		// argument portion, mirroring _parseAutonomousSlashCommand's exact pattern.
+		const args = parseSessionSlashCommand(text)?.args ?? "";
+		const parsed = parseModeSlashCommand(args);
+		if (!parsed) {
+			return `Usage: /mode [plan|auto|manual] (current: ${this._sessionMode})`;
+		}
+		if (parsed.kind === "show") {
+			return `Current mode: ${this._sessionMode}`;
+		}
+		const previous = this.setSessionMode(parsed.mode!);
+		if (previous === parsed.mode) {
+			return `Mode is already ${parsed.mode}.`;
+		}
+		return `Mode switched: ${previous} → ${parsed.mode}.`;
+	}
+
+	/** `/rollback [checkpoint-id]` — module H. Defaults to the most recent checkpoint. */
+	private _handleRollbackSlashCommand(text: string): string {
+		const args = (parseSessionSlashCommand(text)?.args ?? "").trim();
+		const checkpoints = listCheckpoints(this._cwd);
+		if (checkpoints.length === 0) {
+			return isGitRepo(this._cwd)
+				? "No checkpoints recorded yet — checkpoints are created automatically when a soft-block is approved."
+				: "This workspace is not a git repository — module H has no checkpoint coverage here.";
+		}
+		const result = rollbackCheckpoint(this._cwd, args || undefined);
+		if (!result.ok) {
+			return `Rollback failed: ${result.error}`;
+		}
+		const target = args ? checkpoints.find((c) => c.id === args) : checkpoints[0];
+		return `Rolled back to checkpoint ${target?.id ?? args} (${new Date(target?.createdAt ?? Date.now()).toISOString()}).`;
 	}
 
 	/** Append custom messages returned by before_agent_start extension handlers. */
@@ -2726,6 +2945,11 @@ export class AgentSession {
 		if (queuedMessage && this._postCompactionContinuationMessages.includes(queuedMessage)) {
 			return queuedMessage;
 		}
+		// module F: a hard-blocked action halts autonomous continuation outright, in
+		// every mode — never silently retried or continued past.
+		if (this._turnHasHardBlockedToolResult(message)) {
+			return undefined;
+		}
 		const snapshot = this._snapshotAutonomousRuntimeState();
 		const arrivalEpoch = this._sessionInputArrivalEpoch;
 		const autonomousMessage = await nextAutonomousContinuation(this._autonomousState, message, {
@@ -2830,12 +3054,162 @@ export class AgentSession {
 				if (payload.token_budget !== undefined && typeof payload.token_budget !== "number") {
 					throw new Error("goal.create token_budget must be an integer when provided");
 				}
-				return goalHostResponse(this._createGoalFromHost(payload.objective, payload.token_budget), false);
+				return goalHostResponse(
+					this._createGoalFromHost(
+						payload.objective,
+						payload.token_budget,
+						payload.sub_goals,
+						payload.acceptance_criteria,
+					),
+					false,
+				);
 			}
+			case "goal.update":
+				return goalHostResponse(this._updateGoalFromHost(payload.sub_goals, payload.acceptance_criteria), false);
 			case "goal.complete":
 				return goalHostResponse(this._completeGoalFromHost(), true);
 			default:
 				throw new Error(`unknown goal request type "${type}"`);
+		}
+	}
+
+	/**
+	 * module E: handle an advisor.consult request from the kernel host bridge —
+	 * a stronger, skeptical second opinion on the model's own recent approach,
+	 * the same role Claude Code's own advisor tool plays. Reuses the
+	 * side-conversation mechanism (advisor.ts wraps side-question.ts) rather
+	 * than a separate transcript-cloning implementation.
+	 */
+	async handleAdvisorHostRequest(payload: Record<string, unknown> = {}): Promise<{
+		advice: string;
+		status: string;
+		error_message: string | null;
+	}> {
+		if (payload.question !== undefined && typeof payload.question !== "string") {
+			throw new Error("advisor.consult question must be a string when provided");
+		}
+		const overrideModel = this._resolveAdvisorModel();
+		// (D13) Same signal every other host-request handler in this class already
+		// forwards (e.g. askUser above) — a model-initiated advisor.consult() call
+		// is cancellable the same way an ask_user prompt already is.
+		const result = await consultAdvisor(
+			this.agent,
+			payload.question as string | undefined,
+			overrideModel,
+			this.agent.signal,
+		);
+		return { advice: result.advice, status: result.status, error_message: result.errorMessage ?? null };
+	}
+
+	private _resolveAdvisorModel(): Model<any> | undefined {
+		const configured = this.settingsManager.getAdvisorModel();
+		if (!configured) return undefined;
+		return this._modelRegistry.find(configured.provider, configured.modelId);
+	}
+
+	/**
+	 * module E: handle an ask_user.ask request from the kernel host bridge.
+	 * Requires an attached UI (interactive mode) — headless/print/daemon
+	 * sessions have no human to ask, so this fails with guidance to make a
+	 * reasonable assumption instead, mirroring autonomous mode's own
+	 * "no human input available" doctrine rather than hanging forever.
+	 *
+	 * (task #78) `type: "credential"` never returns the typed secret to the
+	 * model: the plaintext goes straight into the per-project vault, and the
+	 * model gets back only an opaque `zero-cred://` placeholder token, minted
+	 * fresh here and remembered as valid for this session's registry — the
+	 * only thing tool-definition-wrapper.ts's substitution step will accept.
+	 */
+	async handleAskUserHostRequest(payload: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+		const spec = validateAskUserSpec(payload);
+		if (!this._extensionUIContext) {
+			throw new Error(
+				"ask_user is unavailable: no interactive UI is attached to this session (headless/print/daemon mode). Make a reasonable assumption, state it explicitly, and proceed.",
+			);
+		}
+		const result: AskUserResult = await askUser(this._extensionUIContext, spec, this.agent.signal);
+		if (spec.type === "credential") {
+			if (result.answer === null) {
+				return { type: "credential", answer: null };
+			}
+			await storeCredential(this._cwd, spec.name, result.answer);
+			return { type: "credential", answer: this._vaultTokenRegistry.issue(spec.name) };
+		}
+		return { ...result };
+	}
+
+	/**
+	 * (task #78) Handle a vault.* request from the kernel host bridge. Only
+	 * ever surfaces credential *names* — never values, never tokens — so the
+	 * model can discover what's already stored without any secret material
+	 * (or anything derived from it) crossing back into its context.
+	 */
+	async handleVaultHostRequest(): Promise<{ names: string[] }> {
+		return { names: await listCredentialNames(this._cwd) };
+	}
+
+	/**
+	 * module J: native browser automation host requests. One browser per
+	 * session, lazily launched on first use; Playwright is an ordinary npm
+	 * dependency of this package (resolved at `npm install` time), not a
+	 * skill lazily installed into the kernel venv at runtime. The model is
+	 * the perception/action loop — it reads each action's result and decides
+	 * the next call — this only owns the browser lifecycle and primitive
+	 * actions (navigate, click, type, extract, screenshot).
+	 */
+	private _getOrCreateBrowserSession(): BrowserSession {
+		if (!this._browserSession) {
+			this._browserSession = new BrowserSession();
+		}
+		return this._browserSession;
+	}
+
+	async handleBrowserHostRequest(
+		type: string,
+		payload: Record<string, unknown> = {},
+	): Promise<Record<string, unknown>> {
+		const session = this._getOrCreateBrowserSession();
+		switch (type) {
+			case "browser.navigate": {
+				if (typeof payload.url !== "string" || !payload.url) {
+					throw new Error("browser.navigate requires a non-empty url");
+				}
+				return { ...(await session.navigate(payload.url)) };
+			}
+			case "browser.click": {
+				if (typeof payload.selector !== "string" || !payload.selector) {
+					throw new Error("browser.click requires a non-empty selector");
+				}
+				await session.click(payload.selector);
+				return { ok: true };
+			}
+			case "browser.type": {
+				if (typeof payload.selector !== "string" || !payload.selector) {
+					throw new Error("browser.type requires a non-empty selector");
+				}
+				if (typeof payload.text !== "string") {
+					throw new Error("browser.type requires text");
+				}
+				await session.type(payload.selector, payload.text);
+				return { ok: true };
+			}
+			case "browser.get_value": {
+				if (typeof payload.selector !== "string" || !payload.selector) {
+					throw new Error("browser.get_value requires a non-empty selector");
+				}
+				return { ...(await session.getInputValue(payload.selector)) };
+			}
+			case "browser.extract_text": {
+				const selector = typeof payload.selector === "string" ? payload.selector : undefined;
+				return { ...(await session.extractText(selector)) };
+			}
+			case "browser.screenshot":
+				return { ...(await session.screenshot()) };
+			case "browser.close":
+				await session.close();
+				return { ok: true };
+			default:
+				throw new Error(`unknown browser request type "${type}"`);
 		}
 	}
 
@@ -3121,7 +3495,12 @@ export class AgentSession {
 		}
 	}
 
-	private _createGoalFromHost(objective: string, tokenBudget: number | undefined): GoalState {
+	private _createGoalFromHost(
+		objective: string,
+		tokenBudget: number | undefined,
+		subGoals?: unknown,
+		acceptanceCriteria?: unknown,
+	): GoalState {
 		switch (this._goalState.status) {
 			case "active":
 				throw new Error(
@@ -3137,13 +3516,41 @@ export class AgentSession {
 				);
 			default:
 				// idle, or a terminal record (complete / error): nothing pending, start fresh.
-				return this._startGoal(objective, tokenBudget);
+				return this._startGoal(objective, tokenBudget, subGoals, acceptanceCriteria);
 		}
+	}
+
+	/**
+	 * Update the live task list (sub-goals) and/or acceptance criteria on the
+	 * active goal. Each provided field is a full replacement (the kernel resends
+	 * the whole list — e.g. after toggling one item's `done`), not a partial
+	 * patch; omit a field to leave it untouched.
+	 */
+	private _updateGoalFromHost(subGoals?: unknown, acceptanceCriteria?: unknown): GoalState {
+		if (!this._goalState.objective || this._goalState.status === "idle") {
+			throw new Error("cannot update goal because this thread has no goal");
+		}
+		this._setGoalState({
+			...this._goalState,
+			subGoals: subGoals === undefined ? this._goalState.subGoals : validateSubGoals(subGoals),
+			acceptanceCriteria:
+				acceptanceCriteria === undefined
+					? this._goalState.acceptanceCriteria
+					: validateAcceptanceCriteria(acceptanceCriteria),
+			updatedAt: Date.now(),
+		});
+		return this._goalState;
 	}
 
 	private _completeGoalFromHost(): GoalState {
 		if (!this._goalState.objective || this._goalState.status === "idle") {
 			throw new Error("cannot complete goal because this thread has no goal");
+		}
+		const unmet = unmetAcceptanceCriteria(this._goalState);
+		if (unmet.length > 0) {
+			throw new Error(
+				`cannot complete goal: ${unmet.length} acceptance criteria are unmet: ${unmet.map((c) => c.text).join("; ")}`,
+			);
 		}
 		const goal = this._goalWithAccountedWallClock();
 		// A turn can cross the budget and complete the goal at once: accounting
@@ -3191,12 +3598,45 @@ export class AgentSession {
 		}
 	}
 
+	/**
+	 * module E: when a loop audit is due, resets the counter and consults the
+	 * advisor with a goal/task-list-focused audit question, returning its
+	 * findings as a context message. Takes priority over goal/autonomous
+	 * continuation for the turn it fires on — the whole point is "take a break"
+	 * before more work stacks on top of possible drift.
+	 */
+	private async _getLoopAuditMessages(signal?: AbortSignal): Promise<AgentMessage[]> {
+		if (!shouldRunLoopAudit(this._loopAuditorState) || signal?.aborted) {
+			return [];
+		}
+		resetLoopAuditor(this._loopAuditorState);
+		try {
+			const question = buildLoopAuditQuestion(this._goalState.objective ? this._goalState : undefined);
+			const overrideModel = this._resolveAdvisorModel();
+			// (D13) Was not forwarded — signal.aborted was only checked before and
+			// after this call, so an abort firing WHILE the consultation was
+			// in-flight had no effect until it finished on its own.
+			const result = await consultAdvisor(this.agent, question, overrideModel, signal);
+			if (signal?.aborted || !result.advice) {
+				return [];
+			}
+			return [createLoopAuditContextMessage(result.advice)];
+		} catch {
+			// A failed self-audit must never crash the agent loop or block the turn.
+			return [];
+		}
+	}
+
 	private async _getContinuationMessages(
 		context: GetContinuationMessagesContext,
 		signal?: AbortSignal,
 	): Promise<AgentMessage[]> {
 		if (this.queuedActionCount > 0) {
 			return [];
+		}
+		const loopAuditMessages = await this._getLoopAuditMessages(signal);
+		if (loopAuditMessages.length > 0) {
+			return loopAuditMessages;
 		}
 		const arrivalEpoch = this._sessionInputArrivalEpoch;
 		const goalSnapshot = this._goalState;
@@ -3214,6 +3654,11 @@ export class AgentSession {
 			this._autonomousContinuationSuppressionDepth > 0 ||
 			context.newMessages.some((message) => this._autonomousContinuationSuppressedMessages.has(message))
 		) {
+			return [];
+		}
+		// module F: a hard-blocked action halts autonomous continuation outright, in
+		// every mode — never silently retried or continued past.
+		if (this._turnHasHardBlockedToolResult(context.message)) {
 			return [];
 		}
 		const autonomousSnapshot = this._snapshotAutonomousRuntimeState();
@@ -3509,6 +3954,7 @@ export class AgentSession {
 				}
 				if (assistantMsg.stopReason !== "error" && assistantMsg.stopReason !== "aborted") {
 					this._assistantTurnsSinceAutoRefine++;
+					recordLoopAuditorTurn(this._loopAuditorState);
 					// In serialized mode, kick off background refinement planning
 					// immediately after the primary stream finishes, while tools
 					// are still executing. The plan is awaited at shouldStopAfterTurn
@@ -3944,6 +4390,11 @@ export class AgentSession {
 			await this._ipythonKernelProvisioner?.dispose();
 		} catch {
 			// a failed kernel startup already cleaned up after itself
+		}
+		try {
+			await this._browserSession?.close();
+		} catch {
+			// Best-effort — a crashed browser process is already gone.
 		}
 		this.dispose();
 		await this._disposeCallbacksPromise;
@@ -5829,6 +6280,12 @@ export class AgentSession {
 				case "autonomous":
 					await this._handleAutonomousSlashCommand(input.text);
 					break;
+				case "mode":
+					resultText = this._handleModeSlashCommand(input.text);
+					break;
+				case "rollback":
+					resultText = this._handleRollbackSlashCommand(input.text);
+					break;
 			}
 			if (resultText) {
 				this._appendDurableSessionCommandMessage(resultText, input.command, true, false);
@@ -6568,40 +7025,10 @@ export class AgentSession {
 
 	// =========================================================================
 	// Model Management
+	//
+	// Implementations live in ./agent-session-model.ts; these are thin wrappers
+	// that keep the public method signatures and names stable for callers.
 	// =========================================================================
-
-	private async _emitModelSelect(
-		nextModel: Model<any>,
-		previousModel: Model<any> | undefined,
-		source: "set" | "cycle" | "restore",
-	): Promise<void> {
-		if (modelsAreEqual(previousModel, nextModel)) return;
-		await this._extensionRunner.emit({
-			type: "model_select",
-			model: nextModel,
-			previousModel,
-			source,
-		});
-	}
-
-	private _queueModelSelectEmit(
-		nextModel: Model<any>,
-		previousModel: Model<any> | undefined,
-		source: "set" | "cycle" | "restore",
-	): Promise<void> {
-		const emit = () =>
-			this._modelSelectEmitContext.run(true, () => this._emitModelSelect(nextModel, previousModel, source));
-		this._modelSelectEmitQueueIdle = false;
-		const promise = this._modelSelectEmitQueue.then(emit, emit);
-		const queued = promise.catch(() => {});
-		this._modelSelectEmitQueue = queued;
-		void queued.finally(() => {
-			if (this._modelSelectEmitQueue === queued) {
-				this._modelSelectEmitQueueIdle = true;
-			}
-		});
-		return promise;
-	}
 
 	/**
 	 * Set model directly.
@@ -6609,52 +7036,11 @@ export class AgentSession {
 	 * @throws Error if the model is not available
 	 */
 	async setModel(model: Model<any>, options: ModelSelectOptions = {}): Promise<void> {
-		if (!this._modelRegistry.hasConfiguredAuth(model)) {
-			throw new Error(`No API key for ${model.provider}/${model.id}`);
-		}
-		if (!(await this._modelRegistry.canUseModel(model))) {
-			throw new Error(`Model "${model.provider}/${model.id}" is not available for the current Prime team.`);
-		}
-
-		const previousModel = this.model;
-		const thinkingLevel = this._getThinkingLevelForModelSwitch();
-		const serviceTier = this._getServiceTierForModelSwitch();
-		this.agent.state.model = model;
-		this.sessionManager.appendModelChange(model.provider, model.id);
-		this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
-
-		// Re-clamp thinking level for new model's capabilities
-		this.setThinkingLevel(thinkingLevel);
-		this._clampServiceTierForModel(serviceTier);
-
-		const emitPromise = this._queueModelSelectEmit(model, previousModel, "set");
-		if (this._shouldWaitForModelSelectEmit(options)) {
-			await emitPromise;
-		} else {
-			this._trackModelSelectEmitError(emitPromise);
-		}
-	}
-
-	private _trackModelSelectEmitError(emitPromise: Promise<void>): void {
-		void emitPromise.catch((error) => {
-			this._extensionRunner.emitError({
-				extensionPath: "<internal>",
-				event: "model_select",
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			});
-		});
-	}
-
-	private _shouldWaitForModelSelectEmit(options: ModelSelectOptions): boolean {
-		return options.waitForExtensions !== false && !this._modelSelectEmitContext.getStore();
+		return setModelOnSession(this, model, options);
 	}
 
 	private _pendingModelSelectEmit(): Promise<void> | undefined {
-		if (!this._modelSelectEmitContext.getStore() && !this._modelSelectEmitQueueIdle) {
-			return this._modelSelectEmitQueue;
-		}
-		return undefined;
+		return pendingModelSelectEmit(this);
 	}
 
 	/**
@@ -6667,101 +7053,14 @@ export class AgentSession {
 		direction: "forward" | "backward" = "forward",
 		options: ModelSelectOptions = {},
 	): Promise<ModelCycleResult | undefined> {
-		if (this._scopedModels.length > 0) {
-			return this._cycleScopedModel(direction, options);
-		}
-		return this._cycleAvailableModel(direction, options);
-	}
-
-	private async _cycleScopedModel(
-		direction: "forward" | "backward",
-		options: ModelSelectOptions,
-	): Promise<ModelCycleResult | undefined> {
-		const availableModels = await this._modelRegistry.refreshAvailableModels();
-		const scopedModels = this._scopedModels.filter((scoped) =>
-			availableModels.some((model) => modelsAreEqual(model, scoped.model)),
-		);
-		if (scopedModels.length <= 1) return undefined;
-
-		const currentModel = this.model;
-		let currentIndex = scopedModels.findIndex((sm) => modelsAreEqual(sm.model, currentModel));
-
-		if (currentIndex === -1) currentIndex = 0;
-		const len = scopedModels.length;
-		const nextIndex = direction === "forward" ? (currentIndex + 1) % len : (currentIndex - 1 + len) % len;
-		const next = scopedModels[nextIndex];
-		const thinkingLevel = this._getThinkingLevelForModelSwitch(next.thinkingLevel);
-		const serviceTier = this._getServiceTierForModelSwitch();
-
-		// Apply model
-		this.agent.state.model = next.model;
-		this.sessionManager.appendModelChange(next.model.provider, next.model.id);
-		this.settingsManager.setDefaultModelAndProvider(next.model.provider, next.model.id);
-
-		// Apply thinking level.
-		// - Explicit scoped model thinking level overrides current session level
-		// - Undefined scoped model thinking level inherits the current session preference
-		// setThinkingLevel clamps to model capabilities.
-		this.setThinkingLevel(thinkingLevel);
-		this._clampServiceTierForModel(serviceTier);
-
-		const emitPromise = this._queueModelSelectEmit(next.model, currentModel, "cycle");
-		if (this._shouldWaitForModelSelectEmit(options)) {
-			await emitPromise;
-		} else {
-			this._trackModelSelectEmitError(emitPromise);
-		}
-
-		return {
-			model: next.model,
-			thinkingLevel: this.thinkingLevel,
-			serviceTier: this.serviceTier,
-			isScoped: true,
-		};
-	}
-
-	private async _cycleAvailableModel(
-		direction: "forward" | "backward",
-		options: ModelSelectOptions,
-	): Promise<ModelCycleResult | undefined> {
-		const availableModels = await this._modelRegistry.refreshAvailableModels();
-		if (availableModels.length <= 1) return undefined;
-
-		const currentModel = this.model;
-		let currentIndex = availableModels.findIndex((m) => modelsAreEqual(m, currentModel));
-
-		if (currentIndex === -1) currentIndex = 0;
-		const len = availableModels.length;
-		const nextIndex = direction === "forward" ? (currentIndex + 1) % len : (currentIndex - 1 + len) % len;
-		const nextModel = availableModels[nextIndex];
-
-		const thinkingLevel = this._getThinkingLevelForModelSwitch();
-		const serviceTier = this._getServiceTierForModelSwitch();
-		this.agent.state.model = nextModel;
-		this.sessionManager.appendModelChange(nextModel.provider, nextModel.id);
-		this.settingsManager.setDefaultModelAndProvider(nextModel.provider, nextModel.id);
-
-		// Re-clamp thinking level for new model's capabilities
-		this.setThinkingLevel(thinkingLevel);
-		this._clampServiceTierForModel(serviceTier);
-
-		const emitPromise = this._queueModelSelectEmit(nextModel, currentModel, "cycle");
-		if (this._shouldWaitForModelSelectEmit(options)) {
-			await emitPromise;
-		} else {
-			this._trackModelSelectEmitError(emitPromise);
-		}
-
-		return {
-			model: nextModel,
-			thinkingLevel: this.thinkingLevel,
-			serviceTier: this.serviceTier,
-			isScoped: false,
-		};
+		return cycleModelOnSession(this, direction, options);
 	}
 
 	// =========================================================================
 	// Thinking Level Management
+	//
+	// Implementations live in ./agent-session-model.ts; these are thin wrappers
+	// that keep the public method signatures and names stable for callers.
 	// =========================================================================
 
 	/**
@@ -6770,70 +7069,11 @@ export class AgentSession {
 	 * Saves to session and settings only if the level actually changes.
 	 */
 	setThinkingLevel(level: ThinkingLevel): void {
-		const availableLevels = this.getAvailableThinkingLevels();
-		const effectiveLevel = availableLevels.includes(level) ? level : this._clampThinkingLevel(level, availableLevels);
-
-		// Only persist if actually changing
-		const previousLevel = this.agent.state.thinkingLevel;
-		const isChanging = effectiveLevel !== previousLevel;
-
-		this.agent.state.thinkingLevel = effectiveLevel;
-
-		if (isChanging) {
-			this.sessionManager.appendThinkingLevelChange(effectiveLevel);
-			if (this.supportsThinking() || effectiveLevel !== "off") {
-				this.settingsManager.setDefaultThinkingLevel(effectiveLevel);
-			}
-			this._emit({ type: "thinking_level_changed", level: effectiveLevel });
-			void this._extensionRunner.emit({
-				type: "thinking_level_select",
-				level: effectiveLevel,
-				previousLevel,
-			});
-		}
+		setThinkingLevelOnSession(this, level);
 	}
 
 	setServiceTier(serviceTier: ServiceTier): void {
-		const effectiveServiceTier = this._getEffectiveServiceTier(serviceTier);
-		const preferenceChanged = effectiveServiceTier !== this._serviceTierPreference;
-		const effectiveTierChanged = effectiveServiceTier !== this.agent.state.serviceTier;
-		if (!preferenceChanged && !effectiveTierChanged) {
-			return;
-		}
-		this._serviceTierPreference = effectiveServiceTier;
-		if (preferenceChanged) {
-			this.sessionManager.appendServiceTierChange(effectiveServiceTier);
-			if (this.model && supportsFastMode(this.model)) {
-				this.settingsManager.setDefaultServiceTier(effectiveServiceTier);
-			}
-		}
-		if (effectiveTierChanged) {
-			this.agent.state.serviceTier = effectiveServiceTier;
-			this._emit({
-				type: "service_tier_changed",
-				serviceTier: effectiveServiceTier,
-			});
-		}
-	}
-
-	private _getEffectiveServiceTier(serviceTier: ServiceTier): ServiceTier {
-		return serviceTier === "priority" && (!this.model || !supportsFastMode(this.model)) ? "default" : serviceTier;
-	}
-
-	private _getServiceTierForModelSwitch(): ServiceTier {
-		return this._serviceTierPreference;
-	}
-
-	private _clampServiceTierForModel(serviceTier: ServiceTier = this.serviceTier): void {
-		const effectiveServiceTier = this._getEffectiveServiceTier(serviceTier);
-		if (effectiveServiceTier === this.agent.state.serviceTier) {
-			return;
-		}
-		this.agent.state.serviceTier = effectiveServiceTier;
-		this._emit({
-			type: "service_tier_changed",
-			serviceTier: effectiveServiceTier,
-		});
+		setServiceTierOnSession(this, serviceTier);
 	}
 
 	/**
@@ -6841,15 +7081,7 @@ export class AgentSession {
 	 * @returns New level, or undefined if model doesn't support thinking
 	 */
 	cycleThinkingLevel(): ThinkingLevel | undefined {
-		if (!this.supportsThinking()) return undefined;
-
-		const levels = this.getAvailableThinkingLevels();
-		const currentIndex = levels.indexOf(this.thinkingLevel);
-		const nextIndex = (currentIndex + 1) % levels.length;
-		const nextLevel = levels[nextIndex];
-
-		this.setThinkingLevel(nextLevel);
-		return nextLevel;
+		return cycleThinkingLevelOnSession(this);
 	}
 
 	/**
@@ -6857,29 +7089,14 @@ export class AgentSession {
 	 * The provider will clamp to what the specific model supports internally.
 	 */
 	getAvailableThinkingLevels(): ThinkingLevel[] {
-		if (!this.model) return THINKING_LEVELS;
-		return getSupportedThinkingLevels(this.model) as ThinkingLevel[];
+		return getAvailableThinkingLevelsForSession(this);
 	}
 
 	/**
 	 * Check if current model supports thinking/reasoning.
 	 */
 	supportsThinking(): boolean {
-		return !!this.model?.reasoning;
-	}
-
-	private _getThinkingLevelForModelSwitch(explicitLevel?: ThinkingLevel): ThinkingLevel {
-		if (explicitLevel !== undefined) {
-			return explicitLevel;
-		}
-		if (!this.supportsThinking()) {
-			return this.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
-		}
-		return this.thinkingLevel;
-	}
-
-	private _clampThinkingLevel(level: ThinkingLevel, _availableLevels: ThinkingLevel[]): ThinkingLevel {
-		return this.model ? (clampThinkingLevel(this.model, level) as ThinkingLevel) : "off";
+		return supportsThinkingForSession(this);
 	}
 
 	// Added to history (not a nextTurn message) so it also reaches the continue()-driven
@@ -7762,6 +7979,7 @@ export class AgentSession {
 			: baselineScope === "global"
 				? globalPlanningState
 				: localPlanningState!;
+		const fallbackCandidates = await this._buildProviderFallbackCandidates();
 		const plan = await planRefinement(
 			this.agent.state.messages,
 			planningState,
@@ -7772,6 +7990,7 @@ export class AgentSession {
 			headers,
 			signal,
 			this.thinkingLevel,
+			fallbackCandidates,
 		);
 		if (this._disposed || signal.aborted) {
 			throw new Error("Refinement cancelled because the session was disposed.");
@@ -8439,6 +8658,8 @@ export class AgentSession {
 					})();
 				},
 				getSystemPrompt: () => this.systemPrompt,
+				getSessionMode: () => this.getSessionMode(),
+				getAllowRiskyActions: () => this.getAllowRiskyActions(),
 			},
 			{
 				registerProvider: (name, config) => {
@@ -8451,6 +8672,15 @@ export class AgentSession {
 				},
 			},
 		);
+		// (task #78) Re-bound on every (re)build alongside bindCore above, but the
+		// registry itself is a session-lifetime field — a /reload must not forget
+		// which tokens it already issued.
+		runner.bindVault({
+			resolvePlaceholders: (text) => resolveVaultPlaceholders(text, this._cwd, this._vaultTokenRegistry),
+			// (task #84) Reverse direction — scrub any already-decrypted secret value
+			// that made it into outbound text back to its placeholder token.
+			scrubKnownSecrets: (text) => scrubKnownSecrets(text, this._vaultTokenRegistry, this._cwd),
+		});
 	}
 
 	private _refreshToolRegistry(options?: { activeToolNames?: string[]; includeAllExtensionTools?: boolean }): void {
@@ -8583,6 +8813,9 @@ export class AgentSession {
 				snapshotDir: this._ipythonKernelSnapshotDir,
 				readyGate: previousDispose,
 				onRestore: notifyRestore ? (result) => this._onIpythonStateRestored(result) : undefined,
+				// (finding #1, task #78/#84 follow-up) Never pickle a resolved vault
+				// credential to disk via the auto/shutdown kernel state snapshot.
+				getActiveCredentialValues: () => getActiveCredentialValues(this._vaultTokenRegistry, this._cwd),
 			});
 			configuredBaseToolDefinitions = createAllToolDefinitions(this._cwd, {
 				ipython: {
@@ -8643,7 +8876,28 @@ export class AgentSession {
 		const hasSnapshot =
 			!!this._ipythonKernelSnapshotDir && existsSync(snapshotPathIn(this._ipythonKernelSnapshotDir));
 		if ((this._prewarmIpythonKernel || hasSnapshot) && this.getActiveToolNames().includes("ipython")) {
-			this._ipythonKernelProvisioner?.prewarm();
+			// Only prewarm eagerly when it won't trigger a full from-scratch venv build
+			// (uv python install + venv create + pip install of ipykernel/runtime/default
+			// packages) — that I/O-heavy rebuild can starve this same process during
+			// unrelated time-boxed work happening concurrently (e.g. a fresh daemon
+			// worker's auth handshake). A cold cache instead falls back to the existing
+			// lazy-start-on-first-use path, no extra code needed. This also governs the
+			// hasSnapshot case: a snapshot implies some prior session already warmed this
+			// exact venv, so the check is expected to pass anyway — and if it doesn't
+			// (e.g. the venv was since wiped), reviving the snapshot a turn later on
+			// first use is a fine fallback too.
+			//
+			// The check is async while this method is sync, so a /reload could replace
+			// the provisioner before it resolves; guard on provisioner identity so a
+			// stale check can't prewarm a provisioner nobody wants anymore.
+			const provisioner = this._ipythonKernelProvisioner;
+			void isKernelPythonLikelyCached({ pythonSkills })
+				.then((cached) => {
+					if (cached && this._ipythonKernelProvisioner === provisioner) {
+						provisioner?.prewarm();
+					}
+				})
+				.catch(() => {});
 		}
 
 		// Subsequent builds are in-process rebuilds (/reload), not a fresh resume.
@@ -8691,9 +8945,26 @@ export class AgentSession {
 				provider: this.model?.provider ?? null,
 				input: this.model?.input ?? [],
 			}),
+			"advisor.consult": async (payload) => this.handleAdvisorHostRequest(payload),
+			"ask_user.ask": async (payload) => this.handleAskUserHostRequest(payload),
+			"vault.list": async () => this.handleVaultHostRequest(),
+			...Object.fromEntries(
+				[
+					"browser.navigate",
+					"browser.click",
+					"browser.type",
+					"browser.get_value",
+					"browser.extract_text",
+					"browser.screenshot",
+					"browser.close",
+				].map((type) => [
+					type,
+					async (payload: Record<string, unknown>) => this.handleBrowserHostRequest(type, payload),
+				]),
+			),
 		};
 		if (this._includeGoals) {
-			for (const type of ["goal.get", "goal.create", "goal.complete"]) {
+			for (const type of ["goal.get", "goal.create", "goal.update", "goal.complete"]) {
 				handlers[type] = async (payload) => this.handleGoalHostRequest(type, payload);
 			}
 		}
@@ -8838,7 +9109,7 @@ export class AgentSession {
 
 	private _addWebsearchKeyEnv(env: Record<string, string>): void {
 		if (this._agentDir) {
-			env.PRIME_AGENT_CODING_AGENT_DIR = this._agentDir;
+			env.ZERO_CODING_AGENT_DIR = this._agentDir;
 		}
 
 		if (process.env[SERPER_ENV_VAR]?.trim()) {
@@ -8933,6 +9204,7 @@ export class AgentSession {
 		spawnCode?: string;
 		sessionDir: string;
 		model: Model<any>;
+		cwdOverride?: string;
 	}): CreateRlmSubagentRuntimeOptions {
 		return {
 			parentSession: this,
@@ -8942,6 +9214,7 @@ export class AgentSession {
 			spawnCode: options.spawnCode,
 			sessionDir: options.sessionDir,
 			model: options.model,
+			cwdOverride: options.cwdOverride,
 			thinkingLevel: clampThinkingLevel(options.model, this.thinkingLevel) as ThinkingLevel,
 			serviceTier:
 				this.serviceTier === "priority" && !supportsFastMode(options.model) ? "default" : this.serviceTier,
@@ -8954,6 +9227,7 @@ export class AgentSession {
 			rlmDepth: this._rlmDepth + 1,
 			rlmMaxDepth: this._rlmMaxDepth,
 			rlmParentNodeId: options.id,
+			mode: this._sessionMode,
 		};
 	}
 
@@ -8966,7 +9240,8 @@ export class AgentSession {
 	}
 
 	private _createInlineRlmSubagentRuntime(options: CreateRlmSubagentRuntimeOptions): RlmSubagentRuntime {
-		const childSessionManager = SessionManager.create(this._cwd, options.sessionDir);
+		const childCwd = options.cwdOverride ?? this._cwd;
+		const childSessionManager = SessionManager.create(childCwd, options.sessionDir);
 		if (options.parentSession.sessionFile) {
 			childSessionManager.newSession({
 				parentSession: options.parentSession.sessionFile,
@@ -9004,7 +9279,7 @@ export class AgentSession {
 			agent: childAgent,
 			sessionManager: childSessionManager,
 			settingsManager: this.settingsManager,
-			cwd: this._cwd,
+			cwd: childCwd,
 			agentDir: this._agentDir,
 			scopedModels: options.scopedModels,
 			resourceLoader: this._resourceLoader,
@@ -9020,6 +9295,7 @@ export class AgentSession {
 			rlmParentNodeId: options.rlmParentNodeId,
 			rlmParentAgent: options.parentSession.sessionName ?? options.parentSession.sessionId,
 			sessionStartEvent: { type: "session_start", reason: "startup" },
+			mode: options.mode,
 		});
 		if (child.sessionName !== options.sessionName) {
 			try {
@@ -9333,6 +9609,18 @@ export class AgentSession {
 			run.unsubscribe = undefined;
 			run.session = undefined;
 		}
+		// module B: once a worktree-isolated child is fully torn down, remove its
+		// worktree — best-effort, never blocks or throws from this cleanup path.
+		const worktree = this._rlmChildWorktrees.get(childId);
+		if (worktree) {
+			this._rlmChildWorktrees.delete(childId);
+			try {
+				removeWorktree(worktree);
+			} catch {
+				// Best-effort cleanup; a leftover worktree is a disk-space issue, not
+				// a correctness one, and must never surface through this path.
+			}
+		}
 	}
 
 	private _emitRlmSubagentRemoval(subagent: RlmSubagentRegistryEntry): void {
@@ -9601,15 +9889,62 @@ export class AgentSession {
 		return { model };
 	}
 
+	/**
+	 * module G (task #19): `rlm.run(modelClass="same"|"smaller")` — a subagent
+	 * opt-in to route to a cheaper live-available model in the parent's own
+	 * classification class ("same"), or the parent's class-or-smaller ("smaller"),
+	 * ranked by class-distance then price (see rankSameClassModels). This is a
+	 * cost optimization, not a safety property like isolation="worktree" — if the
+	 * parent's model isn't in the classification snapshot, or nothing resolves to
+	 * a live-authenticated candidate, this falls back to inheriting the parent's
+	 * model exactly rather than failing the spawn.
+	 */
+	private async _resolveRlmSubagentModelClassPreference(
+		preference: "same" | "smaller",
+	): Promise<RlmSubagentModelSelection> {
+		const parentModel = this.model;
+		if (!parentModel) {
+			throw new Error(formatNoModelSelectedMessage());
+		}
+		const available = await this._authenticatedRlmModels();
+		const ranked = rankSameClassModels(this._classificationStore, parentModel.name, available, {
+			allowSmallerClass: preference === "smaller",
+		});
+		const top = ranked[0];
+		if (!top) {
+			return { model: parentModel };
+		}
+		const auth = await this._modelRegistry.getApiKeyAndHeaders(top.model);
+		if (!auth.ok) {
+			return { model: parentModel };
+		}
+		return { model: top.model };
+	}
+
 	private async _startRlmChildRun(
 		prompt: string,
 		kwargs: Record<string, unknown> = {},
 		spawnCode?: string,
 	): Promise<RlmSpawnHandle> {
-		const { name: rawName, model: rawModel, ...unsupported } = kwargs;
+		const {
+			name: rawName,
+			model: rawModel,
+			isolation: rawIsolation,
+			modelClass: rawModelClass,
+			...unsupported
+		} = kwargs;
 		const unsupportedKwargs = Object.keys(unsupported);
 		if (unsupportedKwargs.length > 0) {
 			throw new Error(`Unsupported rlm.run kwargs: ${unsupportedKwargs.sort().join(", ")}`);
+		}
+		if (rawIsolation !== undefined && rawIsolation !== "worktree") {
+			throw new Error('rlm.run isolation must be "worktree" when provided');
+		}
+		if (rawModelClass !== undefined && rawModelClass !== "same" && rawModelClass !== "smaller") {
+			throw new Error('rlm.run modelClass must be "same" or "smaller" when provided');
+		}
+		if (rawModelClass !== undefined && rawModel !== undefined) {
+			throw new Error("rlm.run modelClass and model are mutually exclusive — model already selects an exact target");
 		}
 		const requestedSessionName = normalizeRequestedRlmSubagentSessionName(rawName);
 		const requestedModel = normalizeRequestedRlmSubagentModel(rawModel);
@@ -9628,7 +9963,10 @@ export class AgentSession {
 		let modelSelection: RlmSubagentModelSelection;
 		try {
 			if (requestedSessionName) await this._assertRlmSubagentSessionNameAvailable(requestedSessionName, true);
-			modelSelection = await this._resolveRlmSubagentModel(requestedModel);
+			modelSelection =
+				rawModelClass !== undefined
+					? await this._resolveRlmSubagentModelClassPreference(rawModelClass as "same" | "smaller")
+					: await this._resolveRlmSubagentModel(requestedModel);
 		} finally {
 			if (requestedSessionName) this._pendingRlmSubagentSessionNames.delete(requestedSessionName);
 		}
@@ -9636,6 +9974,18 @@ export class AgentSession {
 
 		const childSessionDir = this._createChildRlmSessionDir();
 		const childNodeId = basename(childSessionDir);
+		let cwdOverride: string | undefined;
+		if (rawIsolation === "worktree") {
+			const worktree = createWorktree(this._cwd, childNodeId);
+			if (!worktree.ok) {
+				// Isolation was explicitly requested — fail closed rather than
+				// silently spawning un-isolated and risking a file conflict with
+				// another concurrent child.
+				throw new Error(`rlm.run isolation="worktree" failed: ${worktree.error}`);
+			}
+			this._rlmChildWorktrees.set(childNodeId, worktree);
+			cwdOverride = worktree.path;
+		}
 		const sessionName = requestedSessionName ?? createDefaultRlmSubagentSessionName(prompt, childNodeId);
 		if (!requestedSessionName) await this._assertRlmSubagentSessionNameAvailable(sessionName);
 		const startedAt = Date.now();
@@ -9702,6 +10052,7 @@ export class AgentSession {
 				spawnCode,
 				sessionDir: childSessionDir,
 				model: modelSelection.model,
+				cwdOverride,
 			}),
 			onSessionPublished: publishChildSession,
 		};
@@ -9952,12 +10303,26 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * (task #84) `prompt` and `spawnCode` (the calling cell's source, aka
+	 * `cellSourceCode`) are scrubbed here, before `_startRlmChildRun` builds the
+	 * child's initial message from them. This is the one spot every caller of
+	 * `_startRlmChildRun` passes through — including the "rlm.run" kernel host
+	 * handler, whose `prompt` argument the live kernel may have already
+	 * evaluated (e.g. an f-string) using a real secret value it decrypted
+	 * earlier in this same session, with no placeholder anywhere in the
+	 * dispatched payload for pre-execution harm-check/vault substitution to
+	 * catch.
+	 */
 	async runRlmChild(
 		prompt: string,
 		kwargs: Record<string, unknown> = {},
 		spawnCode?: string,
 	): Promise<RlmSpawnHandle> {
-		return this._startRlmChildRun(prompt, kwargs, spawnCode);
+		const scrubbedPrompt = await scrubKnownSecrets(prompt, this._vaultTokenRegistry, this._cwd);
+		const scrubbedSpawnCode =
+			spawnCode === undefined ? spawnCode : await scrubKnownSecrets(spawnCode, this._vaultTokenRegistry, this._cwd);
+		return this._startRlmChildRun(scrubbedPrompt, kwargs, scrubbedSpawnCode);
 	}
 
 	// =========================================================================
@@ -10863,6 +11228,7 @@ export class AgentSession {
 			this._mergeUnpersistedCompactionOutcomes(this.agent.state.messages);
 			this._restoreLateIpythonSentAgentMessages();
 			this._reloadGoalStateFromBranch();
+			this._reloadSessionModeFromBranch();
 			this._reloadRlmMaxDepthFromBranch();
 			this._invalidateQueuedPromptPreparation();
 

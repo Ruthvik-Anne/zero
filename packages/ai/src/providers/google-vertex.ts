@@ -207,7 +207,7 @@ export const streamGoogleVertex: StreamFunction<"google-vertex", GoogleVertexOpt
 								type: "toolCall",
 								id: toolCallId,
 								name: part.functionCall.name || "",
-								arguments: (part.functionCall.args as Record<string, any>) ?? {},
+								arguments: part.functionCall.args ?? {},
 								...(part.thoughtSignature && { thoughtSignature: part.thoughtSignature }),
 							};
 

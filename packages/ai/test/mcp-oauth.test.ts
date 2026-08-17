@@ -159,4 +159,4 @@ describe.sequential("MCP OAuth provider", () => {
 	});
 });
 
-const REDIRECT = `http://localhost:${process.env.PI_MCP_OAUTH_CALLBACK_PORT || 53700}/callback`;
+const REDIRECT = `http://localhost:${process.env.ZERO_MCP_OAUTH_CALLBACK_PORT || 53700}/callback`;

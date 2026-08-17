@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getOAuthProvider, resetOAuthProviders } from "@earendil-works/pi-ai/oauth";
+import { getOAuthProvider, resetOAuthProviders } from "@zero-agent/ai/oauth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { McpManager } from "../src/core/mcp/mcp-manager.js";
@@ -106,10 +106,14 @@ describe("McpManager", () => {
 		});
 		const handlers = manager.hostHandlers();
 		expect(await handlers["mcp.config"]({ server: "linear" })).toEqual({
+			type: "http",
 			url: "https://proxy.test/mcp",
 			headers: { "X-Extra": "1" },
 		});
-		expect(await handlers["mcp.config"]({ server: "notion" })).toEqual({ url: "https://mcp.notion.com/mcp" });
+		expect(await handlers["mcp.config"]({ server: "notion" })).toEqual({
+			type: "http",
+			url: "https://mcp.notion.com/mcp",
+		});
 	});
 
 	it("does not treat an oauth override of a catalog name as authed via the official stored cred", () => {
@@ -175,5 +179,73 @@ describe("McpManager", () => {
 		servers = {};
 		manager.refresh();
 		expect(getOAuthProvider("mcp:acme")).toBeUndefined();
+	});
+
+	describe("stdio transport (module J)", () => {
+		it("is enabled once declared — a local command has no host-side auth step", () => {
+			const manager = new McpManager({
+				authStorage,
+				getUserServers: () => ({
+					localtool: { type: "stdio", command: "uvx", args: ["some-mcp-server"] },
+				}),
+			});
+
+			const status = manager.listStatus().find((s) => s.server === "localtool");
+			expect(status).toMatchObject({ enabled: true, usesOAuth: false, transport: "stdio" });
+		});
+
+		it("is disabled when enabled: false is set explicitly", () => {
+			const manager = new McpManager({
+				authStorage,
+				getUserServers: () => ({
+					localtool: { type: "stdio", command: "uvx", enabled: false },
+				}),
+			});
+
+			const status = manager.listStatus().find((s) => s.server === "localtool");
+			expect(status?.enabled).toBe(false);
+		});
+
+		it("mcp.config returns the command/args/env for a stdio server, not a url", async () => {
+			const manager = new McpManager({
+				authStorage,
+				getUserServers: () => ({
+					localtool: {
+						type: "stdio",
+						command: "uvx",
+						args: ["--from", "browser-use[cli]", "browser-use", "--mcp"],
+						env: { OPENAI_API_KEY: "sk-test" },
+					},
+				}),
+			});
+			const handlers = manager.hostHandlers();
+
+			expect(await handlers["mcp.config"]({ server: "localtool" })).toEqual({
+				type: "stdio",
+				command: "uvx",
+				args: ["--from", "browser-use[cli]", "browser-use", "--mcp"],
+				env: { OPENAI_API_KEY: "sk-test" },
+			});
+		});
+
+		it("never registers an OAuth provider for a stdio server", () => {
+			const manager = new McpManager({
+				authStorage,
+				getUserServers: () => ({ localtool: { type: "stdio", command: "uvx" } }),
+			});
+			void manager;
+
+			expect(getOAuthProvider("mcp:localtool")).toBeUndefined();
+		});
+
+		it("does not disable a built-in HTTP integration's skill because of an unrelated stdio server", () => {
+			const manager = new McpManager({
+				authStorage,
+				getUserServers: () => ({ localtool: { type: "stdio", command: "uvx" } }),
+			});
+
+			// Built-ins are still gated on their own auth, independent of any stdio entries.
+			expect(manager.getDisabledBuiltinSkillOverrides()).toContain("-linear/SKILL.md");
+		});
 	});
 });

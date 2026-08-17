@@ -1,293 +1,139 @@
-import { describe, expect, it } from "vitest";
-import { getModel } from "../src/models.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { fauxAssistantMessage, registerFauxProvider } from "../src/providers/faux.js";
 import { complete, stream } from "../src/stream.js";
-import type { Api, Context, Model, StreamOptions } from "../src/types.js";
-import { getKimiCodingTestModel } from "./kimi-test-model.js";
+import type { Context } from "../src/types.js";
 
-type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
+/**
+ * (C6) `abort.live.test.ts` proves these same behaviors against real
+ * providers, but every case there needs a live API key — mid-stream abort
+ * semantics were otherwise completely untested without keys. This exercises
+ * the identical `stream`/`complete` code path through the faux provider
+ * instead, with `tokensPerSecond` pacing so a test can genuinely abort while
+ * a response is still in flight (not just after it's already finished).
+ */
 
-import { hasAzureOpenAICredentials, resolveAzureDeploymentName } from "./azure-utils.js";
-import { hasBedrockCredentials } from "./bedrock-utils.js";
-import { resolveApiKey } from "./oauth.js";
+const registrations: Array<{ unregister: () => void }> = [];
 
-// Resolve OAuth tokens at module level (async, runs before tests)
-const [openaiCodexToken] = await Promise.all([resolveApiKey("openai-codex")]);
-
-async function testAbortSignal<TApi extends Api>(llm: Model<TApi>, options: StreamOptionsWithExtras = {}) {
-	const context: Context = {
-		messages: [
-			{
-				role: "user",
-				content: "What is 15 + 27? Think step by step. Then list 50 first names.",
-				timestamp: Date.now(),
-			},
-		],
-		systemPrompt: "You are a helpful assistant.",
-	};
-
-	let abortFired = false;
-	let text = "";
-	const controller = new AbortController();
-	const response = await stream(llm, context, { ...options, signal: controller.signal });
-	for await (const event of response) {
-		if (abortFired) return;
-		if (event.type === "text_delta" || event.type === "thinking_delta") {
-			text += event.delta;
-		}
-		if (text.length >= 50) {
-			controller.abort();
-			abortFired = true;
-		}
+afterEach(() => {
+	for (const registration of registrations.splice(0)) {
+		registration.unregister();
 	}
-	const msg = await response.result();
+});
 
-	// If we get here without throwing, the abort didn't work
-	expect(msg.stopReason).toBe("aborted");
-	expect(msg.content.length).toBeGreaterThan(0);
-
-	context.messages.push(msg);
-	context.messages.push({
-		role: "user",
-		content: "Please continue, but only generate 5 names.",
-		timestamp: Date.now(),
-	});
-
-	const followUp = await complete(llm, context, options);
-	expect(followUp.stopReason).toBe("stop");
-	expect(followUp.content.length).toBeGreaterThan(0);
+function makeContext(text = "Hello"): Context {
+	return { messages: [{ role: "user", content: text, timestamp: Date.now() }] };
 }
 
-async function testImmediateAbort<TApi extends Api>(llm: Model<TApi>, options: StreamOptionsWithExtras = {}) {
-	const controller = new AbortController();
+describe("abort semantics (faux provider — see abort.live.test.ts for real-API equivalents)", () => {
+	it("aborting mid-stream sets stopReason to aborted and preserves content produced before the abort", async () => {
+		const registration = registerFauxProvider({ tokensPerSecond: 100, tokenSize: { min: 3, max: 3 } });
+		registrations.push(registration);
+		registration.setResponses([fauxAssistantMessage("abcdefghijklmnopqrstuvwxyz")]);
 
-	controller.abort();
+		const controller = new AbortController();
+		let deltaCount = 0;
+		const response = stream(registration.getModel(), makeContext(), { signal: controller.signal });
+		for await (const event of response) {
+			if (event.type === "text_delta") {
+				deltaCount++;
+				controller.abort();
+			}
+		}
+		const msg = await response.result();
 
-	const context: Context = {
-		messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
-	};
-
-	const response = await complete(llm, context, { ...options, signal: controller.signal });
-	expect(response.stopReason).toBe("aborted");
-}
-
-async function testAbortThenNewMessage<TApi extends Api>(llm: Model<TApi>, options: StreamOptionsWithExtras = {}) {
-	// First request: abort immediately before any response content arrives
-	const controller = new AbortController();
-	controller.abort();
-
-	const context: Context = {
-		messages: [{ role: "user", content: "Hello, how are you?", timestamp: Date.now() }],
-	};
-
-	const abortedResponse = await complete(llm, context, { ...options, signal: controller.signal });
-	expect(abortedResponse.stopReason).toBe("aborted");
-	// The aborted message has empty content since we aborted before anything arrived
-	expect(abortedResponse.content.length).toBe(0);
-
-	// Add the aborted assistant message to context (this is what happens in the real coding agent)
-	context.messages.push(abortedResponse);
-
-	// Second request: send a new message - this should work even with the aborted message in context
-	context.messages.push({
-		role: "user",
-		content: "What is 2 + 2?",
-		timestamp: Date.now(),
+		expect(msg.stopReason).toBe("aborted");
+		expect(deltaCount).toBeGreaterThan(0);
+		// Partial content produced before the abort must be preserved, not discarded.
+		expect(msg.content.length).toBeGreaterThan(0);
 	});
 
-	const followUp = await complete(llm, context, options);
-	expect(followUp.stopReason).toBe("stop");
-	expect(followUp.content.length).toBeGreaterThan(0);
-}
+	it("a conversation can continue normally after a mid-stream abort", async () => {
+		const registration = registerFauxProvider({ tokensPerSecond: 100, tokenSize: { min: 3, max: 3 } });
+		registrations.push(registration);
+		registration.setResponses([
+			fauxAssistantMessage("abcdefghijklmnopqrstuvwxyz"),
+			fauxAssistantMessage("follow-up done"),
+		]);
 
-describe("AI Providers Abort Tests", () => {
-	describe.skipIf(!process.env.GEMINI_API_KEY)("Google Provider Abort", () => {
-		const llm = getModel("google", "gemini-2.5-flash");
+		const context = makeContext();
+		const controller = new AbortController();
+		const response = stream(registration.getModel(), context, { signal: controller.signal });
+		for await (const event of response) {
+			if (event.type === "text_delta") {
+				controller.abort();
+			}
+		}
+		const aborted = await response.result();
+		expect(aborted.stopReason).toBe("aborted");
 
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm, { thinking: { enabled: true } });
-		});
+		// Mirrors what the real coding agent does: push the aborted assistant
+		// message into context, then continue the conversation normally.
+		context.messages.push(aborted);
+		context.messages.push({ role: "user", content: "Please continue.", timestamp: Date.now() });
 
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm, { thinking: { enabled: true } });
-		});
+		const followUp = await complete(registration.getModel(), context);
+		expect(followUp.stopReason).toBe("stop");
+		expect(followUp.content.length).toBeGreaterThan(0);
 	});
 
-	describe.skipIf(!process.env.OPENAI_API_KEY)("OpenAI Completions Provider Abort", () => {
-		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;
-		void _compat;
-		const llm: Model<"openai-completions"> = {
-			...baseModel,
-			api: "openai-completions",
-		};
+	it("an already-aborted signal short-circuits before any content is produced", async () => {
+		const registration = registerFauxProvider();
+		registrations.push(registration);
+		registration.setResponses([fauxAssistantMessage("should never be seen")]);
 
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
+		const controller = new AbortController();
+		controller.abort();
 
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
+		const response = await complete(registration.getModel(), makeContext(), { signal: controller.signal });
+
+		expect(response.stopReason).toBe("aborted");
+		expect(response.content.length).toBe(0);
 	});
 
-	describe.skipIf(!process.env.OPENAI_API_KEY)("OpenAI Responses Provider Abort", () => {
-		const llm = getModel("openai", "gpt-5-mini");
+	it("an aborted-then-continued conversation works even though the aborted message has empty content", async () => {
+		const registration = registerFauxProvider();
+		registrations.push(registration);
+		// (faux provider detail) it shifts a queued response the moment stream()
+		// is called, before checking the signal — even an immediately-aborted
+		// call consumes one, so the follow-up call below needs its own.
+		registration.setResponses([fauxAssistantMessage("hi there"), fauxAssistantMessage("4")]);
 
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
+		const controller = new AbortController();
+		controller.abort();
+		const context = makeContext("Hello, how are you?");
+		const abortedResponse = await complete(registration.getModel(), context, { signal: controller.signal });
 
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
+		expect(abortedResponse.stopReason).toBe("aborted");
+		// Aborted before anything arrived — content must be empty, not partial.
+		expect(abortedResponse.content.length).toBe(0);
+
+		context.messages.push(abortedResponse);
+		context.messages.push({ role: "user", content: "What is 2 + 2?", timestamp: Date.now() });
+
+		const followUp = await complete(registration.getModel(), context);
+		expect(followUp.stopReason).toBe("stop");
+		expect(followUp.content.length).toBeGreaterThan(0);
 	});
 
-	describe.skipIf(!hasAzureOpenAICredentials())("Azure OpenAI Responses Provider Abort", () => {
-		const llm = getModel("azure-openai-responses", "gpt-4o-mini");
-		const azureDeploymentName = resolveAzureDeploymentName(llm.id);
-		const azureOptions = azureDeploymentName ? { azureDeploymentName } : {};
+	it("distinguishes a partial-content abort from a zero-content abort", async () => {
+		const registration = registerFauxProvider({ tokensPerSecond: 100, tokenSize: { min: 3, max: 3 } });
+		registrations.push(registration);
 
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm, azureOptions);
-		});
+		registration.setResponses([fauxAssistantMessage("abcdefghijklmnopqrstuvwxyz")]);
+		const midStreamController = new AbortController();
+		const midStreamResponse = stream(registration.getModel(), makeContext(), { signal: midStreamController.signal });
+		for await (const event of midStreamResponse) {
+			if (event.type === "text_delta") midStreamController.abort();
+		}
+		const partial = await midStreamResponse.result();
+		expect(partial.stopReason).toBe("aborted");
+		expect(partial.content.length).toBeGreaterThan(0);
 
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm, azureOptions);
-		});
-	});
-
-	describe.skipIf(!process.env.ANTHROPIC_OAUTH_TOKEN)("Anthropic Provider Abort", () => {
-		const llm = getModel("anthropic", "claude-opus-4-6");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm, { thinkingEnabled: true, thinkingBudgetTokens: 2048 });
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm, { thinkingEnabled: true, thinkingBudgetTokens: 2048 });
-		});
-	});
-
-	describe.skipIf(!process.env.MISTRAL_API_KEY)("Mistral Provider Abort", () => {
-		const llm = getModel("mistral", "devstral-medium-latest");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.MINIMAX_API_KEY)("MiniMax Provider Abort", () => {
-		const llm = getModel("minimax", "MiniMax-M2.7");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.XIAOMI_API_KEY)("Xiaomi MiMo (API billing) Provider Abort", () => {
-		const llm = getModel("xiaomi", "mimo-v2.5-pro");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.XIAOMI_TOKEN_PLAN_CN_API_KEY)("Xiaomi MiMo Token Plan (CN) Provider Abort", () => {
-		const llm = getModel("xiaomi-token-plan-cn", "mimo-v2.5-pro");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.XIAOMI_TOKEN_PLAN_AMS_API_KEY)("Xiaomi MiMo Token Plan (AMS) Provider Abort", () => {
-		const llm = getModel("xiaomi-token-plan-ams", "mimo-v2.5-pro");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.XIAOMI_TOKEN_PLAN_SGP_API_KEY)("Xiaomi MiMo Token Plan (SGP) Provider Abort", () => {
-		const llm = getModel("xiaomi-token-plan-sgp", "mimo-v2.5-pro");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider Abort", () => {
-		const llm = getKimiCodingTestModel();
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe.skipIf(!process.env.AI_GATEWAY_API_KEY)("Vercel AI Gateway Provider Abort", () => {
-		const llm = getModel("vercel-ai-gateway", "google/gemini-2.5-flash");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm);
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-	});
-
-	describe("OpenAI Codex Provider Abort", () => {
-		it.skipIf(!openaiCodexToken)("should abort mid-stream", { retry: 3 }, async () => {
-			const llm = getModel("openai-codex", "gpt-5.2-codex");
-			await testAbortSignal(llm, { apiKey: openaiCodexToken });
-		});
-
-		it.skipIf(!openaiCodexToken)("should handle immediate abort", { retry: 3 }, async () => {
-			const llm = getModel("openai-codex", "gpt-5.2-codex");
-			await testImmediateAbort(llm, { apiKey: openaiCodexToken });
-		});
-	});
-
-	describe.skipIf(!hasBedrockCredentials())("Amazon Bedrock Provider Abort", () => {
-		const llm = getModel("amazon-bedrock", "global.anthropic.claude-sonnet-4-5-20250929-v1:0");
-
-		it("should abort mid-stream", { retry: 3 }, async () => {
-			await testAbortSignal(llm, { reasoning: "medium" });
-		});
-
-		it("should handle immediate abort", { retry: 3 }, async () => {
-			await testImmediateAbort(llm);
-		});
-
-		it("should handle abort then new message", { retry: 3 }, async () => {
-			await testAbortThenNewMessage(llm);
-		});
+		registration.setResponses([fauxAssistantMessage("never streamed")]);
+		const immediateController = new AbortController();
+		immediateController.abort();
+		const empty = await complete(registration.getModel(), makeContext(), { signal: immediateController.signal });
+		expect(empty.stopReason).toBe("aborted");
+		expect(empty.content.length).toBe(0);
 	});
 });

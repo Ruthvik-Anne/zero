@@ -1,4 +1,4 @@
-import { setKeybindings, visibleWidth } from "@earendil-works/pi-tui";
+import { setKeybindings, visibleWidth } from "@zero-agent/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentCronJob, AgentHeartbeatManagementAction } from "../src/core/cron-jobs.js";
 import { KEYBINDINGS, KeybindingsManager } from "../src/core/keybindings.js";

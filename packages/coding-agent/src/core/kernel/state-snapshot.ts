@@ -14,7 +14,7 @@ export const DEFAULT_SNAPSHOT_MAX_BYTES = 256 * 1024 * 1024;
 const KERNEL_STATE_BASENAME = "kernel-state";
 
 /** Marker the Python helpers print so the host can recover the JSON result line. */
-const RESULT_MARKER = "__PRIME_AGENT_KERNEL_STATE__";
+const RESULT_MARKER = "__ZERO_KERNEL_STATE__";
 
 export interface SnapshotResult {
 	/** Top-level names successfully serialized into the payload. */
@@ -52,8 +52,26 @@ function pyStr(value: string): string {
 /**
  * Python that serializes the user namespace to `outPath` (atomic write) and a
  * sibling `.json` manifest, then prints a single marker line with the result.
+ *
+ * `excludedSecrets` (finding #1, task #78/#84 follow-up) are currently-active
+ * decrypted vault credential plaintexts (see `getActiveCredentialValues` in
+ * vault.ts) that must never be pickled to disk. A variable is skipped if any
+ * excluded secret appears as a substring of `str(value)` — this catches the
+ * documented `skills/vault/SKILL.md` usage pattern (a resolved credential
+ * embedded in a header/env-var string) without needing to know the variable's
+ * exact type. When `excludedSecrets` is empty (no vault ever bound/used this
+ * session) the check is skipped entirely — no `str(value)` materialization,
+ * so the common case pays zero extra cost.
  */
-export function buildSnapshotCode(outPath: string, manifestPath: string, maxBytes: number): string {
+export function buildSnapshotCode(
+	outPath: string,
+	manifestPath: string,
+	maxBytes: number,
+	excludedSecrets: string[] = [],
+): string {
+	// Empty strings would match every variable as a false positive (`"" in
+	// anything` is True); dedupe while we're at it.
+	const secretsLiteral = `[${[...new Set(excludedSecrets.filter(Boolean))].map(pyStr).join(", ")}]`;
 	// All builtins are sourced via the locally-imported _b alias so the helper keeps
 	// working even when the user namespace shadows names like list/open/print/len.
 	return `
@@ -76,6 +94,9 @@ def _prime_agent_snapshot_state():
     # rlm and asyncio are re-created by the kernel bootstrap on every start;
     # never snapshot them.
     always_skip = {"rlm", "asyncio", "In", "Out", "get_ipython", "exit", "quit", "open"}
+    # Resolved vault credential plaintexts that must never be pickled — see
+    # buildSnapshotCode's doc comment.
+    _excluded_secrets = ${secretsLiteral}
 
     payload = {}
     skipped = []
@@ -87,6 +108,25 @@ def _prime_agent_snapshot_state():
         if name.startswith("_") or name in hidden or name in always_skip:
             continue
         value = ns[name]
+        # Checked before pickling — some pickling exceptions embed a repr of the
+        # object in their message, which would otherwise leak into the "skipped"
+        # reason below. Only pay the str(value) cost when there's something to
+        # check against.
+        if _excluded_secrets:
+            _contains_secret = False
+            try:
+                _value_str = _b.str(value)
+            except _b.Exception:
+                # Can't verify it's safe — exclude defensively rather than assume.
+                _contains_secret = True
+            else:
+                for _secret in _excluded_secrets:
+                    if _secret and _secret in _value_str:
+                        _contains_secret = True
+                        break
+            if _contains_secret:
+                skipped.append({"name": name, "reason": "excluded: contains vault credential material"})
+                continue
         # Modules are pickled by reference and re-imported on restore.
         try:
             blob = dill.dumps(value)
@@ -104,6 +144,9 @@ def _prime_agent_snapshot_state():
     try:
         with _b.open(tmp, "wb") as fh:
             dill.dump(payload, fh)
+        # Defense in depth on top of the exclusion above — matches the 0o600
+        # convention vault.ts already uses for the vault key/ciphertext files.
+        os.chmod(tmp, 0o600)
         os.replace(tmp, ${pyStr(outPath)})
     except _b.Exception as _err:
         try:

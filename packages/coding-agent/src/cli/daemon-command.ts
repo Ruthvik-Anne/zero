@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { clearLine, createInterface, cursorTo, type Interface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import chalk from "chalk";
 import { spawn } from "child_process";
 import { expandTildePath } from "../config.js";
@@ -696,6 +696,7 @@ async function runStart(parsed: ParsedDaemonClientCommand): Promise<void> {
 		detached: true,
 		env: process.env,
 		stdio: "ignore",
+		windowsHide: true,
 	});
 	child.unref();
 

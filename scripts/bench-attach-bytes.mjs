@@ -28,7 +28,8 @@ copyFileSync(sourceSession, sessionPath);
 
 const daemon = spawn(process.execPath, [entrypoint, "--mode", "daemon", "--daemon-socket", socketPath], {
 	stdio: "ignore",
-	env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1" },
+	env: { ...process.env, ZERO_CODING_AGENT_DIR: agentDir, ZERO_OFFLINE: "1", ZERO_SKIP_VERSION_CHECK: "1" },
+	windowsHide: true,
 });
 
 function request(socket, command) {

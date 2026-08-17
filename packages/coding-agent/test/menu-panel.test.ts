@@ -1,4 +1,4 @@
-import { type Component, TruncatedText, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, TruncatedText, visibleWidth } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, describe, expect, it } from "vitest";
 import {

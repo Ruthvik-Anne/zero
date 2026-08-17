@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanupSessionResources } from "@earendil-works/pi-ai";
+import { cleanupSessionResources } from "@zero-agent/ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../src/core/extensions/types.js";
 import type { KernelBootstrapProgressHandler } from "../src/core/kernel/bootstrap.js";
@@ -12,13 +12,13 @@ let tempDir = "";
 
 // These tests count spawns of a stub python; the default-on forkserver adds an
 // extra spawn + ready handshake the stub never answers, so pin direct-spawn.
-const savedForkFlag = process.env.PRIME_AGENT_KERNEL_FORKSERVER;
+const savedForkFlag = process.env.ZERO_KERNEL_FORKSERVER;
 beforeAll(() => {
-	process.env.PRIME_AGENT_KERNEL_FORKSERVER = "0";
+	process.env.ZERO_KERNEL_FORKSERVER = "0";
 });
 afterAll(() => {
-	if (savedForkFlag === undefined) delete process.env.PRIME_AGENT_KERNEL_FORKSERVER;
-	else process.env.PRIME_AGENT_KERNEL_FORKSERVER = savedForkFlag;
+	if (savedForkFlag === undefined) delete process.env.ZERO_KERNEL_FORKSERVER;
+	else process.env.ZERO_KERNEL_FORKSERVER = savedForkFlag;
 });
 
 function writeFakePython(opts: { sleepSeconds?: number } = {}): { python: string; countRuns: () => number } {
@@ -83,7 +83,18 @@ describe("IpythonKernelProvisioner", () => {
 		}
 	});
 
-	it("memoizes concurrent ensure() calls into one startup", async () => {
+	// (task #15) These four tests spawn the fake "python" and assert on real
+	// countRuns()/exit-code behavior. On Windows, the fake python is a POSIX
+	// shebang script Windows can't execute at all: a .cmd stub needs
+	// `shell: true` to spawn (Node throws EINVAL without it), which
+	// kernel/index.ts's real spawn() deliberately never sets; and pointing
+	// "python" at node.exe doesn't work either, since Node's own argv parser
+	// rejects the hardcoded `-m ipykernel_launcher -f <path>` args production
+	// always passes before any injected (NODE_OPTIONS --require) script runs
+	// (confirmed empirically: exit code 9, "bad option: -m"). Faithfully
+	// reproducing controlled child-process behavior here would need a real
+	// compiled stub binary — out of proportion for a non-blocking test gap.
+	it.skipIf(process.platform === "win32")("memoizes concurrent ensure() calls into one startup", async () => {
 		const { python, countRuns } = writeFakePython();
 		const provisioner = new IpythonKernelProvisioner(tempDir, { python });
 
@@ -93,28 +104,34 @@ describe("IpythonKernelProvisioner", () => {
 		expect(countRuns()).toBe(1);
 	});
 
-	it("retries after a failed startup instead of caching the rejection", async () => {
-		const { python, countRuns } = writeFakePython();
-		const provisioner = new IpythonKernelProvisioner(tempDir, { python });
+	it.skipIf(process.platform === "win32")(
+		"retries after a failed startup instead of caching the rejection",
+		async () => {
+			const { python, countRuns } = writeFakePython();
+			const provisioner = new IpythonKernelProvisioner(tempDir, { python });
 
-		await expect(provisioner.ensure()).rejects.toThrow(/Kernel exited before resolving ports/);
-		await expect(provisioner.ensure()).rejects.toThrow(/Kernel exited before resolving ports/);
-		expect(countRuns()).toBe(2);
-	});
+			await expect(provisioner.ensure()).rejects.toThrow(/Kernel exited before resolving ports/);
+			await expect(provisioner.ensure()).rejects.toThrow(/Kernel exited before resolving ports/);
+			expect(countRuns()).toBe(2);
+		},
+	);
 
-	it("prewarm() swallows the failure and the next ensure() starts fresh", async () => {
-		const { python, countRuns } = writeFakePython();
-		const provisioner = new IpythonKernelProvisioner(tempDir, { python });
+	it.skipIf(process.platform === "win32")(
+		"prewarm() swallows the failure and the next ensure() starts fresh",
+		async () => {
+			const { python, countRuns } = writeFakePython();
+			const provisioner = new IpythonKernelProvisioner(tempDir, { python });
 
-		provisioner.prewarm();
-		expect(provisioner.manager).toBeUndefined();
+			provisioner.prewarm();
+			expect(provisioner.manager).toBeUndefined();
 
-		// Once the prewarm startup settles, ensure() must launch a second attempt.
-		await vi.waitFor(async () => {
-			await expect(provisioner.ensure()).rejects.toThrow();
-			expect(countRuns()).toBeGreaterThanOrEqual(2);
-		});
-	});
+			// Once the prewarm startup settles, ensure() must launch a second attempt.
+			await vi.waitFor(async () => {
+				await expect(provisioner.ensure()).rejects.toThrow();
+				expect(countRuns()).toBeGreaterThanOrEqual(2);
+			});
+		},
+	);
 
 	it("replays the current startup stage to listeners attaching mid-flight", async () => {
 		const { python } = writeFakePython({ sleepSeconds: 1 });
@@ -170,7 +187,7 @@ describe("IpythonKernelProvisioner", () => {
 		expect(provisioner.manager).toBeUndefined();
 	});
 
-	it("waits for readyGate before starting the kernel", async () => {
+	it.skipIf(process.platform === "win32")("waits for readyGate before starting the kernel", async () => {
 		const { python, countRuns } = writeFakePython();
 		let release: () => void = () => {};
 		const gate = new Promise<void>((r) => {
@@ -354,10 +371,8 @@ describe("KernelManager session cleanup during startup", () => {
 	});
 
 	it("disposes a kernel that is still booting when its session is cleaned up", async () => {
-		const python = join(tempDir, "python");
 		// Never writes connection ports - stays in the booting phase until killed.
-		writeFileSync(python, ["#!/bin/sh", "sleep 30", ""].join("\n"));
-		chmodSync(python, 0o755);
+		const { python } = writeFakePython({ sleepSeconds: 30 });
 		const sessionId = `provisioner-test-${Date.now()}`;
 		const manager = new KernelManager({ python, cwd: tempDir, sessionId });
 

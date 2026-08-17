@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@zero-agent/coding-agent";
 
 export default function (pi: ExtensionAPI) {
 	const logFile = join(process.cwd(), ".prime", "agent", "provider-payload.log");

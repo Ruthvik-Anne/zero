@@ -186,7 +186,7 @@ describe("defaultDaemonSocketPath", () => {
 				"const { createServer } = require('node:net'); const server = createServer(); server.listen(process.argv[1], () => process.stdout.write('ready'));",
 				socketPath,
 			],
-			{ stdio: ["ignore", "pipe", "ignore"] },
+			{ stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
 		);
 		const replacementServer = createServer();
 		let replacementTimer: ReturnType<typeof setTimeout> | undefined;

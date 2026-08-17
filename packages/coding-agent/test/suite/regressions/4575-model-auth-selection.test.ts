@@ -1,4 +1,4 @@
-import { type AutocompleteProvider, setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { type AutocompleteProvider, setKeybindings, type TUI } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../../../src/core/keybindings.js";

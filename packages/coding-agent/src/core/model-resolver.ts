@@ -2,28 +2,28 @@
  * Model resolution, scoping, and initial selection
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { type Api, getLogger, type KnownProvider, type Model, modelsAreEqual } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@zero-agent/agent-core";
+import { type Api, getLogger, type KnownProvider, type Model, modelsAreEqual } from "@zero-agent/ai";
 import chalk from "chalk";
 import { minimatch } from "minimatch";
 import { isValidThinkingLevel } from "../cli/args.js";
 import { APP_NAME } from "../config.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import type { ModelRegistry } from "./model-registry.js";
-import { isPrivatePrimeInferenceModel } from "./prime-inference-models.js";
 
 const log = getLogger("coding-agent.model-resolver");
 
-export const PRIME_INFERENCE_DEFAULT_MODEL_ID = "z-ai/glm-5.2";
-
-/** Default model IDs for each known provider */
-export const defaultModelPerProvider: Record<KnownProvider, string> = {
+/**
+ * Default model IDs for each known provider.
+ * Partial: not every KnownProvider has a curated default (e.g. once a provider's
+ * entry is removed here, its models are still usable — just without a suggested default).
+ */
+export const defaultModelPerProvider: Partial<Record<KnownProvider, string>> = {
 	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
 	anthropic: "claude-opus-4-7",
 	openai: "gpt-5.4",
 	"azure-openai-responses": "gpt-5.4",
 	"openai-codex": "gpt-5.5",
-	"prime-inference": PRIME_INFERENCE_DEFAULT_MODEL_ID,
 	deepseek: "deepseek-v4-pro",
 	google: "gemini-3.1-pro-preview",
 	"google-vertex": "gemini-3.1-pro-preview",
@@ -180,13 +180,6 @@ function buildFallbackModel(provider: string, modelId: string, availableModels: 
 }
 
 function findPreferredDefaultModel(availableModels: Model<Api>[]): Model<Api> | undefined {
-	const primeInferenceDefault = availableModels.find(
-		(model) => model.provider === "prime-inference" && model.id === PRIME_INFERENCE_DEFAULT_MODEL_ID,
-	);
-	if (primeInferenceDefault) {
-		return primeInferenceDefault;
-	}
-
 	for (const provider of Object.keys(defaultModelPerProvider) as KnownProvider[]) {
 		const defaultId = defaultModelPerProvider[provider];
 		const match = availableModels.find((model) => model.provider === provider && model.id === defaultId);
@@ -555,18 +548,6 @@ export async function findInitialModel(options: {
 		}
 		const resolvedModel = resolved.model;
 		if (resolvedModel) {
-			if (isPrivatePrimeInferenceModel(resolvedModel)) {
-				const availableModel = (await getAvailableModels()).find((candidate) =>
-					modelsAreEqual(candidate, resolvedModel),
-				);
-				if (!availableModel) {
-					const error = `Model "${resolvedModel.provider}/${resolvedModel.id}" is not available for the current Prime team.`;
-					log.error(error, { cliProvider, cliModel });
-					console.error(chalk.red(error));
-					process.exit(1);
-				}
-				return { model: availableModel, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
-			}
 			return { model: resolvedModel, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
 		}
 	}
@@ -584,14 +565,11 @@ export async function findInitialModel(options: {
 	// 3. Try saved default from settings
 	if (defaultProvider && defaultModelId) {
 		// Rebuild from the provider template when the saved id is missing from this
-		// build's snapshot (e.g. prime-inference catalog churn), so it survives updates.
+		// build's snapshot (e.g. provider catalog churn), so it survives updates.
 		const found =
 			availableModels.find(
 				(candidate) => candidate.provider === defaultProvider && candidate.id === defaultModelId,
-			) ??
-			(!isPrivatePrimeInferenceModel({ provider: defaultProvider, id: defaultModelId })
-				? buildFallbackModel(defaultProvider, defaultModelId, availableModels)
-				: undefined);
+			) ?? buildFallbackModel(defaultProvider, defaultModelId, availableModels);
 		if (found) {
 			model = found;
 			if (defaultThinkingLevel) {
@@ -655,10 +633,7 @@ export async function restoreModelFromSession(
 	const availableCurrentModel = currentModel
 		? availableModels.find((candidate) => modelsAreEqual(candidate, currentModel))
 		: undefined;
-	const fallbackCurrentModel =
-		currentModel && (!isPrivatePrimeInferenceModel(currentModel) || availableCurrentModel)
-			? (availableCurrentModel ?? currentModel)
-			: undefined;
+	const fallbackCurrentModel = currentModel ? (availableCurrentModel ?? currentModel) : undefined;
 	if (fallbackCurrentModel) {
 		if (shouldPrintMessages) {
 			console.log(chalk.dim(`Falling back to: ${fallbackCurrentModel.provider}/${fallbackCurrentModel.id}`));

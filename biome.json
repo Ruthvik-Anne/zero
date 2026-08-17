@@ -36,5 +36,17 @@
 			"!.worktrees",
 			"!.claude/worktrees"
 		]
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["packages/ai/src/providers/**/*.ts"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "error"
+					}
+				}
+			}
+		}
+	]
 }

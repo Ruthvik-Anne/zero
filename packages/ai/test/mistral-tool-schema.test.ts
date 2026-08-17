@@ -1,8 +1,14 @@
 import { Type } from "typebox";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getModel } from "../src/models.js";
 import { complete } from "../src/stream.js";
 import type { Context, Model } from "../src/types.js";
+
+// (C6) This test deliberately targets an unreachable local port so the SDK's
+// own retry-with-backoff genuinely runs before failing — that legitimately
+// takes longer than the file-wide fast-unit-test default lowered to in the
+// C6 fix, but far less than a real live-API test needs.
+vi.setConfig({ testTimeout: 20000 });
 
 interface MistralToolPayload {
 	tools?: Array<{

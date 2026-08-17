@@ -1,5 +1,5 @@
-import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
-import { Container, type MarkdownTheme, type TUI } from "@earendil-works/pi-tui";
+import type { AssistantMessage, Usage } from "@zero-agent/ai";
+import { Container, type MarkdownTheme, type TUI } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { AgentConnectionSessionEvent } from "../src/modes/agent-connection/index.js";

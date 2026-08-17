@@ -5,7 +5,7 @@ import {
 	type Message,
 	type Model,
 	type UserMessage,
-} from "@earendil-works/pi-ai";
+} from "@zero-agent/ai";
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
 import { agentLoop, agentLoopContinue, runAgentLoop } from "../src/agent-loop.js";

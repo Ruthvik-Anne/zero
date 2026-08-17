@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { AgentMessage, ThinkingLevel } from "@zero-agent/agent-core";
+import type { Api, Model } from "@zero-agent/ai";
 import { compactRlmText, rlmChildLabel } from "../../core/agent-session.js";
 import type { AgentSessionRuntimeMetadata } from "../../core/agent-session-runtime.js";
 import type { AgentSessionRuntimeDiagnostic } from "../../core/agent-session-services.js";

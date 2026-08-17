@@ -42,13 +42,16 @@ describe("IPython RLM bootstrap", () => {
 
 /** Find a python that can launch an ipykernel, or null to skip. */
 function resolveKernelPython(): string | null {
-	const candidates = [
-		process.env.PRIME_AGENT_KERNEL_PYTHON,
-		join(homedir(), ".prime", "agent", "kernel-venv", "bin", "python"),
-	].filter((p): p is string => Boolean(p));
+	// uv/stdlib venvs lay out bin/python on POSIX but Scripts/python.exe on
+	// Windows — there is no bin/ dir there at all.
+	const defaultVenvPython =
+		process.platform === "win32"
+			? join(homedir(), ".zero", "agent", "kernel-venv", "Scripts", "python.exe")
+			: join(homedir(), ".zero", "agent", "kernel-venv", "bin", "python");
+	const candidates = [process.env.ZERO_KERNEL_PYTHON, defaultVenvPython].filter((p): p is string => Boolean(p));
 	for (const python of candidates) {
 		if (!existsSync(python)) continue;
-		const check = spawnSync(python, ["-c", "import ipykernel"], { encoding: "utf8" });
+		const check = spawnSync(python, ["-c", "import ipykernel"], { encoding: "utf8", windowsHide: true });
 		if (check.status === 0) return python;
 	}
 	return null;
@@ -61,7 +64,19 @@ describeIfKernel("IPython RLM bootstrap (real kernel)", () => {
 	const dir = mkdtempSync(join(tmpdir(), "prime-agent-bootstrap-"));
 
 	afterAll(() => {
-		rmSync(dir, { recursive: true, force: true });
+		// A just-killed real kernel subprocess (spawned with dir as its cwd) can
+		// leave dir transiently undeletable on Windows even after dispose()
+		// resolves — retry, and tolerate a leftover if it still hasn't released
+		// by then; this is a cleanup artifact, not a test-correctness problem.
+		// Mirrors test/suite/harness.ts's identical fix.
+		try {
+			rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 });
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOTEMPTY" && code !== "EPERM" && code !== "EBUSY") {
+				throw error;
+			}
+		}
 	});
 
 	it("binds asyncio in the user namespace", async () => {
@@ -75,7 +90,28 @@ describeIfKernel("IPython RLM bootstrap (real kernel)", () => {
 			expect(result.status).toBe("ok");
 			expect(result.stdout).toContain("Task");
 
-			const bashResult = await manager.execute('%%bash\nprintf %s "$NO_COLOR"');
+			// (task #35) Bare `%%bash` lets IPython resolve "bash" via its own PATH
+			// search, which on a Windows machine with WSL installed can resolve to
+			// the WSL launcher stub (a different, WSL-namespaced environment) ahead
+			// of a real shell like Git Bash — not what NO_COLOR-inheritance is
+			// actually testing here. Resolve an unambiguous shell path first and
+			// target it explicitly via `%%script`, the same escape hatch
+			// production's own shellPath option uses (applyShellSettingsToBashMagicCell).
+			const shellPath = await manager.execute(
+				"import shutil, sys\nprint(shutil.which('bash') or ('cmd.exe' if sys.platform == 'win32' else '/bin/sh'))",
+			);
+			expect(shellPath.status).toBe("ok");
+			const resolvedShell = shellPath.stdout.trim();
+			// %%script is parsed via `arg_split(line, posix=False)` on Windows,
+			// where double quotes group (and get stripped) but single quotes
+			// don't quote at all — matches the fix in ipython.ts's own
+			// quoteScriptMagicArgument().
+			const scriptLine = /^[A-Za-z0-9_@%+=:,./-]+$/.test(resolvedShell)
+				? resolvedShell
+				: process.platform === "win32"
+					? `"${resolvedShell}"`
+					: `'${resolvedShell.replace(/'/g, "'\"'\"'")}'`;
+			const bashResult = await manager.execute(`%%script ${scriptLine}\nprintf %s "$NO_COLOR"`);
 			expect(bashResult.status).toBe("ok");
 			expect(bashResult.stdout).toBe("1");
 		} finally {
@@ -117,8 +153,13 @@ describeIfKernel("IPython RLM bootstrap (real kernel)", () => {
 				'os.chdir("../second")\nawait edit(path="same.txt", old_str="old", new_str="new")',
 			);
 
-			expect(first.diffs?.[0]?.path).toBe(realpathSync(join(firstDir, "same.txt")));
-			expect(second.diffs?.[0]?.path).toBe(realpathSync(join(secondDir, "same.txt")));
+			// (task #35) Node's plain realpathSync doesn't expand Windows 8.3 short
+			// names (e.g. RUTHVI~1) the way Python's os.path.realpath does — both are
+			// "correct" canonical forms for the same file, they just disagree when
+			// TEMP itself is configured as a short name. realpathSync.native calls
+			// the same OS API (GetFinalPathNameByHandleW) Python uses, so it agrees.
+			expect(first.diffs?.[0]?.path).toBe(realpathSync.native(join(firstDir, "same.txt")));
+			expect(second.diffs?.[0]?.path).toBe(realpathSync.native(join(secondDir, "same.txt")));
 			expect(first.diffs?.[0]?.path).not.toBe(second.diffs?.[0]?.path);
 		} finally {
 			await manager.dispose();

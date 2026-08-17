@@ -36,7 +36,7 @@ def _slug(raw: str, fallback: str) -> str:
 
 def _agent_dir() -> Path:
     raw = (
-        os.environ.get("PRIME_AGENT_CODING_AGENT_DIR")
+        os.environ.get("ZERO_CODING_AGENT_DIR")
         or os.environ.get("PI_CODING_AGENT_DIR")
         or str(Path.home() / ".prime" / "agent")
     )

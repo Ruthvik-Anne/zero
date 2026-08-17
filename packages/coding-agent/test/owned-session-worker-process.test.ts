@@ -49,12 +49,13 @@ function spawnFrontend(
 		env: {
 			...process.env,
 			...environment,
-			PRIME_AGENT_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "1",
+			ZERO_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND: "1",
 			PRIME_AGENT_TEST_OWNED_PID_PATH: pidPath,
 			...(keepAlive ? { PRIME_AGENT_TEST_KEEP_ALIVE: "1" } : {}),
 			TSX_TSCONFIG_PATH: resolve(__dirname, "../../../tsconfig.json"),
 		},
 		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
 	});
 	children.add(child);
 	return child;

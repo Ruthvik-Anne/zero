@@ -3,7 +3,7 @@ import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DaemonSocketClient } from "../../../src/modes/daemon/active-session-state.js";
 import { AgentDaemon } from "../../../src/modes/daemon/daemon-mode.js";

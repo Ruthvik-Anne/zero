@@ -56,7 +56,7 @@ class McpToolError(RuntimeError):
 def _agent_dir() -> Path:
     """Resolve the Prime Agent config dir the same way the rest of the runtime does."""
     raw = (
-        os.environ.get("PRIME_AGENT_CODING_AGENT_DIR")
+        os.environ.get("ZERO_CODING_AGENT_DIR")
         or os.environ.get("PI_CODING_AGENT_DIR")
         or str(Path.home() / ".prime" / "agent")
     )
@@ -189,36 +189,29 @@ class McpIntegration:
 
     # -- connection ---------------------------------------------------------
 
-    async def _resolve_config(self) -> tuple[str | None, dict[str, str]]:
-        """Host-resolved (url, extra_headers), honoring a user's mcpServers override.
-        Falls back to the class ``url`` and no extra headers on host error."""
+    async def _resolve_config(self) -> dict[str, Any]:
+        """Host-resolved connection config, honoring a user's mcpServers override.
+
+        Returns the host's `mcp.config` response as-is: `{"type": "http", "url":
+        ..., "headers": ...}` or `{"type": "stdio", "command": ..., "args": ...,
+        "env": ...}`. Falls back to `{"type": "http", "url": self.url}` on host
+        error or an empty response, so a subclass that only sets `url` keeps
+        working exactly as before this method returned a richer shape.
+        """
         try:
             cfg = await host_request("mcp.config", {"server": self.server})
         except RuntimeError:
             cfg = {}
-        url = cfg.get("url") if isinstance(cfg, dict) else None
-        headers = cfg.get("headers") if isinstance(cfg, dict) else None
-        if not (isinstance(url, str) and url):
-            url = self.url
-        extra = headers if isinstance(headers, dict) else {}
-        return url, {str(k): str(v) for k, v in extra.items()}
+        if not isinstance(cfg, dict) or not cfg:
+            return {"type": "http", "url": self.url}
+        return cfg
 
-    async def _open_session(self, stack: AsyncExitStack):
-        """Open an initialized MCP ClientSession bound to ``stack``.
-
-        Override for non-HTTP transports (e.g. stdio). The default connects over
-        streamable HTTP with a Bearer token from auth.json. The URL comes from the
-        host (mcpServers override) when available, else ``self.url``.
-        """
+    async def _open_http_session(self, stack: AsyncExitStack, url: str, extra_headers: dict[str, str]):
+        """Open a streamable-HTTP MCP session with a Bearer token from auth.json."""
         import inspect  # noqa: PLC0415
 
         from mcp import ClientSession  # noqa: PLC0415
 
-        url, extra_headers = await self._resolve_config()
-        if not url:
-            raise ValueError(
-                f"{type(self).__name__} must set `url` or override `_open_session`"
-            )
         token = await self._resolve_token()
         transport = _resolve_streamable_http()
         # Extra configured headers first, Authorization last so it always wins.
@@ -242,6 +235,52 @@ class McpIntegration:
         session = await stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
         return session
+
+    async def _open_stdio_session(self, stack: AsyncExitStack, command: str, args: list[str], env: dict[str, str]):
+        """Open an MCP session over a spawned local process's stdio.
+
+        No token/auth step: a stdio integration's "credential" is the local
+        command itself, resolved host-side (see mcp-manager.ts's `isAuthed`).
+        """
+        from mcp import ClientSession, StdioServerParameters  # noqa: PLC0415
+        from mcp.client.stdio import stdio_client  # noqa: PLC0415
+
+        # Inherit the current environment so the spawned server sees e.g. PATH;
+        # host-configured env vars are added on top, not a full replacement.
+        merged_env = {**os.environ, **env}
+        params = StdioServerParameters(command=command, args=args, env=merged_env)
+        read, write = await stack.enter_async_context(stdio_client(params))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        return session
+
+    async def _open_session(self, stack: AsyncExitStack):
+        """Open an initialized MCP ClientSession bound to ``stack``.
+
+        Dispatches on the host-resolved transport type (`_resolve_config()`):
+        `"http"` connects over streamable HTTP with a Bearer token from
+        auth.json; `"stdio"` spawns the configured local command and connects
+        over its stdio. Override this method directly only for a transport
+        neither of those covers.
+        """
+        config = await self._resolve_config()
+        transport_type = config.get("type", "http")
+
+        if transport_type == "stdio":
+            command = config.get("command")
+            if not isinstance(command, str) or not command:
+                raise ValueError(f"{type(self).__name__}: stdio transport requires a `command`")
+            args = config.get("args") or []
+            env = config.get("env") or {}
+            return await self._open_stdio_session(stack, command, list(args), dict(env))
+
+        url = config.get("url")
+        if not (isinstance(url, str) and url):
+            raise ValueError(
+                f"{type(self).__name__} must set `url` or override `_open_session`"
+            )
+        extra_headers = config.get("headers") or {}
+        return await self._open_http_session(stack, url, {str(k): str(v) for k, v in dict(extra_headers).items()})
 
     # -- tools --------------------------------------------------------------
 

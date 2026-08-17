@@ -7,7 +7,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import { type AgentSessionMessage, formatAgentMessageParticipant } from "../../../core/agent-messages.js";
 import { getMarkdownTheme, theme } from "../theme/theme.js";
 import { keyText } from "./keybinding-hints.js";

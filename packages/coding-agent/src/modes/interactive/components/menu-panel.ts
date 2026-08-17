@@ -6,7 +6,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 import { theme } from "../theme/theme.js";
 
 interface MenuPanelOptions {

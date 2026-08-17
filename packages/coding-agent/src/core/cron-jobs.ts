@@ -1065,7 +1065,13 @@ export class AgentCronScheduler {
 		}
 		this.timer = setTimeout(
 			() => {
-				void this.runDue();
+				// (B4) daemon-mode.ts installs a process-wide unhandledRejection handler
+				// that calls process.exit(1) — an uncaught rejection here (a corrupt or
+				// locked cron state file makes runDue's claimDue() throw) would kill the
+				// daemon and every session it hosts. Matches queueDispatch's own
+				// `.catch(() => undefined)` a few lines below: swallow here too, since
+				// runDue's own try/catch already recovers claim-time state on failure.
+				void this.runDue().catch(() => undefined);
 			},
 			Math.min(nextDelay, MAX_TIMEOUT_MS),
 		);
@@ -1374,15 +1380,18 @@ export function shouldDeferHeartbeatCronJob(job: AgentCronJob, activity: Heartbe
 function nextCronRunAfter(expression: string, after: Date): Date {
 	const fields = parseCronExpression(expression);
 	const candidate = new Date(after.getTime());
-	candidate.setSeconds(0, 0);
-	candidate.setMinutes(candidate.getMinutes() + 1);
+	// Cron field semantics are UTC, not "whatever the host OS's local zone is" —
+	// local getters/setters here would drift next-run times by the host's UTC
+	// offset whenever that offset isn't a whole number of hours (e.g. UTC+5:30).
+	candidate.setUTCSeconds(0, 0);
+	candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
 
 	const deadline = candidate.getTime() + 366 * 24 * 60 * ONE_MINUTE_MS;
 	while (candidate.getTime() <= deadline) {
 		if (matchesCronFields(candidate, fields)) {
 			return candidate;
 		}
-		candidate.setMinutes(candidate.getMinutes() + 1);
+		candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
 	}
 	throw new Error(`Cron schedule did not match within one year: ${expression}`);
 }
@@ -1454,13 +1463,13 @@ function parseCronNumber(value: string | undefined, min: number, max: number): n
 }
 
 function matchesCronFields(date: Date, fields: CronFields): boolean {
-	const day = date.getDay();
+	const day = date.getUTCDay();
 	const dayMatches = fields.dayOfWeek.has(day) || (day === 0 && fields.dayOfWeek.has(7));
 	return (
-		fields.minute.has(date.getMinutes()) &&
-		fields.hour.has(date.getHours()) &&
-		fields.dayOfMonth.has(date.getDate()) &&
-		fields.month.has(date.getMonth() + 1) &&
+		fields.minute.has(date.getUTCMinutes()) &&
+		fields.hour.has(date.getUTCHours()) &&
+		fields.dayOfMonth.has(date.getUTCDate()) &&
+		fields.month.has(date.getUTCMonth() + 1) &&
 		dayMatches
 	);
 }

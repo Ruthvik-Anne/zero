@@ -160,7 +160,7 @@ export class ProcessTerminal implements Terminal {
 		timeout: ReturnType<typeof setTimeout>;
 	};
 	private writeLogPath = (() => {
-		const env = process.env.PI_TUI_WRITE_LOG || "";
+		const env = process.env.ZERO_TUI_WRITE_LOG || "";
 		if (!env) return "";
 		try {
 			if (fs.statSync(env).isDirectory()) {

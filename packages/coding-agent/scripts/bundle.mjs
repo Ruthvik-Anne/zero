@@ -24,6 +24,7 @@ try {
 	buildId = execFileSync("git", ["describe", "--tags", "--always", "--dirty"], {
 		cwd: dirname(packageDir),
 		encoding: "utf8",
+		windowsHide: true,
 	}).trim();
 } catch {
 	buildId = `release-${JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version}`;
@@ -40,7 +41,12 @@ await build({
 	platform: "node",
 	// Native or interop-sensitive packages stay external; they resolve from
 	// node_modules at runtime (and are loaded via createRequire/lazily anyway).
-	external: ["zeromq", "koffi", "undici", "@silvia-odwyer/photon-node", "@mariozechner/clipboard"],
+	// chromium-bidi: playwright-core's own bundle lazily requires this for the
+	// WebDriver-BiDi protocol (firefox/webkit automation); we only ever use
+	// chromium.launch() over CDP, so that require() never actually executes,
+	// but esbuild still needs to resolve it statically since playwright-core
+	// declares no dependency on it at all (assumed pre-bundled upstream).
+	external: ["zeromq", "koffi", "undici", "@silvia-odwyer/photon-node", "@mariozechner/clipboard", "chromium-bidi"],
 	define: { __PI_BUNDLED__: "true", __PI_BUILD_ID__: JSON.stringify(buildId) },
 	banner: {
 		js: "import { createRequire as __piBundleCreateRequire } from 'node:module'; const require = __piBundleCreateRequire(import.meta.url);",

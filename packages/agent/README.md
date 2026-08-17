@@ -1,31 +1,27 @@
 <p align="center">
-  <a href="https://primeintellect.ai">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="../../assets/brand/prime-butterfly.svg">
-      <img alt="Prime Intellect butterfly mark" src="../../assets/brand/prime-butterfly-black.svg" width="88">
-    </picture>
-  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../assets/brand/zero-mark.svg">
+    <img alt="Zero mark" src="../../assets/brand/zero-mark-black.svg" width="88">
+  </picture>
 </p>
 
-<h1 align="center">Prime Agent Core</h1>
+<h1 align="center">Zero Core</h1>
 
 <p align="center">
   Stateful agent runtime.
 </p>
 
-Release docs use the Prime Agent package names. The source workspace manifests still keep inherited package names until the namespace migration is complete.
-
 ## Workspace Package
 
 ```bash
-npm install prime-agent-core
+npm install @zero-agent/agent-core
 ```
 
 ## Quick Start
 
 ```typescript
-import { Agent } from "prime-agent-core";
-import { getModel } from "prime-agent-ai";
+import { Agent } from "@zero-agent/agent-core";
+import { getModel } from "@zero-agent/ai";
 
 const agent = new Agent({
   initialState: {
@@ -368,7 +364,7 @@ Follow-up messages are checked only when there are no more tool calls and no ste
 Extend `AgentMessage` via declaration merging:
 
 ```typescript
-declare module "prime-agent-core" {
+declare module "@zero-agent/agent-core" {
   interface CustomAgentMessages {
     notification: { role: "notification"; text: string; timestamp: number };
   }
@@ -449,7 +445,7 @@ Return `terminate: true` from `execute()` or `afterToolCall` to hint that the ag
 For browser apps that proxy through a backend:
 
 ```typescript
-import { Agent, streamProxy } from "prime-agent-core";
+import { Agent, streamProxy } from "@zero-agent/agent-core";
 
 const agent = new Agent({
   streamFn: (model, context, options) =>
@@ -466,7 +462,7 @@ const agent = new Agent({
 For direct control without the Agent class:
 
 ```typescript
-import { agentLoop, agentLoopContinue } from "prime-agent-core";
+import { agentLoop, agentLoopContinue } from "@zero-agent/agent-core";
 
 const context: AgentContext = {
   systemPrompt: "You are helpful.",

@@ -272,7 +272,9 @@ export function convertResponsesTools(tools: Tool[], options?: ConvertResponsesT
 		type: "function",
 		name: tool.name,
 		description: tool.description,
-		parameters: tool.parameters as any, // TypeBox already generates JSON Schema
+		// TypeBox schemas are already valid JSON Schema at runtime but aren't
+		// nominally typed with an index signature, so bridge via `unknown`.
+		parameters: tool.parameters as unknown as Record<string, unknown>,
 		strict,
 	}));
 }

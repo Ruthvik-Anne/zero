@@ -1,8 +1,8 @@
 # SDK Examples
 
-Programmatic usage of the Prime Agent SDK via `createAgentSession()` and `createAgentSessionRuntime()`.
+Programmatic usage of the Zero SDK via `createAgentSession()` and `createAgentSessionRuntime()`.
 
-The published TypeScript packages still use inherited `@earendil-works/pi-*`
+The published TypeScript packages use `@zero-agent/*`
 identifiers. Those identifiers are API names, not a dependency on the upstream
 Pi monorepo.
 
@@ -36,7 +36,7 @@ npx tsx examples/sdk/01-minimal.ts
 ## Quick Reference
 
 ```typescript
-import { getModel } from "@earendil-works/pi-ai";
+import { getModel } from "@zero-agent/ai";
 import {
   AuthStorage,
   createAgentSession,
@@ -44,7 +44,7 @@ import {
   ModelRegistry,
   SessionManager,
   SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+} from "@zero-agent/coding-agent";
 
 // Auth and models setup
 const authStorage = AuthStorage.create();

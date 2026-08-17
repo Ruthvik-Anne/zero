@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-tui",
+	"name": "@zero-agent/tui",
 	"version": "0.7.1",
 	"description": "Terminal User Interface library with differential rendering for efficient text-based applications",
 	"type": "module",
@@ -9,6 +9,7 @@
 		"build": "tsgo -p tsconfig.build.json",
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
 		"test": "node --test --import tsx test/*.test.ts",
+		"test:watch": "node --test --watch --import tsx test/*.test.ts",
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"files": [

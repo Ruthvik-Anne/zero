@@ -58,7 +58,7 @@ function hasNonSessionOperation(args: readonly string[]): boolean {
 }
 
 function isStartupBenchmark(environment: NodeJS.ProcessEnv): boolean {
-	const value = environment.PI_STARTUP_BENCHMARK?.toLowerCase();
+	const value = environment.ZERO_STARTUP_BENCHMARK?.toLowerCase();
 	return value === "1" || value === "true" || value === "yes";
 }
 
@@ -356,6 +356,7 @@ export async function runOwnedSessionWorkerFrontend(
 				[SESSION_LEASE_OWNER_ID_ENV]: `owned-${randomUUID()}`,
 			},
 			stdio,
+			windowsHide: true,
 		});
 		currentChild = child;
 		if (!interactive) {
@@ -480,7 +481,7 @@ export async function maybeRunOwnedSessionWorkerFrontend(
 	args: readonly string[],
 	forceLegacyFrontend = false,
 ): Promise<boolean> {
-	if (!forceLegacyFrontend && process.env.PRIME_AGENT_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND !== "1") {
+	if (!forceLegacyFrontend && process.env.ZERO_INTERNAL_LEGACY_OWNED_WORKER_FRONTEND !== "1") {
 		return false;
 	}
 	const profile = classifyOwnedSessionWorkerInvocation(args, process.stdin.isTTY);

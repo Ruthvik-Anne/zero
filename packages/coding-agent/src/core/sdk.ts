@@ -1,6 +1,12 @@
 import { join } from "node:path";
-import { Agent, type AgentMessage, type ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { clampThinkingLevel, type Message, type Model, streamSimple, supportsFastMode } from "@earendil-works/pi-ai";
+import { Agent, type AgentMessage, type ThinkingLevel } from "@zero-agent/agent-core";
+import { clampThinkingLevel, type Message, type Model, streamSimple, supportsFastMode } from "@zero-agent/ai";
+import {
+	ClassificationStore,
+	type ProviderCandidate,
+	rankFallbackCandidatesByClassAndPrice,
+	routedStreamSimple,
+} from "@zero-agent/ai/router";
 import { getAgentDir } from "../config.js";
 import { AgentSession } from "./agent-session.js";
 import type { AgentSessionCreationOptions } from "./agent-session-services.js";
@@ -15,7 +21,7 @@ import { ModelRegistry } from "./model-registry.js";
 import { findInitialModel } from "./model-resolver.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import { DefaultResourceLoader } from "./resource-loader.js";
-import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
+import { getDefaultSessionDir, getSessionArtifactPath, SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
 import { time } from "./timings.js";
 import { createBashTool, createEditTool, createIpythonTool, withFileMutationQueue } from "./tools/index.js";
@@ -126,7 +132,7 @@ function getDefaultAgentDir(): string {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@earendil-works/pi-ai';
+ * import { getModel } from '@zero-agent/ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
@@ -255,6 +261,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	let agent: Agent;
 
+	// Module G (task #19): shared classification store used to rank the
+	// provider-fallback chain by class before price — constructed once and
+	// reused across every streamFn call rather than re-parsed per request.
+	const classificationStore = new ClassificationStore();
+
 	// Create convertToLlm wrapper that filters images if blockImages is enabled (defense-in-depth)
 	const convertToLlmWithBlockImages = (messages: AgentMessage[]): Message[] => {
 		const converted = convertToLlm(messages);
@@ -309,13 +320,84 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				throw new Error(auth.error);
 			}
 			const providerRetrySettings = settingsManager.getProviderRetrySettings();
-			return streamSimple(model, context, {
+			const streamOptions = {
 				...options,
 				apiKey: auth.apiKey,
 				timeoutMs: options?.timeoutMs ?? providerRetrySettings.timeoutMs,
 				maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
 				maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 				headers: auth.headers || options?.headers ? { ...auth.headers, ...options?.headers } : undefined,
+			};
+
+			// Module G: only take the router path when a fallback chain is actually
+			// configured, so the common (unconfigured) case is byte-for-byte the same
+			// direct streamSimple() call as before — no overhead, no behavior change.
+			const fallbackEntries = settingsManager.getProviderFallback();
+			if (fallbackEntries.length === 0) {
+				return streamSimple(model, context, streamOptions);
+			}
+
+			// The primary candidate is always the session's actively selected model,
+			// tried first regardless of class/price — a user's explicit model choice
+			// is never silently reordered away. Only the fallback tail (tried on a
+			// retryable failure) is ranked by class-distance-from-primary first,
+			// price second (task #19: "autorouting needs to be pricing and class
+			// based") — a same-or-close-tier fallback is preferred over a much
+			// cheaper but much weaker one, and price only breaks ties within a tier.
+			// (D14) module H convention: session-artifacts/<id>/usage/<date>.jsonl.
+			// Guard matches tool-definition-wrapper.ts's resolveSessionArtifactDir:
+			// an in-memory/ephemeral session (empty sessionDir — MCP tasks, most
+			// tests) has no real session directory to resolve "session-artifacts"
+			// relative to, so skip the ledger entirely rather than writing into a
+			// bogus path relative to whatever the process's cwd happens to be.
+			const sessionDir = sessionManager.getSessionDir();
+			const usageLedgerPath = sessionDir
+				? join(
+						getSessionArtifactPath(sessionDir, sessionManager.getSessionId()),
+						"usage",
+						`${new Date().toISOString().slice(0, 10)}.jsonl`,
+					)
+				: undefined;
+
+			const fallbackCandidates: ProviderCandidate[] = [];
+			for (const entry of fallbackEntries) {
+				const fallbackModel = modelRegistry.find(entry.provider, entry.modelId);
+				if (!fallbackModel) {
+					continue; // Unknown provider/model in settings — skip rather than fail the whole chain.
+				}
+				const fallbackAuth = await modelRegistry.getApiKeyAndHeaders(fallbackModel);
+				if (!fallbackAuth.ok) {
+					continue; // No usable credentials for this fallback — skip it, don't block on it.
+				}
+				fallbackCandidates.push({
+					model: fallbackModel,
+					options: {
+						...streamOptions,
+						apiKey: fallbackAuth.apiKey,
+						headers:
+							fallbackAuth.headers || options?.headers
+								? { ...fallbackAuth.headers, ...options?.headers }
+								: undefined,
+					},
+				});
+			}
+			const rankedFallbacks = rankFallbackCandidatesByClassAndPrice(
+				classificationStore,
+				model.name,
+				fallbackCandidates,
+			);
+			const candidates: ProviderCandidate[] = [{ model, options: streamOptions }, ...rankedFallbacks];
+			if (candidates.length === 1) {
+				// Every configured fallback was unusable — behave exactly like the unconfigured case.
+				return streamSimple(model, context, streamOptions);
+			}
+			// (D14) usage-ledger.ts existed with no caller ever setting ledgerPath —
+			// module H's own documented convention (session-artifacts/<id>/usage/<date>.jsonl)
+			// was never actually wired to the one real call site that goes through the
+			// router at all. Best-effort: a failed append must never fail the turn.
+			return routedStreamSimple(candidates, context, {
+				...streamOptions,
+				ledgerPath: usageLedgerPath,
 			});
 		},
 		onPayload: async (payload, _model) => {
@@ -398,6 +480,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		autonomous: options.autonomous,
 		serializedRefine: options.serializedRefine,
 		initialGoal: options.initialGoal,
+		mode: options.mode,
 	});
 	const extensionsResult = resourceLoader.getExtensions();
 

@@ -43,8 +43,23 @@ jobs:
       - name: Check
         run: npm run check
 
+      # (C1) Built once here rather than 10x (once per test-matrix leg below,
+      # plus this job) — every dist/ is a pure function of the checked-out
+      # source, so the same npm-run-build output is what every leg needs.
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-output
+          path: |
+            packages/tui/dist
+            packages/ai/dist
+            packages/agent/dist
+            packages/coding-agent/dist
+          retention-days: 1
+
   test:
     name: Test (${{ matrix.name }})
+    needs: build-check
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -102,8 +117,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      # (C1) Reuses build-check's build instead of every one of these 8 legs
+      # separately re-running the full monorepo build (which also re-fetches
+      # packages/ai's live model catalog on every invocation — see C3).
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-output
 
       - name: Install uv
         if: matrix.install_uv

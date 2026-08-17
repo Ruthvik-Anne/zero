@@ -1,4 +1,4 @@
-import { fauxAssistantMessage, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxThinking, fauxToolCall } from "@zero-agent/ai";
 import { describe, expect, it } from "vitest";
 import {
 	createAgentObserveMessagePreview,

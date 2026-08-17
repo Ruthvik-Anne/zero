@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Usage } from "@zero-agent/ai";
 import type { RlmChildAgentStatus } from "./agent-session.js";
 import { calculateContextTokens, estimateContextTokens } from "./compaction/index.js";
 import type { ContextUsage } from "./extensions/index.js";

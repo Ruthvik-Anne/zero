@@ -1,4 +1,4 @@
-> Prime Agent can create TUI components. Ask it to build one for your use case.
+> Zero can create TUI components. Ask it to build one for your use case.
 
 # TUI Components
 
@@ -33,7 +33,7 @@ The TUI appends a full SGR reset and OSC 8 reset at the end of each rendered lin
 Components that display a text cursor and need IME (Input Method Editor) support should implement the `Focusable` interface:
 
 ```typescript
-import { CURSOR_MARKER, type Component, type Focusable } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, type Component, type Focusable } from "@zero-agent/tui";
 
 class MyInput implements Component, Focusable {
   focused: boolean = false;  // Set by TUI when focus changes
@@ -59,7 +59,7 @@ This enables IME candidate windows to appear at the correct position for CJK inp
 When a container component (dialog, selector, etc.) contains an `Input` or `Editor` child, the container must implement `Focusable` and propagate the focus state to the child. Otherwise, the hardware cursor won't be positioned correctly for IME input.
 
 ```typescript
-import { Container, type Focusable, Input } from "@earendil-works/pi-tui";
+import { Container, type Focusable, Input } from "@zero-agent/tui";
 
 class SearchDialog extends Container implements Focusable {
   private searchInput: Input;
@@ -179,10 +179,10 @@ See [overlay-qa-tests.ts](../examples/extensions/overlay-qa-tests.ts) for compre
 
 ## Built-in Components
 
-Import from `@earendil-works/pi-tui`:
+Import from `@zero-agent/tui`:
 
 ```typescript
-import { Text, Box, Container, Spacer, Markdown } from "@earendil-works/pi-tui";
+import { Text, Box, Container, Spacer, Markdown } from "@zero-agent/tui";
 ```
 
 ### Text
@@ -248,7 +248,7 @@ md.setText("Updated markdown");
 
 ### Image
 
-Prime Agent shows compact image metadata and does not emit terminal graphics for images.
+Zero shows compact image metadata and does not emit terminal graphics for images.
 
 ```typescript
 const image = new Image(
@@ -264,7 +264,7 @@ const image = new Image(
 Use `matchesKey()` for key detection:
 
 ```typescript
-import { matchesKey, Key } from "@earendil-works/pi-tui";
+import { matchesKey, Key } from "@zero-agent/tui";
 
 handleInput(data: string) {
   if (matchesKey(data, Key.up)) {
@@ -290,7 +290,7 @@ handleInput(data: string) {
 **Critical:** Each line from `render()` must not exceed the `width` parameter.
 
 ```typescript
-import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
+import { visibleWidth, truncateToWidth } from "@zero-agent/tui";
 
 render(width: number): string[] {
   // Truncate long lines
@@ -311,7 +311,7 @@ Example: Interactive selector
 import {
   matchesKey, Key,
   truncateToWidth, visibleWidth
-} from "@earendil-works/pi-tui";
+} from "@zero-agent/tui";
 
 class MySelector {
   private items: string[];
@@ -425,8 +425,8 @@ renderResult(result, options, theme, context) {
 **For Markdown**, use `getMarkdownTheme()`:
 
 ```typescript
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
-import { Markdown } from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@zero-agent/coding-agent";
+import { Markdown } from "@zero-agent/tui";
 
 renderResult(result, options, theme, context) {
   const mdTheme = getMarkdownTheme();
@@ -445,10 +445,10 @@ interface MyTheme {
 
 ## Debug logging
 
-Set `PI_TUI_WRITE_LOG` to capture the raw ANSI stream written to stdout.
+Set `ZERO_TUI_WRITE_LOG` to capture the raw ANSI stream written to stdout.
 
 ```bash
-PI_TUI_WRITE_LOG=/tmp/tui-ansi.log npx tsx packages/tui/test/chat-simple.ts
+ZERO_TUI_WRITE_LOG=/tmp/tui-ansi.log npx tsx packages/tui/test/chat-simple.ts
 ```
 
 ## Performance
@@ -587,12 +587,12 @@ These patterns cover the most common UI needs in extensions. **Copy these patter
 
 ### Pattern 1: Selection Dialog (SelectList)
 
-For letting users pick from a list of options. Use `SelectList` from `@earendil-works/pi-tui` with `DynamicBorder` for framing.
+For letting users pick from a list of options. Use `SelectList` from `@zero-agent/tui` with `DynamicBorder` for framing.
 
 ```typescript
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@zero-agent/coding-agent";
+import { DynamicBorder } from "@zero-agent/coding-agent";
+import { Container, type SelectItem, SelectList, Text } from "@zero-agent/tui";
 
 pi.registerCommand("pick", {
   handler: async (_args, ctx) => {
@@ -650,7 +650,7 @@ pi.registerCommand("pick", {
 For operations that take time and should be cancellable. `BorderedLoader` shows a spinner and handles escape to cancel.
 
 ```typescript
-import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import { BorderedLoader } from "@zero-agent/coding-agent";
 
 pi.registerCommand("fetch", {
   handler: async (_args, ctx) => {
@@ -679,11 +679,11 @@ pi.registerCommand("fetch", {
 
 ### Pattern 3: Settings/Toggles (SettingsList)
 
-For toggling multiple settings. Use `SettingsList` from `@earendil-works/pi-tui` with `getSettingsListTheme()`.
+For toggling multiple settings. Use `SettingsList` from `@zero-agent/tui` with `getSettingsListTheme()`.
 
 ```typescript
-import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import { Container, type SettingItem, SettingsList, Text } from "@earendil-works/pi-tui";
+import { getSettingsListTheme } from "@zero-agent/coding-agent";
+import { Container, type SettingItem, SettingsList, Text } from "@zero-agent/tui";
 
 pi.registerCommand("settings", {
   handler: async (_args, ctx) => {
@@ -737,7 +737,7 @@ ctx.ui.setStatus("my-ext", undefined);
 
 ### Pattern 4b: Working Indicator Customization
 
-Customize the inline working indicator shown while Prime Agent is streaming a response.
+Customize the inline working indicator shown while Zero is streaming a response.
 
 ```typescript
 // Static indicator
@@ -757,7 +757,7 @@ ctx.ui.setWorkingIndicator({
 // Hide the indicator entirely
 ctx.ui.setWorkingIndicator({ frames: [] });
 
-// Restore Prime Agent's default spinner
+// Restore Zero's default spinner
 ctx.ui.setWorkingIndicator();
 ```
 
@@ -822,8 +822,8 @@ Token stats available via `ctx.sessionManager.getBranch()` and `ctx.model`.
 Replace the main input editor with a custom implementation. Useful for modal editing (vim), different keybindings (emacs), or specialized input handling.
 
 ```typescript
-import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import { CustomEditor, type ExtensionAPI } from "@zero-agent/coding-agent";
+import { matchesKey, truncateToWidth } from "@zero-agent/tui";
 
 type Mode = "normal" | "insert";
 

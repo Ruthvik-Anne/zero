@@ -15,9 +15,9 @@ describe("fullscreen mode settings", () => {
 			rmSync(testDir, { recursive: true });
 		}
 		mkdirSync(agentDir, { recursive: true });
-		mkdirSync(join(projectDir, ".prime", "agent"), { recursive: true });
-		savedEnv = process.env.PI_FULLSCREEN;
-		delete process.env.PI_FULLSCREEN;
+		mkdirSync(join(projectDir, ".zero", "agent"), { recursive: true });
+		savedEnv = process.env.ZERO_FULLSCREEN;
+		delete process.env.ZERO_FULLSCREEN;
 	});
 
 	afterEach(() => {
@@ -25,9 +25,9 @@ describe("fullscreen mode settings", () => {
 			rmSync(testDir, { recursive: true });
 		}
 		if (savedEnv === undefined) {
-			delete process.env.PI_FULLSCREEN;
+			delete process.env.ZERO_FULLSCREEN;
 		} else {
-			process.env.PI_FULLSCREEN = savedEnv;
+			process.env.ZERO_FULLSCREEN = savedEnv;
 		}
 	});
 
@@ -49,15 +49,15 @@ describe("fullscreen mode settings", () => {
 		expect(reloaded.getFullscreen()).toBe(false);
 	});
 
-	it("PI_FULLSCREEN env var overrides the setting in both directions", () => {
+	it("ZERO_FULLSCREEN env var overrides the setting in both directions", () => {
 		const manager = SettingsManager.create(projectDir, agentDir);
 		manager.setFullscreen(false);
 
-		process.env.PI_FULLSCREEN = "1";
+		process.env.ZERO_FULLSCREEN = "1";
 		expect(manager.getFullscreen()).toBe(true);
 
 		manager.setFullscreen(true);
-		process.env.PI_FULLSCREEN = "0";
+		process.env.ZERO_FULLSCREEN = "0";
 		expect(manager.getFullscreen()).toBe(false);
 	});
 

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@zero-agent/agent-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DaemonSocketClient } from "../src/modes/daemon/active-session-state.js";
 import { CommandRecoveryJournal } from "../src/modes/daemon/command-recovery-journal.js";
