@@ -184,7 +184,7 @@ describe("package commands", () => {
 	it("uses global npmCommand and the release manifest install spec for forced self updates", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
 		const projectPrefix = join(tempDir, "project-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@earendil-works", "pi-coding-agent");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@zero-agent", "coding-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
 		const recordPath = join(tempDir, "self-update.json");
 		const tarballUrl = "https://downloads.example.test/prime-agent/prime-agent-current.tgz";
@@ -330,7 +330,7 @@ else {
 
 	it("installs the Prime Agent tarball from the update manifest during self-update", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@earendil-works", "pi-coding-agent");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@zero-agent", "coding-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
 		const recordPath = join(tempDir, "self-update.json");
 		const baseUrl = "https://downloads.example.test/prime-agent";
@@ -383,7 +383,7 @@ else {
 
 	it("does not self-update when the same-version manifest uses the Prime Agent package alias", async () => {
 		const globalPrefix = join(tempDir, "global-prefix");
-		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@earendil-works", "pi-coding-agent");
+		const selfPackageDir = join(globalPrefix, "lib", "node_modules", "@zero-agent", "coding-agent");
 		const fakeNpmPath = join(tempDir, "fake-npm.cjs");
 		const recordPath = join(tempDir, "self-update.json");
 		const baseUrl = "https://downloads.example.test/prime-agent";

@@ -41,12 +41,14 @@ import type {
 import { AgentConnectionPromptAdmissionError } from "../src/modes/agent-connection/types.js";
 import { AgentActivityTracker } from "../src/modes/interactive/agent-activity.js";
 import type { AuthenticationResult } from "../src/modes/interactive/auth-flows.js";
+import { AgentMessageComponent } from "../src/modes/interactive/components/agent-message.js";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.js";
 import type { ConfigurationMenuComponent } from "../src/modes/interactive/components/configuration-menu.js";
 import type { AuthSelectorProvider } from "../src/modes/interactive/components/oauth-selector.js";
 import type { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.js";
 import { formatSplashCwd, InteractiveMode, truncatePathMiddle } from "../src/modes/interactive/interactive-mode.js";
 import { ClientPromptStashStore, type PromptStashState } from "../src/modes/interactive/prompt-stash-state.js";
+import { QueueSelection } from "../src/modes/interactive/queue-selection.js";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.js";
 
 function renderLastLine(container: Container, width = 120): string {
@@ -620,6 +622,7 @@ type SubmitHandlerHarness = {
 	isBashRunning: () => boolean;
 	patchConnectionState: (patch: Record<string, unknown>) => void;
 	requestAgentsView: () => Promise<void>;
+	handleResumeCommand: (args: string) => Promise<void>;
 	agentConnection: {
 		prompt: (message: string) => Promise<void>;
 		executeBash: (command: string, options?: { excludeFromContext?: boolean }) => Promise<void>;
@@ -639,6 +642,7 @@ function createSubmitHandlerHarness(overrides: Partial<SubmitHandlerHarness> = {
 		patchConnectionState: vi.fn(),
 		promptStashState: {},
 		requestAgentsView: vi.fn(async () => {}),
+		handleResumeCommand: vi.fn(async () => {}),
 		promptStash: undefined,
 		pastedImages: new Map(),
 		getPromptStashImages: vi.fn(() => []),
@@ -1123,8 +1127,11 @@ describe("InteractiveMode pending bash components", () => {
 
 		const editorStub = { clearHistory: vi.fn(), setText: vi.fn() };
 		const endFeatureHintRun = vi.fn();
+		const queueSelection = new QueueSelection();
+		queueSelection.move({ steering: ["s1"], followUp: [] }, "draft", -1);
 		const fakeThis = {
 			endFeatureHintRun,
+			queueSelection,
 			chatContainer: new Container(),
 			shortcutGuideContainer: new Container(),
 			pendingMessagesContainer: new Container(),
@@ -1157,6 +1164,10 @@ describe("InteractiveMode pending bash components", () => {
 		expect(loader.intervalId).toBeNull();
 		expect(endFeatureHintRun).toHaveBeenCalledOnce();
 		expect((fakeThis as unknown as { activeBashComponent: unknown }).activeBashComponent).toBeUndefined();
+		// Queue browsing is session-scoped: Enter in the next session must be a
+		// fresh prompt, and the previous session's stashed draft is discarded.
+		expect(queueSelection.isBrowsing).toBe(false);
+		expect(queueSelection.reset()).toBe("");
 	});
 });
 
@@ -1528,13 +1539,14 @@ describe("InteractiveMode connection events", () => {
 		expect(flushPendingBashComponents).toHaveBeenCalledOnce();
 	});
 
-	test("sends /resume as plain prompt text now that the command is retired", async () => {
+	test("routes /resume to the resume command handler", async () => {
 		const fakeThis = createSubmitHandlerHarness();
 
-		await fakeThis.defaultEditor.onSubmit?.("/resume unexpected");
+		await fakeThis.defaultEditor.onSubmit?.("/resume abc123");
 
+		expect(fakeThis.handleResumeCommand).toHaveBeenCalledWith("abc123");
 		expect(fakeThis.showError).not.toHaveBeenCalled();
-		expect(fakeThis.requestAgentsView).not.toHaveBeenCalled();
+		expect(fakeThis.agentConnection.prompt).not.toHaveBeenCalled();
 	});
 
 	test("renderCurrentSessionState waits for replacement handling before rendering", async () => {
@@ -4024,28 +4036,87 @@ describe("truncatePathMiddle", () => {
 });
 
 describe("InteractiveMode.setToolsExpanded", () => {
-	test("applies expansion state to the active header and chat entries", () => {
-		const header = { setExpanded: vi.fn() };
-		const chatChild = { setExpanded: vi.fn() };
+	function createExpansionFakeThis(chatChildren: unknown[]): any {
 		const fakeThis: any = {
 			toolOutputExpanded: false,
+			agentMessagesExpanded: false,
+			editDiffsExpanded: false,
 			customHeader: undefined,
-			builtInHeader: header,
-			chatContainer: { children: [chatChild] },
+			builtInHeader: { setExpanded: vi.fn() },
+			chatContainer: { children: chatChildren },
 			ui: {
 				requestRender: vi.fn(),
 				requestRenderPreservingViewport: vi.fn(),
 				isFullscreen: vi.fn().mockReturnValue(false),
 			},
 		};
+		Object.setPrototypeOf(fakeThis, InteractiveMode.prototype);
+		return fakeThis;
+	}
 
-		(InteractiveMode as any).prototype.setToolsExpanded.call(fakeThis, true);
+	test("applies expansion state to the active header and chat entries", () => {
+		const chatChild = { setExpanded: vi.fn() };
+		const fakeThis = createExpansionFakeThis([chatChild]);
+
+		fakeThis.setToolsExpanded(true);
 
 		expect(fakeThis.toolOutputExpanded).toBe(true);
-		expect(header.setExpanded).toHaveBeenCalledWith(true);
+		expect(fakeThis.builtInHeader.setExpanded).toHaveBeenCalledWith(true);
 		expect(chatChild.setExpanded).toHaveBeenCalledWith(true);
 		// Expansion keeps the user anchored, so it uses the viewport-preserving path.
 		expect(fakeThis.ui.requestRenderPreservingViewport).toHaveBeenCalledTimes(1);
+	});
+
+	test("toggles agent messages separately from tools", () => {
+		const toolChild = { setExpanded: vi.fn() };
+		const ipythonChild = { setExpanded: vi.fn(), setAgentMessagesExpanded: vi.fn(), setEditDiffsExpanded: vi.fn() };
+		const messageChild = new AgentMessageComponent({
+			role: "custom",
+			customType: "agent_message",
+			content: "Ping.",
+			display: true,
+			details: { id: "agentmsg_split", message: "Ping.", from: null },
+			timestamp: 123,
+		} as any);
+		const messageSetExpanded = vi.spyOn(messageChild, "setExpanded");
+		const fakeThis = createExpansionFakeThis([toolChild, ipythonChild, messageChild]);
+
+		fakeThis.toggleAgentMessageExpansion();
+
+		expect(fakeThis.agentMessagesExpanded).toBe(true);
+		expect(fakeThis.toolOutputExpanded).toBe(false);
+		expect(messageSetExpanded).toHaveBeenCalledWith(true);
+		expect(toolChild.setExpanded).toHaveBeenCalledWith(false);
+		expect(ipythonChild.setExpanded).toHaveBeenCalledWith(false);
+		expect(ipythonChild.setAgentMessagesExpanded).toHaveBeenCalledWith(true);
+
+		fakeThis.setToolsExpanded(true);
+
+		expect(toolChild.setExpanded).toHaveBeenCalledWith(true);
+		expect(messageSetExpanded).toHaveBeenLastCalledWith(true);
+		expect(ipythonChild.setExpanded).toHaveBeenCalledWith(true);
+		expect(ipythonChild.setAgentMessagesExpanded).toHaveBeenLastCalledWith(true);
+		expect(fakeThis.agentMessagesExpanded).toBe(true);
+	});
+
+	test("toggles edit diffs separately from tools and agent messages", () => {
+		const child = { setExpanded: vi.fn(), setAgentMessagesExpanded: vi.fn(), setEditDiffsExpanded: vi.fn() };
+		const fakeThis = createExpansionFakeThis([child]);
+
+		fakeThis.toggleEditDiffExpansion();
+
+		expect(fakeThis.editDiffsExpanded).toBe(true);
+		expect(fakeThis.toolOutputExpanded).toBe(false);
+		expect(fakeThis.agentMessagesExpanded).toBe(false);
+		expect(child.setEditDiffsExpanded).toHaveBeenCalledWith(true);
+		expect(child.setExpanded).toHaveBeenCalledWith(false);
+		expect(child.setAgentMessagesExpanded).toHaveBeenCalledWith(false);
+
+		fakeThis.setToolsExpanded(true);
+
+		expect(fakeThis.editDiffsExpanded).toBe(true);
+		expect(child.setEditDiffsExpanded).toHaveBeenLastCalledWith(true);
+		expect(child.setExpanded).toHaveBeenLastCalledWith(true);
 	});
 });
 

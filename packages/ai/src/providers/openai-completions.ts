@@ -107,6 +107,8 @@ function isEncryptedReasoningDetail(
 export interface OpenAICompletionsOptions extends StreamOptions {
 	toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+	/** Explicit reasoning toggle. undefined preserves the provider/model default. */
+	reasoningEnabled?: boolean;
 }
 
 interface OpenAICompatCacheControl {
@@ -136,7 +138,7 @@ type OpenAICompletionsExtendedParams = Omit<
 	chat_template_kwargs?: { enable_thinking: boolean; preserve_thinking: boolean };
 	thinking?: { type: "enabled" | "disabled" };
 	reasoning_effort?: string;
-	reasoning?: { effort?: string };
+	reasoning?: { effort?: string; enabled?: boolean };
 	provider?: OpenRouterRouting;
 	providerOptions?: { gateway: Record<string, string[]> };
 };
@@ -496,13 +498,16 @@ export const streamSimpleOpenAICompletions: StreamFunction<"openai-completions",
 	}
 
 	const base = buildBaseOptions(model, options, apiKey);
-	const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
+	const requestedReasoning = options?.reasoning;
+	const reasoningSpecified = requestedReasoning !== undefined;
+	const clampedReasoning = reasoningSpecified ? clampThinkingLevel(model, requestedReasoning) : undefined;
 	const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
 	const toolChoice = (options as OpenAICompletionsOptions | undefined)?.toolChoice;
 
 	return streamOpenAICompletions(model, context, {
 		...base,
 		reasoningEffort,
+		reasoningEnabled: reasoningSpecified ? clampedReasoning !== "off" : undefined,
 		toolChoice,
 	} satisfies OpenAICompletionsOptions);
 };
@@ -641,21 +646,26 @@ function buildParams(
 			extendedParams.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
 		}
 	} else if (compat.thinkingFormat === "openrouter" && model.reasoning) {
-		// OpenRouter normalizes reasoning across providers via a nested reasoning object.
-		if (options?.reasoningEffort) {
+		// OpenRouter distinguishes an omitted reasoning preference (use the model
+		// default), an explicit toggle, and an explicit effort selection.
+		if (options?.reasoningEffort && compat.supportsReasoningEffort) {
 			extendedParams.reasoning = {
 				effort: model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort,
 			};
-		} else if (model.thinkingLevelMap?.off !== null) {
-			extendedParams.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
+		} else if (options?.reasoningEnabled === true) {
+			extendedParams.reasoning = { enabled: true };
+		} else if (options?.reasoningEnabled === false && model.thinkingLevelMap?.off !== null) {
+			extendedParams.reasoning = compat.supportsReasoningEffort
+				? { effort: model.thinkingLevelMap?.off ?? "none" }
+				: { enabled: false };
 		}
 	} else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
 		// OpenAI-style reasoning_effort
 		extendedParams.reasoning_effort = model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort;
-	} else if (!options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
+	} else if (options?.reasoningEnabled === false && model.reasoning && compat.supportsReasoningEffort) {
 		const offValue = model.thinkingLevelMap?.off;
-		if (typeof offValue === "string") {
-			extendedParams.reasoning_effort = offValue;
+		if (offValue !== null) {
+			extendedParams.reasoning_effort = offValue ?? "none";
 		}
 	}
 

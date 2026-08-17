@@ -205,7 +205,7 @@ Current behavior:
 
 ### Thinking Level Map
 
-Use `thinkingLevelMap` on a model to describe model-specific thinking controls. Keys are Zero thinking levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.
+Use `thinkingLevelMap` on a model to describe model-specific thinking controls. Keys are Zero thinking levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
 
 Values are tristate:
 

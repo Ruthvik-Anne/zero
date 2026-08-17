@@ -3,6 +3,7 @@
 import { writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { getOpenRouterReasoningCapabilities } from "../src/openrouter-reasoning.js";
 import {
 	CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL,
 	CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
@@ -86,6 +87,7 @@ const DEEPSEEK_V4_THINKING_LEVEL_MAP = {
 	medium: null,
 	high: "high",
 	xhigh: "max",
+	max: null,
 } as const;
 
 const KIMI_K3_THINKING_LEVEL_MAP = {
@@ -202,7 +204,7 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 		mergeThinkingLevelMap(model, DEEPSEEK_V4_THINKING_LEVEL_MAP);
 	}
 	const kimiK3Id = model.id.toLowerCase();
-	if (/^k3(-|$)/.test(kimiK3Id) || /(^|\/)kimi-k3(-|$)/.test(kimiK3Id)) {
+	if (!model.thinkingLevelMap && (/^k3(-|$)/.test(kimiK3Id) || /(^|\/)kimi-k3(-|$)/.test(kimiK3Id))) {
 		mergeThinkingLevelMap(model, KIMI_K3_THINKING_LEVEL_MAP);
 	}
 	if (isGoogleThinkingApi(model) && isGemini3ProModel(model.id)) {
@@ -279,6 +281,7 @@ async function fetchOpenRouterModels(): Promise<Model<any>[]> {
 			const outputCost = Math.max(0, parseFloat(model.pricing?.completion || "0")) * 1_000_000;
 			const cacheReadCost = Math.max(0, parseFloat(model.pricing?.input_cache_read || "0")) * 1_000_000;
 			const cacheWriteCost = Math.max(0, parseFloat(model.pricing?.input_cache_write || "0")) * 1_000_000;
+			const reasoningCapabilities = getOpenRouterReasoningCapabilities(model);
 
 			const normalizedModel: Model<any> = {
 				id: modelKey,
@@ -287,6 +290,12 @@ async function fetchOpenRouterModels(): Promise<Model<any>[]> {
 				baseUrl: "https://openrouter.ai/api/v1",
 				provider,
 				reasoning: model.supported_parameters?.includes("reasoning") || false,
+				...(reasoningCapabilities?.thinkingLevelMap
+					? { thinkingLevelMap: reasoningCapabilities.thinkingLevelMap }
+					: {}),
+				...(reasoningCapabilities?.supportsReasoningEffort === false
+					? { compat: { supportsReasoningEffort: false } }
+					: {}),
 				input,
 				cost: {
 					input: inputCost,

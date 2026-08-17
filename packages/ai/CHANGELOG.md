@@ -6,6 +6,8 @@
 - Fixed OpenRouter error metadata being appended to the error message with no length cap, letting a broken upstream provider dump unbounded text into the TUI.
 - Fixed session resume crashing when replaying a redacted-thinking block from a session saved before the signature field existed.
 
+## [0.7.2] - 2026-08-11
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05

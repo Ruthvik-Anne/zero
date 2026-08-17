@@ -16,9 +16,7 @@
 			"@zero-agent/coding-agent/*": ["./packages/coding-agent/src/*"],
 			"typebox": ["./node_modules/typebox"],
 			"@zero-agent/tui": ["./packages/tui/src/index.ts"],
-			"@zero-agent/tui/*": ["./packages/tui/src/*"],
-			"@earendil-works/pi-agent-old": ["./packages/agent-old/src/index.ts"],
-			"@earendil-works/pi-agent-old/*": ["./packages/agent-old/src/*"]
+			"@zero-agent/tui/*": ["./packages/tui/src/*"]
 		}
 	},
 	"include": ["packages/*/src/**/*", "packages/*/test/**/*", "packages/coding-agent/examples/**/*"],

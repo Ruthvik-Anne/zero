@@ -67,7 +67,7 @@ Useful commands:
 ```bash
 zero agents                   # Browse running, idle, and saved sessions
 zero attach <agent>           # Reattach to a running session
-zero --resume <path|id>       # Resume a saved session
+zero --resume [path|id]       # Browse sessions or resume one directly
 zero status                   # Inspect background service state
 zero doctor [--fix]           # Inspect or repair background services
 zero update [--force]         # Update Zero
@@ -75,7 +75,7 @@ zero shutdown [--force]       # Stop every agent, worker, and background service
 ```
 
 ## Built for Long-Running Work
-Zero is built for long-running work, especially for evaluations in research. These features are available in the TUI, and when run autonomously. 
+Zero is built for long-running work, especially for evaluations in research. These features are available in the TUI, and when run autonomously.
 
 - **Continual Harness:** `/refine` can persist focused, reviewable lessons as supplemental prompts, memories, reusable skill descriptions, or subagent specifications, with recorded refinement history. It does not replace packaging and reviewing new executable skills.
 - **Direct agent-to-agent communication:** running agents and retained subagents can discover one another, exchange messages, and steer active work.
@@ -95,6 +95,12 @@ Zero is built for long-running work, especially for evaluations in research. The
 - [Provider setup](packages/coding-agent/docs/providers.md) — subscription and API-key providers
 - [Architecture overview](packages/coding-agent/docs/architecture.md) — daemon, worker, kernel, and persistence boundaries
 - [Development](packages/coding-agent/docs/development.md) — build and run from source
+
+## Contributing
+
+Start with a GitHub Discussion for [general questions](https://github.com/PrimeIntellect-ai/prime-agent/discussions/categories/general), [bug reports](https://github.com/PrimeIntellect-ai/prime-agent/discussions/categories/bug-reports), and [feature requests](https://github.com/PrimeIntellect-ai/prime-agent/discussions/categories/feature-requests). Maintainers promote accepted work into Issues, and pull requests are reviewed from maintainers and vouched contributors.
+
+Read the [contribution guidelines](CONTRIBUTING.md) for the full process. Report security vulnerabilities privately by following the [security policy](SECURITY.md).
 
 ## Acknowledgements
 

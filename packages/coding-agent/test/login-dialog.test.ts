@@ -1,15 +1,21 @@
-import { resetCapabilitiesCache, setCapabilities, type TUI } from "@zero-agent/tui";
+import { resetCapabilitiesCache, setCapabilities, setKeybindings, type TUI } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { KeybindingsManager } from "../src/core/keybindings.js";
 import { LoginDialogComponent } from "../src/modes/interactive/components/login-dialog.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
 
 const mocks = vi.hoisted(() => ({
+	copyToClipboard: vi.fn(),
 	execFile: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
 	execFile: mocks.execFile,
+}));
+
+vi.mock("../src/utils/clipboard.js", () => ({
+	copyToClipboard: mocks.copyToClipboard,
 }));
 
 function createFakeTui(): TUI {
@@ -24,6 +30,9 @@ describe("LoginDialogComponent", () => {
 	});
 
 	beforeEach(() => {
+		setKeybindings(new KeybindingsManager());
+		mocks.copyToClipboard.mockReset();
+		mocks.copyToClipboard.mockResolvedValue(undefined);
 		mocks.execFile.mockClear();
 	});
 
@@ -41,11 +50,37 @@ describe("LoginDialogComponent", () => {
 		expect(output).toContain("Browser sign-in");
 		expect(output).toContain("Sign-in link");
 		expect(output).toContain("https://example.com/oauth?client_id=test");
+		expect(output).toContain("C copy");
 		expect(output).toContain("Next step");
 		expect(output).toContain("Complete login in your browser.");
 		expect(output).not.toContain("click to open");
 		expect(output).not.toContain("─");
 		expect(output).not.toContain("> ");
+	});
+
+	it("copies the raw sign-in URL with the configured shortcut", async () => {
+		const dialog = new LoginDialogComponent(createFakeTui(), "anthropic", () => {}, "Anthropic");
+		const url = "https://example.com/oauth?client_id=test&redirect_uri=https%3A%2F%2Flocalhost%2Fcallback";
+
+		dialog.showAuth(url);
+		dialog.handleInput("c");
+
+		await vi.waitFor(() => expect(mocks.copyToClipboard).toHaveBeenCalledWith(url));
+		expect(stripAnsi(dialog.render(48).join("\n"))).toContain("Copied sign-in link");
+	});
+
+	it("honors a customized login URL copy shortcut", async () => {
+		setKeybindings(new KeybindingsManager({ "app.clipboard.copyLoginUrl": "ctrl+y" }));
+		const dialog = new LoginDialogComponent(createFakeTui(), "anthropic", () => {}, "Anthropic");
+		const url = "https://example.com/oauth";
+
+		dialog.showAuth(url);
+		expect(stripAnsi(dialog.render(88).join("\n"))).toContain("Ctrl+Y copy");
+		dialog.handleInput("c");
+		expect(mocks.copyToClipboard).not.toHaveBeenCalled();
+
+		dialog.handleInput("\x19");
+		await vi.waitFor(() => expect(mocks.copyToClipboard).toHaveBeenCalledWith(url));
 	});
 
 	it.each([
