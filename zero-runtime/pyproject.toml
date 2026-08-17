@@ -1,7 +1,7 @@
 [project]
-name = "prime-agent-runtime"
+name = "zero-runtime"
 version = "0.1.0"
-description = "Kernel-side runtime shim for Prime Agent recursion"
+description = "Kernel-side runtime shim for Zero recursion"
 requires-python = ">=3.10"
 dependencies = [
   "ipykernel",

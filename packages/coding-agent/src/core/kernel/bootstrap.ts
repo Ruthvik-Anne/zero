@@ -14,7 +14,7 @@ import type { PythonSkillRuntimeInfo } from "../skills.js";
 const BOOTSTRAP_SCHEMA = 8;
 const PYTHON_VERSION = "3.11";
 const IPYKERNEL_REQUIREMENT = "ipykernel";
-const RUNTIME_REQUIREMENT = "prime-agent-runtime";
+const RUNTIME_REQUIREMENT = "zero-runtime";
 // Serializes the kernel's user namespace so it can be revived across session
 // resume. Internal-only; intentionally not surfaced to the model as an import.
 const STATE_SNAPSHOT_REQUIREMENT = "dill";
@@ -405,7 +405,7 @@ async function hasIpykernel(python: string): Promise<boolean> {
 	return pythonImports(python, "ipykernel");
 }
 
-async function hasPrimeAgentRuntime(python: string): Promise<boolean> {
+async function hasZeroRuntime(python: string): Promise<boolean> {
 	try {
 		await run(python, ["-c", RUNTIME_READY_CHECK], { stdio: "ignore" });
 		return true;
@@ -532,7 +532,7 @@ async function ensureUv(options: EnsureKernelPythonOptions): Promise<string> {
 	if (!shouldInstallUv) {
 		throw new Error(
 			`uv is required to set up the Python kernel. Install uv yourself: ${UV_INSTALL_COMMAND}, ` +
-				"or set ZERO_INSTALL_UV=1 to let prime-agent run that installer.",
+				"or set ZERO_INSTALL_UV=1 to let zero run that installer.",
 		);
 	}
 
@@ -541,7 +541,7 @@ async function ensureUv(options: EnsureKernelPythonOptions): Promise<string> {
 		await run("sh", ["-c", UV_INSTALL_COMMAND], { stdio: options.onProgress ? "ignore" : "inherit" });
 	} catch (error) {
 		throw new Error(
-			`couldn't install uv from astral.sh; install it yourself: ${UV_INSTALL_COMMAND}, then re-run prime-agent. ${errorMessage(error)}`,
+			`couldn't install uv from astral.sh; install it yourself: ${UV_INSTALL_COMMAND}, then re-run zero. ${errorMessage(error)}`,
 		);
 	}
 
@@ -667,15 +667,15 @@ async function writeBootstrapVersion(
 
 function runtimeCandidateDirs(): string[] {
 	const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-	// dist/prime-agent-runtime is listed first deliberately: it is the only path stable
+	// dist/zero-runtime is listed first deliberately: it is the only path stable
 	// across every shipped layout (dist/, dist/bundle/, bun), where import.meta.url-relative
 	// resolution breaks. `npm run build` rebuilds it from live source (copy-assets does
 	// rm -rf + cp), so the staleness hash still refreshes on every build. The relative
 	// paths below cover running from source (tsx) where dist/ hasn't been built.
 	return [
-		path.join(getPackageDir(), "dist", "prime-agent-runtime"),
-		path.resolve(moduleDir, "..", "..", "prime-agent-runtime"),
-		path.resolve(moduleDir, "..", "..", "..", "..", "..", "prime-agent-runtime"),
+		path.join(getPackageDir(), "dist", "zero-runtime"),
+		path.resolve(moduleDir, "..", "..", "zero-runtime"),
+		path.resolve(moduleDir, "..", "..", "..", "..", "..", "zero-runtime"),
 	];
 }
 
@@ -835,7 +835,7 @@ async function syncPythonSkills(
 async function kernelBaseReady(python: string, venv: string, runtimeIdentity: string): Promise<boolean> {
 	return (
 		(await hasIpykernel(python)) &&
-		(await hasPrimeAgentRuntime(python)) &&
+		(await hasZeroRuntime(python)) &&
 		bootstrapBaseVersionCurrent(await readBootstrapVersion(venv), runtimeIdentity)
 	);
 }
@@ -848,7 +848,7 @@ async function kernelReady(
 ): Promise<boolean> {
 	return (
 		(await hasIpykernel(python)) &&
-		(await hasPrimeAgentRuntime(python)) &&
+		(await hasZeroRuntime(python)) &&
 		bootstrapVersionCurrent(await readBootstrapVersion(venv), runtimeIdentity, pythonSkills)
 	);
 }
@@ -856,8 +856,8 @@ async function kernelReady(
 function formatBootstrapFailure(error: unknown): Error {
 	return new Error(
 		`Failed to set up the Python kernel runtime. ${errorMessage(error)}\n` +
-			"First-time setup needs internet to install uv, Python, ipykernel, prime-agent-runtime, and default Python packages; once set up, prime-agent runs offline. " +
-			"Set ZERO_KERNEL_PYTHON to a Python with ipykernel, a current prime-agent-runtime, and default Python packages installed to skip auto-bootstrap.",
+			"First-time setup needs internet to install uv, Python, ipykernel, zero-runtime, and default Python packages; once set up, zero runs offline. " +
+			"Set ZERO_KERNEL_PYTHON to a Python with ipykernel, a current zero-runtime, and default Python packages installed to skip auto-bootstrap.",
 	);
 }
 
@@ -870,9 +870,9 @@ async function ensureKernelPythonUncached(
 		const python = path.resolve(expandHome(override));
 		const missing: string[] = [];
 		if (!(await hasIpykernel(python))) missing.push("ipykernel");
-		if (!(await hasPrimeAgentRuntime(python))) {
+		if (!(await hasZeroRuntime(python))) {
 			missing.push(
-				"a current prime-agent-runtime with callable rlm.run, rlm.host_request, and explicit harness CRUD methods",
+				"a current zero-runtime with callable rlm.run, rlm.host_request, and explicit harness CRUD methods",
 			);
 		}
 		if (missing.length === 0) {

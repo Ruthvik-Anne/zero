@@ -1,5 +1,5 @@
 # Kernel-side package for the bundled vault skill. It only talks to the
-# host through rlm.host_request; prime-agent-runtime is always installed in
+# host through rlm.host_request; zero-runtime is always installed in
 # the kernel venv before skills, so it is intentionally not declared as a
 # dependency (it is not published on PyPI).
 [project]

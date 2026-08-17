@@ -94,7 +94,7 @@ export interface AcquireDaemonUpdateRestartCoordinatorOptions {
 	registryDir?: string;
 }
 
-// A Windows named pipe path (e.g. "\\.\pipe\prime-agent-daemon", the default
+// A Windows named pipe path (e.g. "\\.\pipe\zero-daemon-<user>", the default
 // per defaultDaemonSocketPath()) is not a filesystem path — path.resolve()
 // mangles it (it collapses the leading "\\.\" into a drive-relative path).
 // A custom socketPath can still be an ordinary filesystem path even on

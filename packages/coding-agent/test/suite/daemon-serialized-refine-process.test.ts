@@ -9,7 +9,7 @@
  *
  * This single test proves:
  *   - The production daemon-launch env scrub strips inherited
- *     PRIME_AGENT_INTERNAL_DAEMON_WORKER=1 so the auto-spawned supervisor
+ *     ZERO_INTERNAL_DAEMON_WORKER=1 so the auto-spawned supervisor
  *     starts in supervisor mode (not worker mode) and sends daemon_hello.
  *   - serializedRefine=true (derived from appMode="json") crosses the real
  *     socket/process and arrives at the owned worker.

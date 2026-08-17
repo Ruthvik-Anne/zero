@@ -13,10 +13,10 @@ if (process.env.PRIME_AGENT_TEST_STDIN_TTY) {
 const pidPath = process.env.PRIME_AGENT_TEST_OWNED_PID_PATH;
 installOwnedSessionWorkerOwnerWatch();
 
-if (process.env.PRIME_AGENT_INTERNAL_OWNED_WORKER === "1") {
+if (process.env.ZERO_INTERNAL_OWNED_WORKER === "1") {
 	if (pidPath) {
 		writeFileSync(`${pidPath}.ppid`, `${process.ppid}\n`);
-		writeFileSync(`${pidPath}.profile`, `${process.env.PRIME_AGENT_INTERNAL_OWNED_PROFILE ?? ""}\n`);
+		writeFileSync(`${pidPath}.profile`, `${process.env.ZERO_INTERNAL_OWNED_PROFILE ?? ""}\n`);
 		writeFileSync(pidPath, `${process.pid}\n`);
 		process.once("SIGTERM", () => {
 			writeFileSync(`${pidPath}.terminated`, "terminated\n");
@@ -50,7 +50,7 @@ if (process.env.PRIME_AGENT_INTERNAL_OWNED_WORKER === "1") {
 			if (command.type === "ack_result") {
 				if (process.env.PRIME_AGENT_TEST_CRASH_ON_ACK === "1" && pidPath && !existsSync(`${pidPath}.crashed`)) {
 					writeFileSync(`${pidPath}.crashed`, "crashed\n");
-					const recoveryPath = process.env.PRIME_AGENT_INTERNAL_OWNED_RECOVERY_DESCRIPTOR;
+					const recoveryPath = process.env.ZERO_INTERNAL_OWNED_RECOVERY_DESCRIPTOR;
 					if (recoveryPath) {
 						writeFileSync(
 							recoveryPath,

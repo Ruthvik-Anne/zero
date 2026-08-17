@@ -47,7 +47,7 @@ function windowsPipeUserSuffix(): string {
 
 export function defaultDaemonSocketPath(): string {
 	if (process.platform === "win32") {
-		return `\\\\.\\pipe\\prime-agent-daemon-${windowsPipeUserSuffix()}`;
+		return `\\\\.\\pipe\\zero-daemon-${windowsPipeUserSuffix()}`;
 	}
 	return join(defaultDaemonSocketDir(), "daemon.sock");
 }

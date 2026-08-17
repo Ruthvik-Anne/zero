@@ -98,7 +98,7 @@ The `[project.scripts]` entry pointing at `rlm.skill:cli` gives the skill a shel
 
 - The script name must **exactly** match the Python import name, underscores included (`word_count`, not `word-count`).
 - `rlm.skill:cli` imports `<script_name>.run` and parses argv against its signature with `tyro`, awaits async results, and prints non-`None` return values.
-- `rlm` and `tyro` are already present in the kernel venv. Do **not** declare `prime-agent-runtime` as a dependency: it is bundled with Zero, not published on PyPI, so declaring it breaks installs outside the kernel venv. The CLI entry point only works where the runtime is installed, i.e. inside the kernel venv.
+- `rlm` and `tyro` are already present in the kernel venv. Do **not** declare `zero-runtime` as a dependency: it is bundled with Zero, not published on PyPI, so declaring it breaks installs outside the kernel venv. The CLI entry point only works where the runtime is installed, i.e. inside the kernel venv.
 
 The agent can then use either form:
 
@@ -114,7 +114,7 @@ Omit `[project.scripts]` when a CLI is not needed.
 
 ## Dependencies and the Kernel Venv
 
-- Declare every third-party package `run()` imports in `dependencies` — `pyproject.toml` is the source of truth. The one exception is `prime-agent-runtime` (see above).
+- Declare every third-party package `run()` imports in `dependencies` — `pyproject.toml` is the source of truth. The one exception is `zero-runtime` (see above).
 - These are already in the kernel venv, so depending on them is free: `requests`, `httpx`, `pyyaml`, `tomli`, `python-dotenv`, `pandas`, `numpy`, `scipy`, `beautifulsoup4`, `lxml`, `pydantic`, `tyro`.
 - The install is editable and keyed on a hash of `pyproject.toml`: editing Python source takes effect on the next kernel start with no reinstall; editing `pyproject.toml` triggers a reinstall automatically.
 - If the user sets `PRIME_AGENT_KERNEL_PYTHON`, Zero installs nothing — skills whose imports are missing there are disabled with a warning.

@@ -6,7 +6,7 @@ host bridge (`rlm.host_request`). One browser is launched lazily per session
 on first use and stays open across calls until `close()`.
 
 The browser itself is not a Python dependency of this skill or of
-prime-agent-runtime — it's a native Playwright dependency of the host,
+zero-runtime — it's a native Playwright dependency of the host,
 resolved at `npm install` time like the rest of the host's own code, not a
 package this skill installs into the kernel venv at runtime.
 """

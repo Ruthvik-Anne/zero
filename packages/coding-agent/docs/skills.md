@@ -167,7 +167,7 @@ help(web_search)
 
 Python skills are installed editable into the kernel venv during kernel setup. By default this is `~/.zero/agent/kernel-venv`; set `ZERO_KERNEL_VENV` to override it. If `pyproject.toml` changes, Zero rebuilds the kernel venv so dependency changes are picked up.
 
-If you set `ZERO_KERNEL_PYTHON`, Zero does not install packages into that environment. The Python must already have `ipykernel`, `prime-agent-runtime`, and the default runtime packages installed. Missing Python skill imports are disabled with a warning and calling the skill raises a `RuntimeError`.
+If you set `ZERO_KERNEL_PYTHON`, Zero does not install packages into that environment. The Python must already have `ipykernel`, `zero-runtime`, and the default runtime packages installed. Missing Python skill imports are disabled with a warning and calling the skill raises a `RuntimeError`.
 
 ### Optional CLI Command
 

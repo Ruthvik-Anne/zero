@@ -5,7 +5,7 @@ import type { DeleteSessionFileResult } from "../../core/session-file-actions.js
 import { deleteSessionFile } from "../../core/session-file-actions.js";
 import { readSessionInfo, type SessionInfo, SessionManager } from "../../core/session-manager.js";
 
-export const DAEMON_CATALOG_ROLE_ENV = "PRIME_AGENT_INTERNAL_DAEMON_CATALOG";
+export const DAEMON_CATALOG_ROLE_ENV = "ZERO_INTERNAL_DAEMON_CATALOG";
 
 interface SessionInfoWire extends Omit<SessionInfo, "created" | "modified"> {
 	created: string;

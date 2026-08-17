@@ -18,7 +18,7 @@ describe("defaultDaemonSocketPath", () => {
 			return;
 		}
 
-		expect(defaultDaemonSocketPath()).toBe("\\\\.\\pipe\\prime-agent-daemon");
+		expect(defaultDaemonSocketPath()).toMatch(/^\\\\\.\\pipe\\zero-daemon-[A-Za-z0-9_.-]+$/);
 	});
 
 	it("uses a per-user Unix socket directory", () => {

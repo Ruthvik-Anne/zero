@@ -2156,7 +2156,7 @@ describe("AgentSession rlm recursion", () => {
 				? join(homedir(), ".zero", "agent", "kernel-venv", "Scripts", "python.exe")
 				: join(homedir(), ".zero", "agent", "kernel-venv", "bin", "python");
 		const python = process.env.ZERO_KERNEL_PYTHON ?? defaultVenvPython;
-		const runtime = join(process.cwd(), "..", "..", "prime-agent-runtime", "src");
+		const runtime = join(process.cwd(), "..", "..", "zero-runtime", "src");
 		const probe = spawnSync(
 			python,
 			["-c", "import asyncio, rlm; rlm.Comm = None; asyncio.run(rlm.run('raised live cap'))"],

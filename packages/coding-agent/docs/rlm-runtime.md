@@ -9,7 +9,7 @@ flowchart TD
     session["AgentSession · TypeScript<br/>IPython tool + host request handlers"]
     manager["KernelManager · TypeScript<br/>execution + comm dispatch"]
     kernel["IPython kernel process · Python"]
-    runtime["prime-agent-runtime<br/>rlm module + Python skills"]
+    runtime["zero-runtime<br/>rlm module + Python skills"]
     code["Model-executed Python code"]
 
     session -->|"owns"| manager
@@ -67,7 +67,7 @@ sequenceDiagram
 | `src/core/tools/ipython.ts` | Agent tool wrapper, lazy kernel provisioning, namespace bootstrap, and output shaping. |
 | `src/core/agent-session.ts` | RLM policy, child creation, registry, usage attribution, cancellation, and goal handlers. |
 | `src/core/rlm-runtime.ts` | Typed request/spawn-handle validation for `rlm.run`, model discovery, list, and delete. |
-| `prime-agent-runtime/src/rlm/` | Python shim, handle types, callable `rlm`, and session-backed harness state. |
+| `zero-runtime/src/rlm/` | Python shim, handle types, callable `rlm`, and session-backed harness state. |
 
 The Python side does not call providers or implement an agent loop.
 
@@ -79,7 +79,7 @@ The kernel is created lazily on first IPython use. Python resolution is:
 2. `~/.zero/agent/kernel-venv/bin/python`, bootstrapped with `uv`; or
 3. the XDG data location when `~/.prime` is not writable.
 
-The managed environment includes Python 3.11, `ipykernel`, and `prime-agent-runtime`. A bootstrap marker detects stale environments.
+The managed environment includes Python 3.11, `ipykernel`, and `zero-runtime`. A bootstrap marker detects stale environments.
 
 Startup creates a temporary Jupyter connection file with loopback TCP ports and an HMAC key, starts `python -m ipykernel_launcher`, connects shell, IOPub, and control sockets, waits for subscription propagation, and probes readiness with `kernel_info_request`.
 
@@ -124,7 +124,7 @@ The Python shim therefore registers comm handlers on the control channel, and th
 
 ## Python API
 
-`prime-agent-runtime` exports:
+`zero-runtime` exports:
 
 ```python
 rlm

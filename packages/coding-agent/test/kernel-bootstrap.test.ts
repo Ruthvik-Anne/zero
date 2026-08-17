@@ -174,7 +174,7 @@ describe("kernel bootstrap", () => {
 		expect(getKernelVenvDir()).toBe(venv);
 	});
 
-	it("bootstraps a missing venv with uv, ipykernel, prime-agent-runtime, and default extra packages", async () => {
+	it("bootstraps a missing venv with uv, ipykernel, zero-runtime, and default extra packages", async () => {
 		const logPath = installFakeUv();
 		const venv = join(tempDir, "kernel-venv");
 		process.env.ZERO_KERNEL_VENV = venv;
@@ -186,7 +186,7 @@ describe("kernel bootstrap", () => {
 		expect(log).toContain(`venv ${venv} --python 3.11 --seed`);
 		expect(log).toContain("pip install --python");
 		expect(log).toContain("ipykernel");
-		expect(log).toContain("prime-agent-runtime");
+		expect(log).toContain("zero-runtime");
 		expect(log).toContain("dill");
 		for (const uvArg of DEFAULT_RLM_EXTRA_UV_ARGS) {
 			expect(log).toContain(uvArg);
@@ -386,7 +386,7 @@ dependencies = ["httpx"]
 			`${JSON.stringify({
 				schema: 4,
 				ipykernel: "ipykernel",
-				runtime: "prime-agent-runtime",
+				runtime: "zero-runtime",
 				extraUvArgs: DEFAULT_RLM_EXTRA_UV_ARGS,
 				pythonSkills: [
 					{
@@ -526,7 +526,7 @@ dependencies = ["httpx"]
 		writeFakePython(overridePython, ["ipykernel"]);
 		process.env.ZERO_KERNEL_PYTHON = overridePython;
 
-		await expect(ensureKernelPython()).rejects.toThrow(/current prime-agent-runtime with callable rlm\.run/);
+		await expect(ensureKernelPython()).rejects.toThrow(/current zero-runtime with callable rlm\.run/);
 	});
 
 	it("rejects ZERO_KERNEL_PYTHON with a legacy harness API", async () => {
@@ -549,7 +549,7 @@ dependencies = ["httpx"]
 		);
 		process.env.ZERO_KERNEL_PYTHON = overridePython;
 
-		await expect(ensureKernelPython()).rejects.toThrow(/current prime-agent-runtime with callable rlm\.run/);
+		await expect(ensureKernelPython()).rejects.toThrow(/current zero-runtime with callable rlm\.run/);
 	});
 
 	it("fails an invalid ZERO_KERNEL_PYTHON without bootstrapping", async () => {

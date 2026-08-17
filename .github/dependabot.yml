@@ -12,7 +12,7 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: uv
-    directory: /prime-agent-runtime
+    directory: /zero-runtime
     schedule:
       interval: weekly
     cooldown:

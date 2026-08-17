@@ -101,7 +101,12 @@ describe("LoginDialogComponent", () => {
 
 			dialog.showAuth(url);
 
-			expect(mocks.execFile).toHaveBeenCalledWith(command, [...prefixArgs, url], expect.any(Function));
+			expect(mocks.execFile).toHaveBeenCalledWith(
+				command,
+				[...prefixArgs, url],
+				{ windowsHide: true },
+				expect.any(Function),
+			);
 		} finally {
 			platformSpy.mockRestore();
 		}

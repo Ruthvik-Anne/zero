@@ -1,7 +1,7 @@
 [project]
 name = "python-skill"
 version = "0.1.0"
-dependencies = ["prime-agent-runtime"]
+dependencies = ["zero-runtime"]
 
 [project.scripts]
 python_skill = "rlm.skill:cli"
