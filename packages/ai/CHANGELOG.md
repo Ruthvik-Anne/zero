@@ -2,9 +2,12 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-18
+
 - Fixed the OpenAI-compatible provider trusting an unvalidated `choice.usage` fallback and `reasoning_details` entries from the raw provider response; malformed values are now skipped instead of risking bad usage/cost numbers or a crash.
 - Fixed OpenRouter error metadata being appended to the error message with no length cap, letting a broken upstream provider dump unbounded text into the TUI.
 - Fixed session resume crashing when replaying a redacted-thinking block from a session saved before the signature field existed.
+- Fixed the Vertex ADC credential path being hardcoded to the POSIX `~/.config/gcloud` location, missing the Windows `%APPDATA%\gcloud` path `gcloud auth application-default login` actually writes to.
 
 ## [0.7.2] - 2026-08-11
 

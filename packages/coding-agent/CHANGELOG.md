@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-18
+
+- Added `install.ps1` for a one-line Windows install (`irm ... | iex`), matching `install.sh`; trimmed the README's Getting Started section to two lines.
+- Fixed the automatic `uv` installer always running the POSIX `sh -c "curl ... | sh"` form, which threw `ENOENT` on Windows; it now runs the real Windows installer via PowerShell.
+- Fixed `pi.exec()` (the extension SDK's exec helper) always spawning with `shell: false`, breaking `.cmd`/`.bat`-shimmed binaries on Windows.
+- Fixed `$VISUAL`/`$EDITOR` being split on a bare space, which shredded a quoted Windows editor path.
+- Added `rlm.set_model(model=..., model_class="same"|"smaller")` so the running agent can change its own active model mid-session, reusing the same classification-based ranking `rlm.run(modelClass=...)` already uses for subagents.
+- Fixed `advisor.consult()` returning an unusable status by renaming the reply's `status` field (which collided with the kernel host bridge's own reserved `status` key) to `outcome`.
+- Changed the advisor's default reviewer model from the session's own model to the cheapest authenticated model in classification class "S", so a second opinion actually comes from a different, stronger-tier model by default.
+- Added ask-when-ambiguous and proactive-compaction guidance to the core system prompt so the `ask-user` and `compact` skills are actually used as intended, not just discoverable.
+- Changed network-error auto-retries to say "Reconnecting" instead of the generic "Retrying" in the interactive UI.
+- Added a crash handler for the foreground/interactive client (the daemon already had one), logging uncaught exceptions/rejections to `client-errors.log` instead of losing them.
+- Added `rlm.log_error(message, **context)` so the agent can add its own findings to the same structured error log.
+- Enhanced `zero doctor` to surface recent errors from the structured and client error logs, not just background service status.
+- Changed the subagent status line below the chat input to expand into a per-subagent list inline on Enter, instead of opening a separate Session View screen.
+- Removed build-from-source and pinned/beta install instructions from the README; the GitHub Release install path is now the only documented one.
 - Changed the agents view splash hint from "type to start" to "type to search sessions".
 - Added `app.edits.expand` (`ctrl+j`) to toggle edit diffs; diffs are now shown only by this toggle, and `ctrl+o` no longer affects them.
 - Changed edit rendering so the `╰─ <path> +N -M` summary line is always visible and `ctrl+j` toggles the diff inline beneath it, indented to the summary text.
