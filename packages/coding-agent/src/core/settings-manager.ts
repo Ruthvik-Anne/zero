@@ -153,7 +153,7 @@ export interface Settings {
 	retry?: RetrySettings;
 	/** Ordered provider/model fallback chain (module G router). Default: [] (no fallback). */
 	providerFallback?: ProviderFallbackEntry[];
-	/** module E: model the native advisor consults with. Default: unset, reuses the active session model. */
+	/** module E: model the native advisor consults with. Default: unset, falls back to the cheapest authenticated model in classification class "S" (see AgentSession._resolveAdvisorModel), then to the active session model if none is authenticated. */
 	advisorModel?: { provider: string; modelId: string };
 	hideThinkingBlock?: boolean;
 	shellPath?: string; // Custom shell path (e.g., for Cygwin users on Windows)

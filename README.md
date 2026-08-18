@@ -44,34 +44,15 @@ Zero combines a persistent Python control environment with durable harness state
 
 ## Getting Started
 
-### Option 1: build from source
-
-```bash
-git clone https://github.com/Ruthvik-Anne/zero.git
-cd zero
-npm install
-npm run build
-./zero.sh   # or: npm link -w packages/coding-agent, then run `zero`
-```
-
-This always works and needs no release set up first — it's the fastest path while iterating.
-
-### Option 2: install a published release
-
-Releases are published as [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo (see [Creating a release](#creating-a-release) below) — no separate download host, CDN, or `gh` CLI required, just `curl`:
+Releases are published as [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo (see [Creating a release](#creating-a-release) below) — no separate download host, CDN, or `gh` CLI required.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh
 ```
 
-To install the beta built from the latest commit on `main`, or a specific version:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh -s -- beta
-curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh -s -- 0.7.3
+```powershell
+irm https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.ps1 | iex
 ```
-
-`install.sh` resolves the requested release via the public GitHub API, downloads and SHA-256-verifies all four release tarballs, and runs `npm install -g` on the main one.
 
 Start Zero from the repository or directory you want it to work in:
 

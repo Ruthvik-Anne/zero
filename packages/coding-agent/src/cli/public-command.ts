@@ -1,5 +1,12 @@
+import { existsSync, readFileSync } from "node:fs";
 import chalk from "chalk";
-import { APP_NAME, SELF_UPDATE_INTERACTIVE_CHILD_ENV } from "../config.js";
+import {
+	APP_NAME,
+	getAgentLogPath,
+	getClientErrorLogPath,
+	getLogsDir,
+	SELF_UPDATE_INTERACTIVE_CHILD_ENV,
+} from "../config.js";
 import { handlePackageCommand, isSelfUpdateSource } from "../package-manager-cli.js";
 import { INTERNAL_RUNTIME_COMMAND_MARKER, parseArgs } from "./args.js";
 import {
@@ -118,7 +125,7 @@ async function runPublicCommand(args: string[]): Promise<PublicCommandResult> {
 			);
 			if (hasLegacySelfTarget && hasLegacyPackageTarget) {
 				return fail(
-					"Prime Agent and package updates are now separate.",
+					"Zero and package updates are now separate.",
 					`Run "${APP_NAME} update [--force]" and "${APP_NAME} package update [source]" separately.`,
 				);
 			}
@@ -199,15 +206,15 @@ function rejectRemovedCommand(args: string[]): PublicCommandResult {
 	const [command, subcommand] = args;
 	let replacement: string | undefined;
 	if (command === "daemon") {
-		replacement = 'Run "prime-agent help" to see the agent commands.';
+		replacement = `Run "${APP_NAME} help" to see the agent commands.`;
 	} else if (command === "app" && subcommand === "update") {
-		replacement = 'Use "prime-agent update".';
+		replacement = `Use "${APP_NAME} update".`;
 	} else if (command === "install") {
-		replacement = 'Use "prime-agent package install".';
+		replacement = `Use "${APP_NAME} package install".`;
 	} else if (command === "remove" || command === "uninstall") {
-		replacement = 'Use "prime-agent package remove".';
+		replacement = `Use "${APP_NAME} package remove".`;
 	} else if (command === "manage") {
-		replacement = 'Use "prime-agent agents".';
+		replacement = `Use "${APP_NAME} agents".`;
 	}
 	return fail(`Unknown command: ${args.slice(0, 2).join(" ")}`, replacement);
 }
@@ -254,8 +261,82 @@ async function runDoctor(args: string[]): Promise<PublicCommandResult> {
 		await runReap(options.has("--json"), false);
 	} else {
 		await runPs(options.has("--json"));
+		printDoctorLogHealth(options.has("--json"));
 	}
 	return HANDLED;
+}
+
+interface DoctorStructuredError {
+	timestamp?: string;
+	component?: string;
+	message: string;
+}
+
+const DOCTOR_LOG_SCAN_LINES = 1000;
+const DOCTOR_LOG_REPORT_LIMIT = 10;
+
+/** Tail the shared JSONL log for recent error-level entries — daemon/client crashes, and anything the agent itself flagged via `rlm.log_error`. */
+function readRecentStructuredErrors(limit: number): DoctorStructuredError[] {
+	const path = getAgentLogPath();
+	if (!existsSync(path)) return [];
+	try {
+		const lines = readFileSync(path, "utf8").split("\n").filter(Boolean).slice(-DOCTOR_LOG_SCAN_LINES);
+		const errors: DoctorStructuredError[] = [];
+		for (const line of lines) {
+			try {
+				const entry = JSON.parse(line) as { level?: string; ts?: string; component?: string; msg?: string };
+				if (entry.level === "error") {
+					errors.push({ timestamp: entry.ts, component: entry.component, message: entry.msg ?? "" });
+				}
+			} catch {
+				// A malformed line shouldn't abort the rest of the scan.
+			}
+		}
+		return errors.slice(-limit);
+	} catch {
+		return [];
+	}
+}
+
+/** Tail client-errors.log: agent-open failures and unhandled client crashes (see installClientCrashHandlers). */
+function readRecentClientErrorLines(limit: number): string[] {
+	const path = getClientErrorLogPath();
+	if (!existsSync(path)) return [];
+	try {
+		return readFileSync(path, "utf8").split("\n").filter(Boolean).slice(-limit);
+	} catch {
+		return [];
+	}
+}
+
+function printDoctorLogHealth(json: boolean): void {
+	const structuredErrors = readRecentStructuredErrors(DOCTOR_LOG_REPORT_LIMIT);
+	const clientErrorLines = readRecentClientErrorLines(DOCTOR_LOG_REPORT_LIMIT);
+	if (json) {
+		console.log(
+			JSON.stringify(
+				{
+					logsDir: getLogsDir(),
+					recentStructuredErrors: structuredErrors,
+					recentClientErrorLines: clientErrorLines,
+				},
+				null,
+				2,
+			),
+		);
+		return;
+	}
+	if (structuredErrors.length === 0 && clientErrorLines.length === 0) {
+		console.log(`\nNo recent errors logged (${getLogsDir()}).`);
+		return;
+	}
+	console.log(`\nRecent errors (${getLogsDir()}):`);
+	for (const line of clientErrorLines) {
+		console.log(`  ${line}`);
+	}
+	for (const entry of structuredErrors) {
+		console.log(`  [${entry.timestamp ?? "?"}] ${entry.component ?? "?"}: ${entry.message}`);
+	}
 }
 
 async function runShutdown(args: string[]): Promise<PublicCommandResult> {
@@ -287,14 +368,14 @@ async function runPackage(args: string[]): Promise<PublicCommandResult> {
 			rest.some((arg) => arg === "--self" || arg === "--extensions" || arg === "--extension" || arg === "--force")
 		) {
 			return fail(
-				'Package updates accept only an optional source. Use "prime-agent update --force" to update Prime Agent.',
+				`Package updates accept only an optional source. Use "${APP_NAME} update --force" to update Zero.`,
 			);
 		}
 		if (rest.length > 1) {
 			return fail(`Usage: ${APP_NAME} package update [source]`);
 		}
 		if (rest[0] && isSelfUpdateSource(rest[0])) {
-			return fail('Use "prime-agent update" to update Prime Agent.');
+			return fail(`Use "${APP_NAME} update" to update Zero.`);
 		}
 		await handlePackageCommand(["update", ...(rest.length === 0 ? ["--extensions"] : rest)]);
 		return HANDLED;

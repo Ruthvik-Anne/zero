@@ -55,6 +55,18 @@ export type RlmListSubagentsHandler = () => RlmListSubagentsResult | Promise<Rlm
 export type RlmDeleteSubagentHandler = (target: string) => Promise<RlmDeleteSubagentResult>;
 export type RlmFindModelsHandler = (query: string, limit: number) => RlmFindModelsResult | Promise<RlmFindModelsResult>;
 
+export interface RlmSetModelRequest {
+	model?: string;
+	/** Unvalidated at this layer — `handleRlmSetModel` checks it's "same"/"smaller". */
+	modelClass?: string;
+}
+
+export interface RlmSetModelResult {
+	model: string;
+}
+
+export type RlmSetModelHandler = (request: RlmSetModelRequest) => Promise<RlmSetModelResult>;
+
 const RLM_SUBAGENT_SESSION_NAME_MAX_LENGTH = 64;
 export const DEFAULT_RLM_MODEL_SEARCH_LIMIT = 8;
 export const MAX_RLM_MODEL_SEARCH_LIMIT = 20;
@@ -196,6 +208,63 @@ export function createRlmDeleteSubagentHostHandler(handler: RlmDeleteSubagentHan
 		}
 		const { subagent, outcome } = await handler(payload.target.trim());
 		return outcome === undefined ? { subagent } : { subagent, outcome };
+	};
+}
+
+/**
+ * Change the current (non-child) session's own active model, optionally
+ * class-aware. Only extracts and type-checks the raw payload here — the
+ * mutual-exclusivity/enum semantics live in `handleRlmSetModel` itself,
+ * matching `_startRlmChildRun`'s split (this file validates shape, the
+ * session method validates meaning).
+ */
+export function createRlmSetModelHostHandler(handler: RlmSetModelHandler): HostRequestHandler {
+	return async (payload) => {
+		const rawModel = payload.model;
+		const rawModelClass = payload.model_class;
+		if (rawModel !== undefined && typeof rawModel !== "string") {
+			throw new Error("rlm.set_model model must be a string");
+		}
+		if (rawModelClass !== undefined && typeof rawModelClass !== "string") {
+			throw new Error("rlm.set_model model_class must be a string");
+		}
+		const result = await handler({
+			model: rawModel as string | undefined,
+			modelClass: rawModelClass as "same" | "smaller" | undefined,
+		});
+		return { model: result.model };
+	};
+}
+
+export interface RlmLogErrorRequest {
+	message: string;
+	context?: Record<string, unknown>;
+}
+
+export type RlmLogErrorHandler = (request: RlmLogErrorRequest) => Promise<void>;
+
+/**
+ * Let the agent add its own findings to the same structured error log a
+ * crashing process writes to (see `installClientCrashHandlers`) — for
+ * problems it detects mid-task that are worth surviving past the transcript
+ * (a caught exception it recovered from, a tool that misbehaved in a way
+ * worth flagging) rather than only ever process-level crashes.
+ */
+export function createRlmLogErrorHostHandler(handler: RlmLogErrorHandler): HostRequestHandler {
+	return async (payload) => {
+		const rawMessage = payload.message;
+		const rawContext = payload.context;
+		if (typeof rawMessage !== "string" || rawMessage.trim() === "") {
+			throw new Error("rlm.log_error message must be a non-empty string");
+		}
+		if (
+			rawContext !== undefined &&
+			(typeof rawContext !== "object" || rawContext === null || Array.isArray(rawContext))
+		) {
+			throw new Error("rlm.log_error context must be an object when provided");
+		}
+		await handler({ message: rawMessage, context: rawContext as Record<string, unknown> | undefined });
+		return {};
 	};
 }
 

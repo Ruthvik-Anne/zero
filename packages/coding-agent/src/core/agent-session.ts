@@ -42,6 +42,7 @@ import type {
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
+	getLogger,
 	isContextOverflow,
 	resetApiProviders,
 	supportsFastMode,
@@ -254,13 +255,18 @@ import {
 	createRlmDeleteSubagentHostHandler,
 	createRlmFindModelsHostHandler,
 	createRlmListSubagentsHostHandler,
+	createRlmLogErrorHostHandler,
 	createRlmRunHostHandler,
+	createRlmSetModelHostHandler,
 	findRlmModelMatches,
 	normalizeRequestedRlmSubagentModel,
 	normalizeRequestedRlmSubagentSessionName,
 	type RlmDeleteSubagentResult,
 	type RlmFindModelsResult,
 	type RlmListSubagentsResult,
+	type RlmLogErrorRequest,
+	type RlmSetModelRequest,
+	type RlmSetModelResult,
 	type RlmSpawnHandle,
 	type RlmSubagentRegistryEntry,
 	type RlmSubagentRuntime,
@@ -392,6 +398,8 @@ export type AgentSessionEvent =
 			maxAttempts: number;
 			delayMs: number;
 			errorMessage: string;
+			/** Provider failure kind (e.g. "network_error"), when classified — lets the UI say "Reconnecting" for a dropped connection instead of the generic "Retrying". */
+			kind?: string;
 	  }
 	| {
 			type: "auto_retry_end";
@@ -3086,13 +3094,13 @@ export class AgentSession {
 	 */
 	async handleAdvisorHostRequest(payload: Record<string, unknown> = {}): Promise<{
 		advice: string;
-		status: string;
+		outcome: string;
 		error_message: string | null;
 	}> {
 		if (payload.question !== undefined && typeof payload.question !== "string") {
 			throw new Error("advisor.consult question must be a string when provided");
 		}
-		const overrideModel = this._resolveAdvisorModel();
+		const overrideModel = await this._resolveAdvisorModel();
 		// (D13) Same signal every other host-request handler in this class already
 		// forwards (e.g. askUser above) — a model-initiated advisor.consult() call
 		// is cancellable the same way an ask_user prompt already is.
@@ -3102,13 +3110,42 @@ export class AgentSession {
 			overrideModel,
 			this.agent.signal,
 		);
-		return { advice: result.advice, status: result.status, error_message: result.errorMessage ?? null };
+		// Named "outcome", not "status": the kernel host bridge's reply envelope
+		// (kernel/index.ts's `sendCommMessage(commId, { status: "ok", ...result })`)
+		// already reserves a top-level "status" key for its own "ok"/"error" wire
+		// protocol. Returning a "status" field here silently overwrote that (e.g.
+		// "complete" clobbering "ok"), which the Python host_request bridge then
+		// rejected as an unrecognized status ("host request advisor.consult
+		// returned unexpected status: 'complete'") instead of resolving normally.
+		return { advice: result.advice, outcome: result.status, error_message: result.errorMessage ?? null };
 	}
 
-	private _resolveAdvisorModel(): Model<any> | undefined {
+	/**
+	 * Default advisor reviewer, when the user hasn't explicitly configured one
+	 * via settings: the cheapest live-available, authenticated model in
+	 * classification class "S" (task #19's second-highest generalist tier),
+	 * not the active session's own model and not a hardcoded specific model
+	 * name — a fixed model id can silently stop resolving to anything real as
+	 * classifications and provider catalogs move on, while the class stays
+	 * meaningful. `advisor.ts`'s own docs already describe this feature as
+	 * playing "the same role the advisor tool plays in Claude Code itself: a
+	 * stronger, more skeptical reviewer" — defaulting to same-model-as-session
+	 * undercut that; a real second opinion needs an actually stronger model.
+	 * Reuses the exact same `rankSameClassModels` ranking `rlm.run(modelClass=
+	 * ...)` and `rlm.set_model` already use, anchored on any class-S
+	 * classification entry (so it isn't provider-specific — whichever
+	 * class-S model the user actually has authenticated wins).
+	 */
+	private async _resolveAdvisorModel(): Promise<Model<any> | undefined> {
 		const configured = this.settingsManager.getAdvisorModel();
-		if (!configured) return undefined;
-		return this._modelRegistry.find(configured.provider, configured.modelId);
+		if (configured) {
+			return this._modelRegistry.find(configured.provider, configured.modelId);
+		}
+		const anchor = this._classificationStore.listByClass("S")[0];
+		if (!anchor) return undefined;
+		const available = await this._authenticatedRlmModels();
+		const ranked = rankSameClassModels(this._classificationStore, anchor.name, available);
+		return ranked[0]?.model;
 	}
 
 	/**
@@ -3616,7 +3653,7 @@ export class AgentSession {
 		resetLoopAuditor(this._loopAuditorState);
 		try {
 			const question = buildLoopAuditQuestion(this._goalState.objective ? this._goalState : undefined);
-			const overrideModel = this._resolveAdvisorModel();
+			const overrideModel = await this._resolveAdvisorModel();
 			// (D13) Was not forwarded — signal.aborted was only checked before and
 			// after this call, so an abort firing WHILE the consultation was
 			// in-flight had no effect until it finished on its own.
@@ -9020,6 +9057,8 @@ export class AgentSession {
 			"rlm.find_models": createRlmFindModelsHostHandler((query, limit) => this.findRlmModels(query, limit)),
 			"rlm.list_subagents": createRlmListSubagentsHostHandler(() => this.listRlmSubagents()),
 			"rlm.delete_subagent": createRlmDeleteSubagentHostHandler((target) => this.deleteRlmSubagent(target)),
+			"rlm.set_model": createRlmSetModelHostHandler((request) => this.handleRlmSetModel(request)),
+			"rlm.log_error": createRlmLogErrorHostHandler((request) => this.handleRlmLogError(request)),
 			"model.info": async () => ({
 				id: this.model?.id ?? null,
 				provider: this.model?.provider ?? null,
@@ -10001,6 +10040,53 @@ export class AgentSession {
 		return { model: top.model };
 	}
 
+	/**
+	 * `rlm.set_model(model=..., model_class="same"|"smaller")` — the self-switch
+	 * counterpart to `rlm.run(modelClass=...)`: lets the running agent change
+	 * its OWN model mid-session (e.g. downgrade for a simple remaining
+	 * subtask, or pick a specific stronger model when stuck), rather than
+	 * only being able to pick a model for a spawned child. Reuses the exact
+	 * same resolution helpers `rlm.run` uses — `_resolveRlmSubagentModel` and
+	 * `_resolveRlmSubagentModelClassPreference` already rank/resolve against
+	 * `this.model`, which for a self-switch IS the model being replaced — then
+	 * applies the result via the same `setModel` path the interactive `/model`
+	 * picker uses (auth check, thinking-level re-clamp, settings persistence,
+	 * `model_select` extension emission all included).
+	 */
+	async handleRlmSetModel(request: RlmSetModelRequest): Promise<RlmSetModelResult> {
+		const { model: rawModel, modelClass: rawModelClass } = request;
+		if (rawModelClass !== undefined && rawModelClass !== "same" && rawModelClass !== "smaller") {
+			throw new Error('rlm.set_model model_class must be "same" or "smaller" when provided');
+		}
+		if (rawModelClass !== undefined && rawModel !== undefined) {
+			throw new Error(
+				"rlm.set_model model_class and model are mutually exclusive — model already selects an exact target",
+			);
+		}
+		const selection =
+			rawModelClass !== undefined
+				? await this._resolveRlmSubagentModelClassPreference(rawModelClass)
+				: await this._resolveRlmSubagentModel(normalizeRequestedRlmSubagentModel(rawModel));
+		await this.setModel(selection.model);
+		return { model: `${selection.model.provider}/${selection.model.id}` };
+	}
+
+	/**
+	 * Feeds the agent's own findings into the same structured log a crashing
+	 * process writes to (installClientCrashHandlers in core/logging.ts) — so a
+	 * problem the agent notices and works around mid-task (a caught exception,
+	 * a tool that returned something unexpected) can be inspected later via
+	 * `zero doctor` or the shared agent.jsonl log, not just lost once the
+	 * transcript scrolls past it.
+	 */
+	async handleRlmLogError(request: RlmLogErrorRequest): Promise<void> {
+		getLogger("coding-agent.rlm-agent").error(request.message, {
+			source: "agent",
+			rlmDepth: this._rlmDepth,
+			...request.context,
+		});
+	}
+
 	private async _startRlmChildRun(
 		prompt: string,
 		kwargs: Record<string, unknown> = {},
@@ -10633,6 +10719,7 @@ export class AgentSession {
 			maxAttempts: settings.maxRetries,
 			delayMs,
 			errorMessage: message.errorMessage || "Unknown error",
+			kind: this._getProviderStreamFailureKind(message),
 		});
 
 		// Remove error message from agent state (keep in session for history)

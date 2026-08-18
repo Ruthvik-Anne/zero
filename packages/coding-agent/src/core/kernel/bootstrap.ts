@@ -36,6 +36,7 @@ export const DEFAULT_RLM_EXTRA_UV_ARGS = DEFAULT_RLM_EXTRA_PACKAGES.map((pkg) =>
 export const DEFAULT_RLM_EXTRA_IMPORT_NAMES = DEFAULT_RLM_EXTRA_PACKAGES.map((pkg) => pkg.importName);
 export const DEFAULT_RLM_EXTRA_IMPORT_LABELS = DEFAULT_RLM_EXTRA_PACKAGES.map((pkg) => pkg.promptLabel);
 const UV_INSTALL_COMMAND = "curl -LsSf https://astral.sh/uv/install.sh | sh";
+const UV_INSTALL_COMMAND_WIN32 = "irm https://astral.sh/uv/install.ps1 | iex";
 const REQUIRED_HARNESS_METHODS = [
 	"create_memory",
 	"update_memory",
@@ -528,27 +529,34 @@ async function ensureUv(options: EnsureKernelPythonOptions): Promise<string> {
 	const localUv = path.join(os.homedir(), ".local", "bin", process.platform === "win32" ? "uv.exe" : "uv");
 	if (await isExecutable(localUv)) return localUv;
 
+	const installCommand = process.platform === "win32" ? UV_INSTALL_COMMAND_WIN32 : UV_INSTALL_COMMAND;
 	const shouldInstallUv = process.env.ZERO_INSTALL_UV === "1" || (!options.onProgress && (await confirmUvInstall()));
 	if (!shouldInstallUv) {
 		throw new Error(
-			`uv is required to set up the Python kernel. Install uv yourself: ${UV_INSTALL_COMMAND}, ` +
+			`uv is required to set up the Python kernel. Install uv yourself: ${installCommand}, ` +
 				"or set ZERO_INSTALL_UV=1 to let zero run that installer.",
 		);
 	}
 
 	reportProgress(options, "› installing uv (one-time)…");
 	try {
-		await run("sh", ["-c", UV_INSTALL_COMMAND], { stdio: options.onProgress ? "ignore" : "inherit" });
+		if (process.platform === "win32") {
+			await run("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", installCommand], {
+				stdio: options.onProgress ? "ignore" : "inherit",
+			});
+		} else {
+			await run("sh", ["-c", installCommand], { stdio: options.onProgress ? "ignore" : "inherit" });
+		}
 	} catch (error) {
 		throw new Error(
-			`couldn't install uv from astral.sh; install it yourself: ${UV_INSTALL_COMMAND}, then re-run zero. ${errorMessage(error)}`,
+			`couldn't install uv from astral.sh; install it yourself: ${installCommand}, then re-run zero. ${errorMessage(error)}`,
 		);
 	}
 
 	if (await isExecutable(localUv)) return localUv;
 	const installedFromPath = await findExecutable("uv");
 	if (installedFromPath) return installedFromPath;
-	throw new Error("uv install completed but binary not found at ~/.local/bin/uv");
+	throw new Error(`uv install completed but binary not found at ${localUv}`);
 }
 
 async function confirmUvInstall(): Promise<boolean> {
@@ -557,7 +565,7 @@ async function confirmUvInstall(): Promise<boolean> {
 
 	const rl = createInterface({ input: stdin, output: stderr });
 	try {
-		const answer = (await rl.question("Prime Agent needs uv to set up Python. Install uv from astral.sh now? [Y/n] "))
+		const answer = (await rl.question("Zero needs uv to set up Python. Install uv from astral.sh now? [Y/n] "))
 			.trim()
 			.toLowerCase();
 		return answer !== "n" && answer !== "no";

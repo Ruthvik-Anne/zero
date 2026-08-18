@@ -62,6 +62,10 @@ describe("buildRlmPrompt", () => {
 				"Read each skill's SKILL.md for its API. Inspect a module with `help(<skill>)` or `dir(<skill>)`, then inspect a documented callable with `inspect.signature(<skill>.<function>)`.",
 				"Each skill is also available as a shell command by the same name: `<skill> ...`. Discover its CLI usage with `<skill> --help`.",
 				"",
+				"Change your OWN active model mid-session with `await rlm.set_model(model='provider/model')` (an exact selector from `await rlm.find_models(...)`) or `await rlm.set_model(model_class='same')`/`'smaller'` (a live-available model ranked by classification class and price, same idea as `rlm.run(modelClass=...)` but for yourself, not a child). Use this to downgrade to a cheaper model for a simple remaining subtask, or switch to a specific stronger model when stuck.",
+				"",
+				"The system keeps its own error log (crashes and other unexpected failures are captured automatically, visible via `zero doctor` or the logs directory). Call `await rlm.log_error(message, **context)` to add your own findings to it — a caught exception you recovered from, a tool that misbehaved in a way worth flagging — when it's worth surviving past this transcript, not for routine failures a retry or a different approach already resolves.",
+				"",
 				"IPython is the agent's long-lived notebook: a persistent control environment for reasoning, context management, state, tool orchestration, and recursive subcalls. Use it to keep intermediate variables, inspect and transform outputs, write small helper functions, and preserve useful state across turns or compaction.",
 				"",
 				"Do not assume IPython is the native runtime of the external thing being investigated. A repository, package, service, dataset, paper, website, benchmark, or API may have its own environment and normal interface. Evaluate external systems through their own interface, then use IPython to coordinate the process and analyze what comes back.",
@@ -231,6 +235,52 @@ describe("buildRlmPrompt", () => {
 
 		expect(prompt).toContain("Use Python for reading, searching, and editing files");
 		expect(prompt).toContain("Always assign read/search results to named variables");
+	});
+
+	test("includes proactive compaction guidance only when the compact skill is installed", () => {
+		const withCompact = buildRlmPrompt({
+			cwd: "/repo",
+			messagesPath: "/repo/.pi/sessions/session.jsonl",
+			installedSkills: ["compact"],
+			activeTools: ["ipython"],
+			allowRecursion: false,
+		});
+
+		expect(withCompact).toContain("await compact.run(instructions=...)");
+		expect(withCompact).toContain("rather than becoming terse or stopping early");
+
+		const withoutCompact = buildRlmPrompt({
+			cwd: "/repo",
+			messagesPath: "/repo/.pi/sessions/session.jsonl",
+			installedSkills: ["websearch"],
+			activeTools: ["ipython"],
+			allowRecursion: false,
+		});
+
+		expect(withoutCompact).not.toContain("compact.run");
+	});
+
+	test("includes ask-user ambiguity guidance only when the ask_user skill is installed", () => {
+		const withAskUser = buildRlmPrompt({
+			cwd: "/repo",
+			messagesPath: "/repo/.pi/sessions/session.jsonl",
+			installedSkills: ["ask_user"],
+			activeTools: ["ipython"],
+			allowRecursion: false,
+		});
+
+		expect(withAskUser).toContain("await ask_user.ask(...)");
+		expect(withAskUser).toContain("rather than guessing");
+
+		const withoutAskUser = buildRlmPrompt({
+			cwd: "/repo",
+			messagesPath: "/repo/.pi/sessions/session.jsonl",
+			installedSkills: ["websearch"],
+			activeTools: ["ipython"],
+			allowRecursion: false,
+		});
+
+		expect(withoutAskUser).not.toContain("ask_user.ask");
 	});
 
 	test("includes the edit skill guidance only when the edit skill is installed", () => {

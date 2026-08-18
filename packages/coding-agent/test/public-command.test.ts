@@ -24,6 +24,14 @@ vi.mock("../src/package-manager-cli.js", () => ({
 	isSelfUpdateSource: (source: string) => source === "self" || source === "pi" || source === "prime-agent",
 }));
 
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	// Both default to the real implementation — config.ts resolves its own
+	// package.json path at import time using existsSync probes unrelated to
+	// the doctor tests below, which override return values per real log path.
+	return { ...actual, existsSync: vi.fn(actual.existsSync), readFileSync: vi.fn(actual.readFileSync) };
+});
+
 vi.mock("../src/cli/daemon-ps.js", () => ({
 	runPs: async (json: boolean) => {
 		mocks.psCalls.push(json);
@@ -36,10 +44,12 @@ vi.mock("../src/cli/daemon-ps.js", () => ({
 	},
 }));
 
+import { existsSync, readFileSync } from "node:fs";
 import { INTERNAL_RUNTIME_COMMAND_MARKER } from "../src/cli/args.js";
 import { formatTopLevelHelp } from "../src/cli/command-registry.js";
 import { DAEMON_UPDATE_RESTART_COORDINATOR_FLAG } from "../src/cli/daemon-update-restart.js";
 import { handlePublicCommand } from "../src/cli/public-command.js";
+import { getAgentLogPath, getClientErrorLogPath } from "../src/config.js";
 
 describe("public command routing", () => {
 	beforeEach(() => {
@@ -79,7 +89,7 @@ describe("public command routing", () => {
 	it("rejects extra attach operands", async () => {
 		await expect(handlePublicCommand(["attach", "worker", "extra"])).resolves.toMatchObject({ handled: true });
 		expect(process.exitCode).toBe(1);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining("prime-agent attach <agent>"));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining("zero attach <agent>"));
 	});
 
 	it("rejects conflicting session selectors when attaching", async () => {
@@ -121,7 +131,7 @@ describe("public command routing", () => {
 		]);
 	});
 
-	it("separates Prime Agent updates from package updates", async () => {
+	it("separates Zero updates from package updates", async () => {
 		await handlePublicCommand(["update", "--force"]);
 		await handlePublicCommand(["package", "update"]);
 		await handlePublicCommand(["package", "update", "npm:@example/tools"]);
@@ -165,7 +175,7 @@ describe("public command routing", () => {
 		}
 
 		expect(mocks.packageCommands).toEqual([]);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "prime-agent update [--force]"'));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "zero update [--force]"'));
 	});
 
 	it("directs legacy package-update forms to the package command", async () => {
@@ -174,7 +184,7 @@ describe("public command routing", () => {
 		await handlePublicCommand(["update", "--extension", "npm:@example/tools"]);
 
 		expect(mocks.packageCommands).toEqual([]);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "prime-agent package update [source]"'));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "zero package update [source]"'));
 	});
 
 	it("explains that combined legacy updates are now separate", async () => {
@@ -190,14 +200,14 @@ describe("public command routing", () => {
 		}
 
 		expect(mocks.packageCommands).toEqual([]);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "prime-agent update"'));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "zero update"'));
 	});
 
 	it("directs package uninstall to package remove", async () => {
 		await handlePublicCommand(["package", "uninstall", "npm:@example/tools"]);
 
 		expect(mocks.packageCommands).toEqual([]);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "prime-agent package remove"'));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Use "zero package remove"'));
 		expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("package install"));
 	});
 
@@ -229,7 +239,7 @@ describe("public command routing", () => {
 		await handlePublicCommand(["package", "list", "ignored-source"]);
 
 		expect(mocks.packageCommands).toEqual([]);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining("prime-agent package list"));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining("zero package list"));
 	});
 
 	it("uses force only when explicitly requested for full shutdown", async () => {
@@ -246,20 +256,79 @@ describe("public command routing", () => {
 		expect(mocks.reapCalls).toEqual([[true, false]]);
 	});
 
+	it("reports no recent errors when neither log file exists", async () => {
+		vi.mocked(existsSync).mockImplementation(
+			(path) => path !== getAgentLogPath() && path !== getClientErrorLogPath(),
+		);
+		await handlePublicCommand(["doctor"]);
+		expect(mocks.psCalls).toEqual([false]);
+		expect(console.log).toHaveBeenCalledWith(expect.stringContaining("No recent errors logged"));
+	});
+
+	it("surfaces recent structured and client errors in human-readable mode", async () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(readFileSync).mockImplementation((path) => {
+			if (path === getAgentLogPath()) {
+				return `${JSON.stringify({ level: "info", ts: "2026-08-18T00:00:00.000Z", component: "x", msg: "noise" })}\n${JSON.stringify(
+					{
+						level: "error",
+						ts: "2026-08-18T00:00:01.000Z",
+						component: "coding-agent.rlm-agent",
+						msg: "tool X returned malformed JSON",
+					},
+				)}\n`;
+			}
+			if (path === getClientErrorLogPath()) {
+				return "[2026-08-18T00:00:02.000Z] uncaught exception: boom\n";
+			}
+			return "";
+		});
+
+		await handlePublicCommand(["doctor"]);
+
+		const logged = vi.mocked(console.log).mock.calls.map((call) => String(call[0]));
+		expect(logged.some((line) => line.includes("tool X returned malformed JSON"))).toBe(true);
+		expect(logged.some((line) => line.includes("uncaught exception: boom"))).toBe(true);
+		expect(logged.some((line) => line.includes("noise"))).toBe(false);
+	});
+
+	it("emits log health as parseable JSON in --json mode", async () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(readFileSync).mockImplementation((path) => {
+			if (path === getAgentLogPath()) {
+				return `${JSON.stringify({ level: "error", ts: "2026-08-18T00:00:01.000Z", component: "coding-agent.rlm-agent", msg: "boom" })}\n`;
+			}
+			return "";
+		});
+
+		await handlePublicCommand(["doctor", "--json"]);
+
+		expect(mocks.psCalls).toEqual([true]);
+		const jsonCall = vi
+			.mocked(console.log)
+			.mock.calls.map((call) => String(call[0]))
+			.find((line) => line.includes('"recentStructuredErrors"'));
+		expect(jsonCall).toBeDefined();
+		const parsed = JSON.parse(jsonCall as string);
+		expect(parsed.recentStructuredErrors).toEqual([
+			{ timestamp: "2026-08-18T00:00:01.000Z", component: "coding-agent.rlm-agent", message: "boom" },
+		]);
+	});
+
 	it("rejects the old daemon hierarchy with migration guidance", async () => {
 		await expect(handlePublicCommand(["daemon", "list"])).resolves.toMatchObject({ handled: true });
 		expect(process.exitCode).toBe(1);
-		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Run "prime-agent help"'));
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Run "zero help"'));
 	});
 
 	it("shows migration guidance when help targets removed commands", async () => {
 		const cases: Array<[path: string[], hint: string]> = [
-			[["daemon"], 'Run "prime-agent help"'],
-			[["install"], 'Use "prime-agent package install"'],
-			[["remove"], 'Use "prime-agent package remove"'],
-			[["uninstall"], 'Use "prime-agent package remove"'],
-			[["manage"], 'Use "prime-agent agents"'],
-			[["app", "update"], 'Use "prime-agent update"'],
+			[["daemon"], 'Run "zero help"'],
+			[["install"], 'Use "zero package install"'],
+			[["remove"], 'Use "zero package remove"'],
+			[["uninstall"], 'Use "zero package remove"'],
+			[["manage"], 'Use "zero agents"'],
+			[["app", "update"], 'Use "zero update"'],
 		];
 
 		for (const [path, hint] of cases) {
@@ -302,9 +371,9 @@ describe("public command routing", () => {
 		await handlePublicCommand(["doctor", "--fix", "--help"]);
 		await handlePublicCommand(["package", "install", "--local", "--help"]);
 
-		expect(console.log).toHaveBeenNthCalledWith(1, expect.stringContaining("prime-agent list [--all] [--json]"));
-		expect(console.log).toHaveBeenNthCalledWith(2, expect.stringContaining("prime-agent doctor [--fix] [--json]"));
-		expect(console.log).toHaveBeenNthCalledWith(3, expect.stringContaining("prime-agent package install <source>"));
+		expect(console.log).toHaveBeenNthCalledWith(1, expect.stringContaining("zero list [--all] [--json]"));
+		expect(console.log).toHaveBeenNthCalledWith(2, expect.stringContaining("zero doctor [--fix] [--json]"));
+		expect(console.log).toHaveBeenNthCalledWith(3, expect.stringContaining("zero package install <source>"));
 		expect(console.error).not.toHaveBeenCalled();
 	});
 

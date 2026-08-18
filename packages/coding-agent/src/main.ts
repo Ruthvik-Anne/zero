@@ -56,7 +56,7 @@ import { AuthStorage } from "./core/auth-storage.js";
 import { exportFromFile } from "./core/export-html/index.js";
 import type { ExtensionFactory } from "./core/extensions/types.js";
 import { KeybindingsManager } from "./core/keybindings.js";
-import { installFileLogSink, setLogContext } from "./core/logging.js";
+import { installClientCrashHandlers, installFileLogSink, setLogContext } from "./core/logging.js";
 import type { ModelRegistry } from "./core/model-registry.js";
 import { findInitialModel, resolveCliModel, resolveModelScope, type ScopedModel } from "./core/model-resolver.js";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.js";
@@ -1075,6 +1075,12 @@ export async function main(args: string[], options?: MainOptions) {
 	}
 	time("parseArgs");
 	const appMode = resolveAppMode(parsed, process.stdin.isTTY);
+	// Daemon mode installs its own crash handler (tagged with its socket path)
+	// once it starts listening; every other app mode is the foreground process
+	// the user is directly looking at, so give it the same safety net.
+	if (appMode !== "daemon") {
+		installClientCrashHandlers();
+	}
 
 	if (shouldRejectNonInteractiveAttach(publicCommand.attachAgent, appMode)) {
 		console.error(chalk.red("Error: attach requires an interactive terminal"));

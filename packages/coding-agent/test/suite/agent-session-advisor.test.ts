@@ -37,7 +37,7 @@ describe("AgentSession advisor", () => {
 
 		const result = await harness.session.handleAdvisorHostRequest({});
 
-		expect(result.status).toBe("complete");
+		expect(result.outcome).toBe("complete");
 		expect(result.advice).toBe("The approach looks sound; consider edge case X.");
 		expect(result.error_message).toBeNull();
 		// The main session transcript is untouched by the consultation.
@@ -69,6 +69,58 @@ describe("AgentSession advisor", () => {
 		);
 	});
 
+	it("defaults to a class-S reviewer, not the session's own (unclassified) model", async () => {
+		// "Claude Opus 4.8" and "GLM-5.2" are both real class-S entries in the
+		// classification snapshot (see rlm-model-class.test.ts) — GLM-5.2 is
+		// cheaper, so rankSameClassModels' price tiebreak should pick it.
+		const harness = await createHarness({
+			provider: "anthropic",
+			models: [
+				{
+					id: "session-model",
+					name: "Session Model",
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 128000,
+					maxTokens: 8192,
+				},
+				{
+					id: "expensive-s-class",
+					name: "Claude Opus 4.8",
+					reasoning: true,
+					input: ["text"],
+					cost: { input: 5, output: 25, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 200000,
+					maxTokens: 8192,
+				},
+				{
+					id: "cheap-s-class",
+					name: "GLM-5.2",
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 0.68, output: 2.14, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 128000,
+					maxTokens: 8192,
+				},
+			],
+		});
+		harnesses.push(harness);
+		expect(harness.session.model?.id).toBe("session-model"); // sanity: session runs the unclassified model
+
+		let modelUsedForReview: string | undefined;
+		harness.setResponses([
+			(_context, _options, _state, model) => {
+				modelUsedForReview = model.id;
+				return fauxAssistantMessage("Looks fine.");
+			},
+		]);
+
+		await harness.session.handleAdvisorHostRequest({});
+
+		expect(modelUsedForReview).toBe("cheap-s-class");
+	});
+
 	it("surfaces an error status without throwing when the reviewer call fails", async () => {
 		const harness = await createAdvisorHarness();
 		harness.setResponses([
@@ -77,7 +129,7 @@ describe("AgentSession advisor", () => {
 
 		const result = await harness.session.handleAdvisorHostRequest({});
 
-		expect(result.status).toBe("error");
+		expect(result.outcome).toBe("error");
 		expect(result.error_message).toBe("reviewer unavailable");
 	});
 });

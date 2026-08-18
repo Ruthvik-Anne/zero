@@ -3,7 +3,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { waitForChildProcess } from "../utils/child-process.js";
+import { shouldUseWindowsShell, waitForChildProcess } from "../utils/child-process.js";
 
 // (B5) Same cap autonomous.ts's runChildProcess uses for the identical reason:
 // an extension/custom tool running a long-lived or chatty command must not
@@ -69,7 +69,7 @@ export async function execCommand(
 	return new Promise((resolve) => {
 		const proc = spawn(command, args, {
 			cwd,
-			shell: false,
+			shell: shouldUseWindowsShell(command),
 			stdio: ["ignore", "pipe", "pipe"],
 			// Merge per-call env over the parent env so callers can scope vars
 			// (e.g. herdr pane identity) without mutating the shared process.env.

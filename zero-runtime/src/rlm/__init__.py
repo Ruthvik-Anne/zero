@@ -235,6 +235,54 @@ async def delete_subagent(target: str | RLMSubagent) -> RLMSubagent:
     return _subagent_from_payload(payload.get("subagent"), "rlm.delete_subagent")
 
 
+async def set_model(model: str | None = None, model_class: str | None = None) -> str:
+    """Change the CURRENT session's own active model (not a child's).
+
+    ``model`` selects an exact ``provider/model`` selector, the same shape
+    ``rlm.find_models`` returns. ``model_class="same"`` or ``"smaller"``
+    routes to a live-available model ranked by classification class and
+    price instead, the self-switch counterpart to ``rlm.run(modelClass=...)``
+    for spawned children; mutually exclusive with ``model``. Returns the
+    resulting ``provider/model`` selector, which may be unchanged from
+    before this call if no better candidate was available.
+    """
+    if model is not None and not isinstance(model, str):
+        raise TypeError(f"model must be str or None, got {type(model).__name__}")
+    if model_class is not None and model_class not in ("same", "smaller"):
+        raise ValueError('model_class must be "same" or "smaller" when provided')
+    if model is not None and model_class is not None:
+        raise ValueError("model and model_class are mutually exclusive")
+    payload: dict[str, Any] = {}
+    if model is not None:
+        payload["model"] = model
+    if model_class is not None:
+        payload["model_class"] = model_class
+    result = await host_request("rlm.set_model", payload)
+    selector = result.get("model")
+    if not isinstance(selector, str) or not selector:
+        raise RuntimeError("rlm.set_model returned an invalid model selector")
+    return selector
+
+
+async def log_error(message: str, **context: Any) -> None:
+    """Record something worth surviving past this turn's transcript.
+
+    Writes into the same structured error log a crashing process writes to
+    (see ``zero doctor``, or the shared ``agent.jsonl``/``client-errors.log``
+    files under the logs directory) — use this for a problem you noticed and
+    recovered from mid-task (a caught exception, a tool that returned
+    something unexpected), not for routine failures a retry or a different
+    approach already resolves. Any keyword arguments are attached as
+    structured context fields alongside the message.
+    """
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("message must be a non-empty string")
+    payload: dict[str, Any] = {"message": message}
+    if context:
+        payload["context"] = context
+    await host_request("rlm.log_error", payload)
+
+
 class _HarnessProxy:
     """Resolve the harness state against the current environment on every access.
 
@@ -302,6 +350,12 @@ class _RLMCallable:
     async def delete_subagent(self, target: str | RLMSubagent) -> RLMSubagent:
         return await delete_subagent(target)
 
+    async def set_model(self, model: str | None = None, model_class: str | None = None) -> str:
+        return await set_model(model, model_class)
+
+    async def log_error(self, message: str, **context: Any) -> None:
+        return await log_error(message, **context)
+
     async def __call__(self, prompt: str, **kwargs: Any) -> RLMSpawnHandle:
         return await run(prompt, **kwargs)
 
@@ -334,8 +388,10 @@ __all__ = [
     "harness",
     "host_request",
     "list_subagents",
+    "log_error",
     "rlm",
     "run",
+    "set_model",
 ]
 
 # Lazily re-export the MCP base class. Kept lazy so `import rlm` never requires

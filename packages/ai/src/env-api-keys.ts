@@ -81,10 +81,14 @@ function hasVertexAdcCredentials(): boolean {
 		if (gacPath) {
 			cachedVertexAdcCredentialsExists = _existsSync(gacPath);
 		} else {
-			// Fall back to default ADC path (lazy evaluation)
-			cachedVertexAdcCredentialsExists = _existsSync(
-				_join(_homedir(), ".config", "gcloud", "application_default_credentials.json"),
-			);
+			// Fall back to default ADC path (lazy evaluation). `gcloud auth
+			// application-default login` writes under %APPDATA%\gcloud on
+			// Windows, not ~/.config/gcloud like it does on macOS/Linux.
+			const defaultAdcPath =
+				process.platform === "win32" && process.env.APPDATA
+					? _join(process.env.APPDATA, "gcloud", "application_default_credentials.json")
+					: _join(_homedir(), ".config", "gcloud", "application_default_credentials.json");
+			cachedVertexAdcCredentialsExists = _existsSync(defaultAdcPath);
 		}
 	}
 	return cachedVertexAdcCredentialsExists;

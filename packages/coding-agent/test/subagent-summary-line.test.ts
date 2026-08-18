@@ -5,6 +5,7 @@ import { KeybindingsManager } from "../src/core/keybindings.js";
 import type { AgentConnectionRlmChildAgentSnapshot } from "../src/modes/agent-connection/types.js";
 import {
 	countDirectSubagentStatuses,
+	listDirectSubagentEntries,
 	SubagentSummaryLine,
 } from "../src/modes/interactive/components/subagent-summary-line.js";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";
@@ -60,35 +61,40 @@ describe("SubagentSummaryLine", () => {
 		});
 	});
 
-	it("opens on Enter or Right only when the daemon-backed line is selectable", () => {
+	it("expands into a per-child list inline on Enter or Right, with no separate screen", () => {
 		const line = new SubagentSummaryLine();
-		const onOpen = vi.fn();
-		line.onOpen = onOpen;
-		line.setSubagentCounts({ total: 2, running: 0, idle: 2, inactive: 0 });
-		line.setOpenable(true);
+		line.setSubagentCounts({ total: 2, running: 1, idle: 1, inactive: 0 });
+		line.setSubagentEntries([
+			{ id: "a", label: "a", status: "running" },
+			{ id: "b", label: "b", status: "idle", recap: "wrote the report" },
+		]);
+
+		let rendered = line.render(100).map(stripAnsi);
+		expect(rendered).toHaveLength(1);
 
 		line.handleInput("\r");
-		line.handleInput("\x1b[C");
+		rendered = line.render(100).map(stripAnsi);
+		expect(rendered).toHaveLength(3);
+		expect(rendered[1]).toContain("a — running");
+		expect(rendered[2]).toContain("b — idle");
+		expect(rendered[2]).toContain("wrote the report");
 
-		expect(onOpen).toHaveBeenCalledTimes(2);
+		line.handleInput("\x1b[C");
+		rendered = line.render(100).map(stripAnsi);
+		expect(rendered).toHaveLength(1);
 	});
 
-	it("stays visible but non-selectable for an in-process connection", () => {
+	it("stays visible but non-expandable with no subagents", () => {
 		const line = new SubagentSummaryLine();
-		const onOpen = vi.fn();
-		line.onOpen = onOpen;
-		line.setSubagentCounts({ total: 1, running: 0, idle: 0, inactive: 1 });
-		line.setOpenable(false);
+		line.setSubagentCounts({ total: 0, running: 0, idle: 0, inactive: 0 });
 
-		expect(stripAnsi(line.render(100).join("\n"))).toContain("1 subagent: 0 running · 0 idle · 1 inactive");
 		expect(line.isSelectable()).toBe(false);
 		line.handleInput("\r");
-		expect(onOpen).not.toHaveBeenCalled();
+		expect(line.render(100)).toEqual([]);
 	});
 
 	it("updates the rendered counts from consecutive child-status events", () => {
 		const line = new SubagentSummaryLine();
-		line.setOpenable(true);
 		const mode = Object.create(InteractiveMode.prototype) as InteractiveMode & Record<string, unknown>;
 		Object.assign(mode, {
 			subagentSnapshots: new Map<string, AgentConnectionRlmChildAgentSnapshot>(),
@@ -201,23 +207,17 @@ describe("SubagentSummaryLine", () => {
 		expect(stripAnsi(line.render(100).join("\n"))).toContain("0 running · 0 idle · 1 inactive");
 	});
 
-	it("turns a selection into the scoped agents-view run result", async () => {
-		const returnToAgentsView = vi.fn(async () => undefined);
-		const mode = Object.create(InteractiveMode.prototype) as InteractiveMode & Record<string, unknown>;
-		Object.assign(mode, {
-			editor: { getText: () => "" },
-			options: { returnToAgentsView: true },
-			returnToAgentsView,
-		});
-		const open = Reflect.get(InteractiveMode.prototype, "openScopedAgentsView") as (
-			this: typeof mode,
-		) => Promise<void>;
-		const line = new SubagentSummaryLine();
-		line.setSubagentCounts({ total: 1, running: 1, idle: 0, inactive: 0 });
-		line.setOpenable(true);
-		line.onOpen = () => void open.call(mode);
+	it("lists direct children with labels, status, and recap for the inline expansion", () => {
+		const children = [
+			child("worker-a", "running", { label: "worker-a" }),
+			child("worker-b", "done", { label: "worker-b", activeSessionId: "b-session", recap: "done reviewing" }),
+			child("grandchild", "running", { parentId: "worker-a" }),
+			child("elsewhere", "running", { parentId: "someone-else" }),
+		];
 
-		line.handleInput("\r");
-		await vi.waitFor(() => expect(returnToAgentsView).toHaveBeenCalledWith("scoped_agents_view"));
+		expect(listDirectSubagentEntries(children, undefined, new Set())).toEqual([
+			{ id: "worker-a", label: "worker-a", status: "running", recap: undefined },
+			{ id: "worker-b", label: "worker-b", status: "idle", recap: "done reviewing" },
+		]);
 	});
 });

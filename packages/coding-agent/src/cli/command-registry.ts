@@ -82,7 +82,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
 	{
 		path: ["doctor"],
 		usage: "doctor [--fix] [--json]",
-		summary: "Inspect and safely clean up background services",
+		summary: "Inspect background services and recent errors, and safely clean up",
 		options: ["--fix   Remove stale sockets and stop idle orphaned services", "--json  Print JSON"],
 	},
 	{

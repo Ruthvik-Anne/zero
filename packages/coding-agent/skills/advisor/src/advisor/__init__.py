@@ -25,7 +25,7 @@ async def consult(question: str | None = None) -> dict[str, Any]:
     recent approach and progress, or pass a specific question to focus the
     review.
 
-    Returns `{"advice": str, "status": "complete" | "error" | "cancelled", "error_message": str | None}`.
+    Returns `{"advice": str, "outcome": "complete" | "error" | "cancelled", "error_message": str | None}`.
     """
     payload: dict[str, Any] = {}
     if question is not None:

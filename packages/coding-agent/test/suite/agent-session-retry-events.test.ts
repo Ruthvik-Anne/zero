@@ -2,7 +2,7 @@ import type { AgentEvent, AgentTool } from "@zero-agent/agent-core";
 import { type AssistantMessage, fauxAssistantMessage, fauxThinking, fauxToolCall } from "@zero-agent/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createHarness, type Harness } from "./harness.js";
+import { createHarness, getAssistantTexts, type Harness } from "./harness.js";
 
 function normalizeEventOrder(events: Harness["events"]): string[] {
 	const normalized: string[] = [];
@@ -197,6 +197,11 @@ describe("AgentSession retry and event characterization", () => {
 	});
 
 	it("does not retry local agent lifecycle listener failures", async () => {
+		// A throwing listener is caught per-listener and logged (it never reaches
+		// handleRunFailure, so no agent_lifecycle_failure diagnostic gets attached
+		// — see Agent.processEvents in packages/agent/src/agent.ts). The turn
+		// completes normally with no failure to retry, which is what this test
+		// actually cares about.
 		const harness = await createHarness({ settings: { retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 } } });
 		harnesses.push(harness);
 		let unsubscribe = () => {};
@@ -215,11 +220,7 @@ describe("AgentSession retry and event characterization", () => {
 		expect(harness.eventsOfType("auto_retry_start")).toEqual([]);
 		expect(harness.session.isRetrying).toBe(false);
 		expect(lastMessage?.role).toBe("assistant");
-		if (lastMessage?.role === "assistant") {
-			expect(lastMessage.diagnostics?.some((diagnostic) => diagnostic.type === "agent_lifecycle_failure")).toBe(
-				true,
-			);
-		}
+		expect(getAssistantTexts(harness)).toEqual(["first"]);
 	});
 
 	for (const [name, errorMessage] of [

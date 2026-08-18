@@ -27,7 +27,7 @@ await advisor.consult("Am I missing a simpler way to handle the retry logic?")
 ## API
 
 - `await advisor.consult(question=None)` — returns
-  `{"advice": str, "status": "complete" | "error" | "cancelled", "error_message": str | None}`.
+  `{"advice": str, "outcome": "complete" | "error" | "cancelled", "error_message": str | None}`.
 
 ## Rules
 

@@ -40,7 +40,7 @@ export const FEATURE_HINTS: readonly FeatureHintDefinition[] = [
 	},
 	{
 		id: "subagents",
-		getText: () => "Prime Agent can delegate tasks to subagents and run them in parallel.",
+		getText: () => "Zero can delegate tasks to subagents and run them in parallel.",
 	},
 	{
 		id: "agents-view",
@@ -76,7 +76,7 @@ export const FEATURE_HINTS: readonly FeatureHintDefinition[] = [
 	},
 	{
 		id: "persistent-ipython",
-		getText: () => "Prime Agent keeps IPython variables and helpers between turns and compactions.",
+		getText: () => "Zero keeps IPython variables and helpers between turns and compactions.",
 	},
 	{
 		id: "context-usage",
@@ -92,11 +92,11 @@ export const FEATURE_HINTS: readonly FeatureHintDefinition[] = [
 	},
 	{
 		id: "auto-compaction",
-		getText: () => "Prime Agent automatically compacts long sessions before context fills up.",
+		getText: () => "Zero automatically compacts long sessions before context fills up.",
 	},
 	{
 		id: "auto-refine",
-		getText: () => "Prime Agent self-improves by refining skills, memories, prompts, and subagents.",
+		getText: () => "Zero self-improves by refining skills, memories, prompts, and subagents.",
 	},
 	{
 		id: "background-running",

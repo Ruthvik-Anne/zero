@@ -214,7 +214,11 @@ import {
 	styleSlashCommandText,
 } from "./components/slash-command-message.js";
 import { SlashCommandResultMessageComponent } from "./components/slash-command-result-message.js";
-import { countDirectSubagentStatuses, SubagentSummaryLine } from "./components/subagent-summary-line.js";
+import {
+	countDirectSubagentStatuses,
+	listDirectSubagentEntries,
+	SubagentSummaryLine,
+} from "./components/subagent-summary-line.js";
 import { ThinkingSelectorComponent } from "./components/thinking-selector.js";
 import {
 	selectLatestToolExpandHint,
@@ -636,6 +640,27 @@ function omitOrphanToolResults(messages: AgentMessage[]): AgentMessage[] {
 		}
 	}
 	return renderableMessages;
+}
+
+/**
+ * Splits an `$VISUAL`/`$EDITOR` command string into `[command, ...args]`,
+ * honoring one level of double-quoting around the executable path — needed
+ * for a quoted Windows path like `"C:\Program Files\...\code.cmd" --wait`,
+ * which a bare `.split(" ")` would shred. Backslashes are treated as literal
+ * path separators, not escapes: this is a path/argument string, not a POSIX
+ * shell command line.
+ */
+function splitEditorCommand(cmd: string): string[] {
+	const trimmed = cmd.trim();
+	if (trimmed.startsWith('"')) {
+		const closingQuote = trimmed.indexOf('"', 1);
+		if (closingQuote !== -1) {
+			const command = trimmed.slice(1, closingQuote);
+			const rest = trimmed.slice(closingQuote + 1).trim();
+			return [command, ...(rest ? rest.split(/\s+/) : [])];
+		}
+	}
+	return trimmed.split(/\s+/);
 }
 
 function isDeadTerminalError(error: unknown): boolean {
@@ -1129,8 +1154,6 @@ export class InteractiveMode {
 			() => this.getTrayContextLabel(),
 			() => this.getTrayOverrideLabel(),
 		);
-		this.subagentSummaryLine.setOpenable(this.options.returnToAgentsView === true);
-		this.subagentSummaryLine.onOpen = () => void this.openScopedAgentsView();
 		this.subagentSummaryLine.onCancel = () => this.focusEditor();
 		this.subagentSummaryLine.onChatAction = (data) => this.handleSubagentSummaryChatAction(data);
 		this.footerDataProvider = new FooterDataProvider(this.uiServices.getInitialCwd());
@@ -5639,8 +5662,12 @@ export class InteractiveMode {
 				this.stopWorkingLoader();
 				this.statusContainer.clear();
 				this.retryCountdown?.dispose();
+				// "Reconnecting" for a dropped connection reads truer than the generic
+				// "Retrying" — other retryable kinds (rate_limit, server_error, ...)
+				// keep the generic wording since they aren't a connectivity problem.
+				const retryVerb = event.kind === "network_error" ? "Reconnecting" : "Retrying";
 				const retryMessage = (seconds: number) =>
-					`Retrying (${event.attempt}/${event.maxAttempts}) in ${seconds}s... (${keyText("app.clear")} to cancel)`;
+					`${retryVerb} (${event.attempt}/${event.maxAttempts}) in ${seconds}s... (${keyText("app.clear")} to cancel)`;
 				this.retryLoader = new Loader(
 					this.ui,
 					(spinner) => theme.fg("muted", spinner),
@@ -5914,6 +5941,9 @@ export class InteractiveMode {
 		this.subagentSummaryLine.setSubagentCounts(
 			countDirectSubagentStatuses(this.subagentSnapshots.values(), this.rlmNodeId, activeHeartbeatSessionIds),
 		);
+		this.subagentSummaryLine.setSubagentEntries(
+			listDirectSubagentEntries(this.subagentSnapshots.values(), this.rlmNodeId, activeHeartbeatSessionIds),
+		);
 		if (!this.subagentSummaryLine.isSelectable() && this.subagentSummaryLine.focused) this.focusEditor();
 	}
 
@@ -5945,20 +5975,6 @@ export class InteractiveMode {
 		this.ui.setFocus(this.subagentSummaryLine);
 		this.ui.requestRender();
 		return true;
-	}
-
-	private async openScopedAgentsView(): Promise<void> {
-		if (this.editor.getText().trim()) {
-			this.focusEditor();
-			this.showStatus("Send, stash, or clear your draft before opening agents");
-			return;
-		}
-		if (!this.options.returnToAgentsView) {
-			this.focusEditor();
-			this.showStatus("The agents view needs the daemon; start without --no-daemon to browse sessions");
-			return;
-		}
-		await this.returnToAgentsView("scoped_agents_view");
 	}
 
 	private handleSubagentSummaryChatAction(data: string): void {
@@ -7322,8 +7338,9 @@ export class InteractiveMode {
 			// Stop TUI to release terminal
 			this.ui.stop();
 
-			// Split by space to support editor arguments (e.g., "code --wait")
-			const [editor, ...editorArgs] = editorCmd.split(" ");
+			// Split to support editor arguments (e.g., "code --wait") and a
+			// quoted executable path (e.g. `"C:\Program Files\...\code.cmd" --wait`).
+			const [editor, ...editorArgs] = splitEditorCommand(editorCmd);
 
 			// Spawn editor synchronously with inherited stdio for interactive editing
 			const result = spawnSync(editor, [...editorArgs, tmpFile], {
@@ -9112,7 +9129,7 @@ export class InteractiveMode {
 				info += `${theme.fg("dim", "•")} ${name}${size}\n`;
 			}
 		}
-		info += `\n${theme.fg("dim", "Daemon crashes log to <socket>.log; agent-open failures log to client-errors.log.")}`;
+		info += `\n${theme.fg("dim", "Daemon crashes log to <socket>.log; agent-open failures and unhandled client crashes log to client-errors.log.")}`;
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new Text(info, 1, 0));

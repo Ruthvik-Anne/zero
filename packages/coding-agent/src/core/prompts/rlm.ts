@@ -71,6 +71,11 @@ export function buildRlmPrompt(options: RlmPromptOptions): string {
 		"You are a general purpose agent that uses code to solve tasks.",
 		"You solve tasks by breaking down problems into sub-tasks, writing and executing code, observing results, and iterating one step at a time.",
 		"When you are done, stop calling tools and state your final answer.",
+		...(installedSkills.includes("ask_user")
+			? [
+					"When a request is genuinely ambiguous, missing information you can't safely infer, or presents a real fork between materially different valid approaches, call `await ask_user.ask(...)` rather than guessing — see the installed `ask-user` skill for the exact format. Don't ask about things you can resolve yourself by reading the codebase or reasoning from self-consistent instructions.",
+				]
+			: []),
 		"",
 		`Working directory: ${cwd}`,
 		`Conversation log: ${messagesPath}`,
@@ -151,11 +156,25 @@ export function buildRlmPrompt(options: RlmPromptOptions): string {
 	}
 
 	if (hasIpython) {
+		parts.push(
+			"",
+			"Change your OWN active model mid-session with `await rlm.set_model(model='provider/model')` (an exact selector from `await rlm.find_models(...)`) or `await rlm.set_model(model_class='same')`/`'smaller'` (a live-available model ranked by classification class and price, same idea as `rlm.run(modelClass=...)` but for yourself, not a child). Use this to downgrade to a cheaper model for a simple remaining subtask, or switch to a specific stronger model when stuck.",
+		);
+		parts.push(
+			"",
+			"The system keeps its own error log (crashes and other unexpected failures are captured automatically, visible via `zero doctor` or the logs directory). Call `await rlm.log_error(message, **context)` to add your own findings to it — a caught exception you recovered from, a tool that misbehaved in a way worth flagging — when it's worth surviving past this transcript, not for routine failures a retry or a different approach already resolves.",
+		);
 		parts.push("", IPYTHON_CONTROL_PROMPT);
 		if (installedSkills.includes("refine")) {
 			parts.push(
 				"",
 				"Treat continual harness refinement as a small, evidence-backed update after observing a repeated failure or reusable tactic: diagnose the issue, update the smallest relevant continual harness component, validate on the next action, then record the outcome. Use `await refine.run()` to turn repeated delegation patterns into reusable subagent specs, repeated procedures into skills, durable facts/preferences into memories, and narrow behavioral policies into prompt addendums. It returns immediately and runs when the current turn ends, so continue working normally after calling it. Do not rewrite the whole continual harness when a focused memory, skill, prompt note, or subagent spec is enough.",
+			);
+		}
+		if (installedSkills.includes("compact")) {
+			parts.push(
+				"",
+				"When context usage is high and substantial work remains, call `await compact.run(instructions=...)` to compact now with a summary focused on what still matters, rather than becoming terse or stopping early. Check `await compact.status()` when unsure how much room is left. This complements automatic compaction — a proactive, instruction-focused call preserves more of what the remaining work actually needs than the generic automatic summary. It returns immediately and applies when the current turn ends, so continue working normally after calling it.",
 			);
 		}
 	}
