@@ -40,16 +40,17 @@ Zero began as a hard fork of [pi-mono](https://github.com/badlogic/pi-mono), but
 
 ## Quick Start
 
-Install from your release host (`install.sh` reads its download location from `ZERO_DOWNLOAD_BASE_URL`, configured per distribution):
+Releases are [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo — clone it and run the installer (see the root [README](../../README.md#getting-started) for the full story):
 
 ```bash
-curl -fsSL <your-release-host>/install.sh | sh
+git clone https://github.com/Ruthvik-Anne/zero.git && cd zero
+./install.sh
 ```
 
 To install the beta built from the latest commit on `main`:
 
 ```bash
-curl -fsSL <your-release-host>/install.sh | sh -s -- beta
+./install.sh beta
 ```
 
 Authenticate with an API key:
@@ -257,7 +258,7 @@ See [docs/settings.md](docs/settings.md) for all options.
 
 ### Update checks
 
-Zero stable builds fetch `https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev/latest.json` to check whether a newer version exists. Beta builds fetch `beta.json` and remain on the beta channel. Override the base URL with `ZERO_DOWNLOAD_BASE_URL`. Disable version checks with `ZERO_SKIP_VERSION_CHECK=1`.
+This fork has no release CDN of its own — set `ZERO_DOWNLOAD_BASE_URL` to opt into checking a `latest.json`/`beta.json` manifest for newer versions (see [docs/settings.md](docs/settings.md)). Disable version checks with `ZERO_SKIP_VERSION_CHECK=1`.
 
 Use `--offline` or `ZERO_OFFLINE=1` to disable startup network operations, including update checks and package update checks.
 

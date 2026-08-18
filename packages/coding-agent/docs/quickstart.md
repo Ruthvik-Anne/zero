@@ -4,16 +4,17 @@ This page gets you from install to a useful first Zero session.
 
 ## Install
 
-Install the latest stable release on Linux or macOS from your release host (`install.sh` reads its download location from `ZERO_DOWNLOAD_BASE_URL`, configured per distribution):
+Install the latest stable release on Linux or macOS by cloning the repo and running its installer — releases are plain [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases), no separate download host:
 
 ```bash
-curl -fsSL <your-release-host>/install.sh | sh
+git clone https://github.com/Ruthvik-Anne/zero.git && cd zero
+./install.sh
 ```
 
 To try the latest beta built from `main`:
 
 ```bash
-curl -fsSL <your-release-host>/install.sh | sh -s -- beta
+./install.sh beta
 ```
 
 Both commands fetch versioned Zero release artifacts and install the `zero` command. The inherited npm workspace identifiers in the source tree are not the public install path.

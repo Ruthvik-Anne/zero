@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// TODO: Remove this R2 tarball packer once zero and its internal workspace
+// TODO: Remove this tarball packer once zero and its internal workspace
 // dependencies are published through a real npm release flow.
 
 import { spawnSync } from "node:child_process";
@@ -20,10 +20,8 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const defaultOutputDir = join(root, "packages", "coding-agent", "release");
-const defaultBaseUrl = process.env.ZERO_DOWNLOAD_BASE_URL;
 const publicPackageName = process.env.ZERO_PACKAGE_NAME || "zero";
 const publicCommandName = process.env.ZERO_CMD || "zero";
-const releaseChannels = new Set(["stable", "beta"]);
 
 const releasePackages = [
 	{ packageDir: "ai", publicName: undefined, artifactName: "zero-ai" },
@@ -34,8 +32,6 @@ const releasePackages = [
 
 function parseArgs(args) {
 	const parsed = {
-		baseUrl: defaultBaseUrl,
-		channel: "stable",
 		outDir: defaultOutputDir,
 		version: undefined,
 	};
@@ -43,22 +39,6 @@ function parseArgs(args) {
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
 		switch (arg) {
-			case "--channel": {
-				const value = args[i + 1];
-				if (!value || !releaseChannels.has(value)) {
-					throw new Error("--channel must be stable or beta");
-				}
-				parsed.channel = value;
-				i += 1;
-				break;
-			}
-			case "--base-url": {
-				const value = args[i + 1];
-				if (!value) throw new Error("--base-url requires a value");
-				parsed.baseUrl = value;
-				i += 1;
-				break;
-			}
 			case "--out-dir": {
 				const value = args[i + 1];
 				if (!value) throw new Error("--out-dir requires a value");
@@ -83,26 +63,22 @@ function parseArgs(args) {
 		}
 	}
 
-	if (!parsed.baseUrl) {
-		throw new Error("--base-url or ZERO_DOWNLOAD_BASE_URL is required");
-	}
-
-	parsed.baseUrl = parsed.baseUrl.replace(/\/+$/, "");
 	return parsed;
 }
 
 function printHelp() {
-	console.log(`Usage: node scripts/pack-zero-release.mjs --base-url url [--channel stable|beta] [--version x.y.z] [--out-dir path]
+	console.log(`Usage: node scripts/pack-zero-release.mjs [--version x.y.z] [--out-dir path]
 
-Creates private npm tarballs for R2 distribution:
+Creates npm tarballs for GitHub Release distribution. The coding-agent
+tarball's internal @zero-agent/* dependencies are rewritten to relative
+file: references, so installing it works as long as all four tarballs sit
+in the same directory (exactly how they land after a GitHub Release download):
 
   <out-dir>/artifacts/zero-<version>.tgz
   <out-dir>/artifacts/zero-ai-<version>.tgz
   <out-dir>/artifacts/zero-core-<version>.tgz
   <out-dir>/artifacts/zero-tui-<version>.tgz
   <out-dir>/artifacts/SHA256SUMS
-  <out-dir>/artifacts/<channel>
-  <out-dir>/artifacts/latest.json (stable) or beta.json (beta)
 `);
 }
 
@@ -153,10 +129,6 @@ function copyIfExists(source, target) {
 
 function npmTarballName(packageName, version) {
 	return `${packageName.replace(/^@/, "").replace("/", "-")}-${version}.tgz`;
-}
-
-function releaseTarballUrl(baseUrl, version, tarballFile) {
-	return `${baseUrl}/releases/v${version}/${tarballFile}`;
 }
 
 function rewriteInternalDependencies(dependencies, internalPackageUrls) {
@@ -271,12 +243,17 @@ function main() {
 		);
 	}
 
+	// A relative file: reference, not an absolute path — resolves against
+	// wherever the depending tarball ends up installed from, which is exactly
+	// "the same directory" once a GitHub Release download drops all four
+	// tarballs side by side. Verified empirically: `npm install -g` correctly
+	// follows a sibling file: dependency packed this way.
 	const internalPackageUrls = new Map();
 	for (const releasePackage of releasePackages) {
 		if (releasePackage.packageDir === "coding-agent") continue;
 		const sourcePackageName = sourcePackageNames.get(releasePackage.packageDir);
 		const artifactFile = artifactFiles.get(releasePackage.packageDir);
-		internalPackageUrls.set(sourcePackageName, releaseTarballUrl(args.baseUrl, releaseVersion, artifactFile));
+		internalPackageUrls.set(sourcePackageName, `file:./${artifactFile}`);
 	}
 
 	const stagingRoot = join(args.outDir, "packages");
@@ -331,18 +308,6 @@ function main() {
 		join(artifactsDir, "SHA256SUMS"),
 		tarballs.map((tarball) => `${tarball.sha256}  ${tarball.file}`).join("\n") + "\n",
 	);
-	writeFileSync(join(artifactsDir, args.channel), `v${releaseVersion}\n`);
-	const manifestName = args.channel === "stable" ? "latest.json" : "beta.json";
-	writeJson(join(artifactsDir, manifestName), {
-		version: `v${releaseVersion}`,
-		package: publicPackageName,
-		tarball: `releases/v${releaseVersion}/${artifactFiles.get("coding-agent")}`,
-		tarballs: tarballs.map((tarball) => ({
-			package: tarball.name,
-			file: tarball.file,
-			sha256: tarball.sha256,
-		})),
-	});
 
 	for (const tarball of tarballs) {
 		console.log(`Created ${join(artifactsDir, tarball.file)}`);

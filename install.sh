@@ -2,17 +2,11 @@
 
 set -eu
 
-# Keep these sentinels split so release publishing only rewrites the configured
-# values below; local or unpublished copies still need unreplaced values to compare.
-zero_unconfigured_base_url="__ZERO_DOWNLOAD_BASE""_URL__"
-zero_unconfigured_default_release_channel="__ZERO_DEFAULT_RELEASE_""CHANNEL__"
-zero_base_url="${ZERO_DOWNLOAD_BASE_URL:-__ZERO_DOWNLOAD_BASE_URL__}"
-zero_base_url="${zero_base_url%/}"
-zero_default_release_channel="__ZERO_DEFAULT_RELEASE_CHANNEL__"
-if [ "$zero_default_release_channel" = "$zero_unconfigured_default_release_channel" ]; then
-	zero_default_release_channel=stable
-fi
-zero_release_channel="${ZERO_RELEASE_CHANNEL:-$zero_default_release_channel}"
+# Releases are published as GitHub Releases on this repo (no CDN/bucket) —
+# see .github/workflows/build-binaries.yml. ZERO_GITHUB_REPO lets a fork
+# point this installer at its own releases without editing the script.
+zero_repo="${ZERO_GITHUB_REPO:-Ruthvik-Anne/zero}"
+zero_release_channel="${ZERO_RELEASE_CHANNEL:-stable}"
 zero_package="${ZERO_PACKAGE:-zero}"
 zero_cmd="${ZERO_CMD:-zero}"
 zero_esc=$(printf '\033')
@@ -33,7 +27,7 @@ zero_color_dim="${zero_esc}[38;2;113;113;122m"
 zero_color_primary="${zero_esc}[38;2;127;91;213m"
 zero_color_scan="${zero_esc}[38;2;14;165;233m"
 zero_color_warning="${zero_esc}[38;2;245;158;11m"
-readonly zero_unconfigured_base_url zero_unconfigured_default_release_channel zero_base_url zero_default_release_channel zero_release_channel zero_package zero_cmd zero_esc zero_original_path
+readonly zero_repo zero_release_channel zero_package zero_cmd zero_esc zero_original_path
 readonly zero_reset zero_bold zero_italic zero_hide_cursor zero_show_cursor zero_home_cursor zero_clear_screen zero_clear_line
 readonly zero_sync_start zero_sync_end
 readonly zero_color_text zero_color_muted zero_color_dim zero_color_primary zero_color_scan zero_color_warning
@@ -59,12 +53,6 @@ zero_screen_question=
 zero_animation_frame=0
 
 main() {
-	if [ "$zero_base_url" = "$zero_unconfigured_base_url" ]; then
-		printf 'error: installer download URL is not configured.\n' >&2
-		printf 'Set ZERO_DOWNLOAD_BASE_URL or use the installer published by the release workflow.\n' >&2
-		exit 1
-	fi
-
 	zero_install_traps
 	zero_init_screen
 	if [ "$zero_screen_enabled" = 1 ]; then
@@ -98,18 +86,18 @@ main() {
 		fi
 	fi
 
-	version="$(resolve_zero_version "$@")"
-	tarball_name="$zero_package-$version.tgz"
-	tarball_url="$zero_base_url/releases/v$version/$tarball_name"
+	resolve_zero_version "$@"
+	version="$zero_resolved_version"
+	tag="$zero_resolved_tag"
 
-	confirm_install "$version" "$tarball_url"
+	confirm_install "$version" "$tag"
 	confirm_kernel_runtime_setup
 
 	download_dir=$(create_temp_dir)
 	zero_download_dir="$download_dir"
-	tarball_path="$download_dir/$tarball_name"
+	tarball_path="$download_dir/$zero_package-$version.tgz"
 
-	download_zero_package "$version" "$tarball_url" "$tarball_path"
+	download_zero_package "$version" "$tag" "$download_dir"
 	install_zero_package "$tarball_path"
 	rm -rf "$download_dir"
 	zero_download_dir=
@@ -921,12 +909,15 @@ run_preflight_checks() {
 	return "$status"
 }
 
+# Sets zero_resolved_version and zero_resolved_tag; doesn't return via stdout
+# since it needs to hand back two values.
 resolve_zero_version() {
 	if [ "${1:-}" ]; then
 		case "$1" in
 			stable|beta) release_channel="$1" ;;
 			*)
-				normalize_version "$1"
+				zero_resolved_version="$(normalize_version "$1")"
+				zero_resolved_tag="v$zero_resolved_version"
 				return
 				;;
 		esac
@@ -935,13 +926,9 @@ resolve_zero_version() {
 	fi
 
 	if [ "${ZERO_VERSION:-}" ]; then
-		normalize_version "$ZERO_VERSION"
+		zero_resolved_version="$(normalize_version "$ZERO_VERSION")"
+		zero_resolved_tag="v$zero_resolved_version"
 		return
-	fi
-
-	if ! command -v curl >/dev/null 2>&1; then
-		printf 'error: curl is required to resolve the latest Zero version.\n' >&2
-		exit 1
 	fi
 
 	case "$release_channel" in
@@ -952,24 +939,94 @@ resolve_zero_version() {
 			;;
 	esac
 
-	channel_dir=$(create_temp_dir)
-	channel_path="$channel_dir/$release_channel"
-	if ! zero_run_quiet_with_animation \
-		"Resolving latest release" \
-		"Resolving latest release" \
-		"Checking the $release_channel release channel." \
-		curl -fsSL "$zero_base_url/$release_channel" -o "$channel_path"; then
-		rm -rf "$channel_dir"
-		printf 'error: could not resolve latest Zero version from %s/%s\n' "$zero_base_url" "$release_channel" >&2
+	# zero_run_quiet_with_animation discards the wrapped command's stdout
+	# (only shown on failure) when the animated screen is active, so the
+	# resolved value has to come back through a file, not $(...).
+	resolve_dir=$(create_temp_dir)
+	resolved_path="$resolve_dir/resolved"
+
+	# The beta release's own git tag is always the literal "beta" (a floating
+	# tag the release workflow force-moves on every main build); the real
+	# beta version only shows up in its asset filenames, so resolving it
+	# needs a different query than resolving the stable channel's tag.
+	if [ "$release_channel" = beta ]; then
+		zero_run_quiet_with_animation \
+			"Resolving latest release" \
+			"Resolving latest release" \
+			"Checking the beta release channel." \
+			zero_write_resolved_beta_version "$resolved_path"
+		resolved_version="$(tr -d '[:space:]' <"$resolved_path" 2>/dev/null || true)"
+		resolved_tag=beta
+	else
+		zero_run_quiet_with_animation \
+			"Resolving latest release" \
+			"Resolving latest release" \
+			"Checking the stable release channel." \
+			zero_write_resolved_stable_tag "$resolved_path"
+		resolved_tag="$(tr -d '[:space:]' <"$resolved_path" 2>/dev/null || true)"
+		resolved_version="${resolved_tag#v}"
+	fi
+	rm -rf "$resolve_dir"
+
+	if [ -z "$resolved_version" ] || [ -z "$resolved_tag" ]; then
+		printf 'error: could not resolve the latest Zero release from %s\n' "$zero_repo" >&2
+		printf 'Install the GitHub CLI (gh) and run "gh auth login", or make the %s repo public.\n' "$zero_repo" >&2
 		exit 1
 	fi
-	channel_version="$(tr -d '[:space:]' <"$channel_path")"
-	rm -rf "$channel_dir"
-	if [ -z "$channel_version" ]; then
-		printf 'error: could not resolve latest Zero version from %s/%s\n' "$zero_base_url" "$release_channel" >&2
+
+	zero_resolved_tag="$resolved_tag"
+	zero_resolved_version="$(normalize_version "$resolved_version")"
+}
+
+zero_write_resolved_stable_tag() {
+	zero_resolve_stable_tag >"$1"
+}
+
+zero_write_resolved_beta_version() {
+	zero_resolve_beta_version >"$1"
+}
+
+# Prints the stable channel's current release tag (e.g. v0.7.3). Prefers
+# `gh` (works for private repos via the caller's own login); falls back to
+# the public, unauthenticated GitHub REST API otherwise.
+zero_resolve_stable_tag() {
+	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+		gh release view --repo "$zero_repo" --json tagName -q .tagName 2>/dev/null
+		return
+	fi
+
+	if ! command -v curl >/dev/null 2>&1; then
+		printf 'error: curl is required to resolve the latest Zero version.\n' >&2
 		exit 1
 	fi
-	normalize_version "$channel_version"
+
+	curl -fsSL -H "Accept: application/vnd.github+json" \
+		"https://api.github.com/repos/$zero_repo/releases/latest" 2>/dev/null |
+		sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1
+}
+
+# Prints the version embedded in the beta release's main-package tarball
+# name (e.g. zero-0.7.3-beta.5.abc1234.tgz -> 0.7.3-beta.5.abc1234). The
+# version starts with a digit, which is what distinguishes it from the
+# zero-ai/zero-core/zero-tui companion tarballs in the same release.
+zero_resolve_beta_version() {
+	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+		asset_name=$(gh release view beta --repo "$zero_repo" --json assets -q '.assets[].name' 2>/dev/null |
+			grep -E "^${zero_package}-[0-9].*\.tgz\$" | head -n1)
+	else
+		if ! command -v curl >/dev/null 2>&1; then
+			printf 'error: curl is required to resolve the latest Zero version.\n' >&2
+			exit 1
+		fi
+		asset_name=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+			"https://api.github.com/repos/$zero_repo/releases/tags/beta" 2>/dev/null |
+			grep -oE "\"${zero_package}-[0-9][^\"]*\.tgz\"" | head -n1 | tr -d '"')
+	fi
+
+	if [ -n "$asset_name" ]; then
+		version="${asset_name#"${zero_package}"-}"
+		printf '%s' "${version%.tgz}"
+	fi
 }
 
 normalize_version() {
@@ -1453,58 +1510,59 @@ zero_source_profile_command() {
 
 download_zero_package() {
 	version="$1"
-	tarball_url="$2"
-	tarball_path="$3"
-	download_dir=$(dirname "$tarball_path")
-	tarball_name=$(basename "$tarball_path")
-	checksums_url="$zero_base_url/releases/v$version/SHA256SUMS"
-	checksums_path="$download_dir/SHA256SUMS"
+	tag="$2"
+	download_dir="$3"
 
-	if ! command -v curl >/dev/null 2>&1; then
-		printf 'error: curl is required to download Zero.\n' >&2
-		exit 1
+	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+		zero_run_quiet_with_animation \
+			"Downloading Zero" \
+			"Downloading Zero v$version" \
+			"Fetching the verified release from GitHub." \
+			gh release download "$tag" --repo "$zero_repo" \
+				--pattern "*.tgz" --pattern "SHA256SUMS" \
+				--dir "$download_dir" --clobber
+	else
+		if ! command -v curl >/dev/null 2>&1; then
+			printf 'error: curl is required to download Zero.\n' >&2
+			exit 1
+		fi
+		for artifact_name in "$zero_package-$version.tgz" "zero-ai-$version.tgz" "zero-core-$version.tgz" \
+			"zero-tui-$version.tgz" SHA256SUMS; do
+			if ! zero_run_quiet_with_animation \
+				"Downloading Zero" \
+				"Downloading $artifact_name" \
+				"Zero v$version" \
+				curl -fsSL "https://github.com/$zero_repo/releases/download/$tag/$artifact_name" \
+				-o "$download_dir/$artifact_name"; then
+				printf 'error: could not download %s from the %s release.\n' "$artifact_name" "$tag" >&2
+				printf 'Install the GitHub CLI (gh) and run "gh auth login", or make the %s repo public.\n' "$zero_repo" >&2
+				exit 1
+			fi
+		done
 	fi
 
-	zero_run_quiet_with_animation \
-		"Downloading checksums" \
-		"Downloading release checksums" \
-		"Zero v$version" \
-		curl -fsSL "$checksums_url" -o "$checksums_path"
-
-	zero_run_quiet_with_animation \
-		"Downloading Zero" \
-		"Downloading Zero v$version" \
-		"Fetching the verified package." \
-		curl -fsSL "$tarball_url" -o "$tarball_path"
-
-	verify_zero_package_checksum "$checksums_path" "$tarball_path"
+	verify_zero_package_checksums "$download_dir"
 }
 
-verify_zero_package_checksum() {
-	checksums_path="$1"
-	tarball_path="$2"
-	checksum_dir=$(dirname "$tarball_path")
-	tarball_name=$(basename "$tarball_path")
-	selected_checksums_path="$checksum_dir/SHA256SUMS.selected"
-
-	if ! awk -v file="$tarball_name" '$2 == file { print; found = 1; exit } END { if (!found) exit 1 }' \
-		"$checksums_path" >"$selected_checksums_path"; then
-		printf 'error: checksum for %s was not found in %s\n' "$tarball_name" "$checksums_path" >&2
-		exit 1
-	fi
+# Checks every tarball in the download directory against SHA256SUMS at once —
+# the four release tarballs (main package + its zero-ai/zero-core/zero-tui
+# dependencies) all need to be present and verified for the main package's
+# relative file: dependencies to resolve correctly at install time.
+verify_zero_package_checksums() {
+	download_dir="$1"
 
 	if command -v sha256sum >/dev/null 2>&1; then
 		zero_run_quiet_with_animation \
 			"Verifying download" \
 			"Verifying Zero download" \
 			"Checking SHA-256." \
-			zero_run_checksum_check "$checksum_dir" "$(basename "$selected_checksums_path")" sha256sum
+			zero_run_checksum_check "$download_dir" SHA256SUMS sha256sum
 	elif command -v shasum >/dev/null 2>&1; then
 		zero_run_quiet_with_animation \
 			"Verifying download" \
 			"Verifying Zero download" \
 			"Checking SHA-256." \
-			zero_run_checksum_check "$checksum_dir" "$(basename "$selected_checksums_path")" shasum
+			zero_run_checksum_check "$download_dir" SHA256SUMS shasum
 	else
 		printf 'error: sha256sum or shasum is required to verify the Zero download.\n' >&2
 		exit 1
@@ -1527,7 +1585,7 @@ zero_run_checksum_check() {
 
 confirm_install() {
 	version="$1"
-	tarball_url="$2"
+	tag="$2"
 
 	if zero_prompt_yes_no \
 		"Install Zero v$version globally with npm?" \
@@ -1539,7 +1597,8 @@ confirm_install() {
 	fi
 
 	if [ "$prompt_status" -eq 2 ]; then
-		printf 'This will download, verify, and install:\n\n  %s\n\n' "$tarball_url"
+		printf 'This will download, verify, and install Zero v%s from:\n\n  https://github.com/%s/releases/tag/%s\n\n' \
+			"$version" "$zero_repo" "$tag"
 		printf 'No terminal detected; continuing without confirmation.\n'
 		return 0
 	fi

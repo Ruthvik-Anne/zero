@@ -17,13 +17,15 @@ Zero: A Self-Improving RLM Agent
 </p>
 
 <p align="center">
-  <a href="https://github.com/PrimeIntellect-ai/prime-agent/actions/workflows/ci.yml">
-    <img src="https://github.com/PrimeIntellect-ai/prime-agent/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  <a href="https://github.com/Ruthvik-Anne/zero/actions/workflows/ci.yml">
+    <img src="https://github.com/Ruthvik-Anne/zero/actions/workflows/ci.yml/badge.svg" alt="CI" />
   </a>
-  <a href="https://github.com/PrimeIntellect-ai/prime-agent/actions/workflows/build-binaries.yml">
-    <img src="https://github.com/PrimeIntellect-ai/prime-agent/actions/workflows/build-binaries.yml/badge.svg" alt="Build Binaries" />
+  <a href="https://github.com/Ruthvik-Anne/zero/actions/workflows/build-binaries.yml">
+    <img src="https://github.com/Ruthvik-Anne/zero/actions/workflows/build-binaries.yml/badge.svg" alt="Build Binaries" />
   </a>
 </p>
+
+> This is a personal fork of [PrimeIntellect-ai/prime-agent](https://github.com/PrimeIntellect-ai/prime-agent), rebranded and kept in a private repo. See [Acknowledgements](#acknowledgements).
 
 Zero is an open-source coding and research agent for general and long-running work. It is designed around two core abstractions:
 
@@ -42,13 +44,34 @@ Zero combines a persistent Python control environment with durable harness state
 
 ## Getting Started
 
-Install the latest stable release on macOS or Linux by piping `install.sh` to `sh` from your release host (the script reads its download location from `ZERO_DOWNLOAD_BASE_URL`, configured per distribution):
+### Option 1: build from source
 
 ```bash
-curl -fsSL <your-release-host>/install.sh | sh
+git clone https://github.com/Ruthvik-Anne/zero.git
+cd zero
+npm install
+npm run build
+./zero.sh   # or: npm link -w packages/coding-agent, then run `zero`
 ```
 
-The installer downloads a versioned release, verifies its SHA-256 checksum, installs the `zero` command, and can prepare the IPython runtime used by the agent.
+This always works and needs no release set up first — it's the fastest path while iterating.
+
+### Option 2: install a published release
+
+Releases are published as [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo (see [Creating a release](#creating-a-release) below) — there's no separate download host or CDN. Since the repo is private, grab a release with the [GitHub CLI](https://cli.github.com/) (`gh auth login` once, if you haven't):
+
+```bash
+git clone https://github.com/Ruthvik-Anne/zero.git
+cd zero
+./install.sh
+```
+
+`install.sh` resolves the latest release via `gh` (or the public GitHub API, once/if this repo is made public), downloads and SHA-256-verifies all four release tarballs, and runs `npm install -g` on the main one. Pass a channel or explicit version if you don't want the latest stable build:
+
+```bash
+./install.sh beta       # latest beta build from main
+./install.sh 0.7.3      # a specific version
+```
 
 Start Zero from the repository or directory you want it to work in:
 
@@ -96,16 +119,29 @@ Zero is built for long-running work, especially for evaluations in research. The
 - [Architecture overview](packages/coding-agent/docs/architecture.md) — daemon, worker, kernel, and persistence boundaries
 - [Development](packages/coding-agent/docs/development.md) — build and run from source
 
+## Creating a Release
+
+Releases run through `.github/workflows/build-binaries.yml` — no CDN, bucket, or npm publish required:
+
+- **Push to `main`** publishes/refreshes the floating `beta` release (a prerelease, force-moved to the latest `main` commit on every push).
+- **Push a `vX.Y.Z` tag** (or run the workflow manually via `workflow_dispatch` with a `release_tag` input) publishes a production release at that version.
+
+Either way the workflow builds all four packages, packs them with `npm run release:pack` (see `scripts/pack-zero-release.mjs` — it rewrites the coding-agent tarball's internal `@zero-agent/*` dependencies to relative `file:` references so the four tarballs install correctly as long as they sit in the same directory, which is exactly how a GitHub Release download drops them), and attaches `zero-<version>.tgz`, `zero-ai-<version>.tgz`, `zero-core-<version>.tgz`, `zero-tui-<version>.tgz`, and `SHA256SUMS` to the release. `install.sh` (see [Getting Started](#option-2-install-a-published-release)) downloads and verifies those same four tarballs.
+
+To cut a production release by hand instead of tagging:
+
+```bash
+gh workflow run build-binaries.yml -f release_tag=v0.7.3
+```
+
 ## Contributing
 
-Start with a GitHub Discussion for [general questions](https://github.com/PrimeIntellect-ai/prime-agent/discussions/categories/general), [bug reports](https://github.com/PrimeIntellect-ai/prime-agent/discussions/categories/bug-reports), and [feature requests](https://github.com/PrimeIntellect-ai/prime-agent/discussions/categories/feature-requests). Maintainers promote accepted work into Issues, and pull requests are reviewed from maintainers and vouched contributors.
-
-Read the [contribution guidelines](CONTRIBUTING.md) for the full process. Report security vulnerabilities privately by following the [security policy](SECURITY.md).
+This is a personal fork kept in a private repo, so there's no external contribution process — open an issue or PR against your own clone as needed. Read [CONTRIBUTING.md](CONTRIBUTING.md) if you want the fuller process this was forked from, and the [security policy](SECURITY.md) for how upstream handles vulnerability reports.
 
 ## Acknowledgements
 
-Our agent and TUI is built on top of [`pi`](https://github.com/earendil-works/pi). We thank the authors of `pi` for their valuable work.
+This is a personal, rebranded fork of [PrimeIntellect-ai/prime-agent](https://github.com/PrimeIntellect-ai/prime-agent) — all credit for the original design and implementation goes to Prime Intellect and its contributors. Their agent and TUI is in turn built on top of [`pi`](https://github.com/earendil-works/pi); we thank the authors of `pi` for their valuable work too.
 
 ## License
 
-Zero is fully open source and released under the [MIT License](LICENSE).
+Zero is released under the [MIT License](LICENSE), inherited from the upstream project this was forked from.

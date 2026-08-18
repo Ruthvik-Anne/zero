@@ -48,7 +48,7 @@ Edit directly or use `/settings` for common options.
 
 ### Update Checks
 
-Stable builds fetch the release manifest at `https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev/latest.json`. Beta builds fetch `beta.json` and continue following beta updates. Override the base URL with `ZERO_DOWNLOAD_BASE_URL`.
+This fork has no release CDN of its own — releases are plain [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) (see the root README's "Creating a Release" section). The in-app version check is opt-in and off by default: set `ZERO_DOWNLOAD_BASE_URL` to a host serving `latest.json` (stable) / `beta.json` (beta) manifests in the shape below to enable it.
 
 Set `ZERO_SKIP_VERSION_CHECK=1` to disable the Zero version update check. Use `--offline` or `ZERO_OFFLINE=1` to disable startup network operations, including update checks and package update checks.
 
