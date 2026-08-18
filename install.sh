@@ -6,6 +6,11 @@ set -eu
 # see .github/workflows/build-binaries.yml. ZERO_GITHUB_REPO lets a fork
 # point this installer at its own releases without editing the script.
 zero_repo="${ZERO_GITHUB_REPO:-Ruthvik-Anne/zero}"
+# GitHub's release CDN (release-assets.githubusercontent.com, behind a signed
+# redirect from github.com/.../releases/download/...) intermittently resets
+# the connection mid-download; curl doesn't retry on that by default, gh's
+# HTTP client does — this closes the same gap without depending on gh.
+zero_curl_retry="--retry 5 --retry-delay 1 --retry-connrefused"
 zero_release_channel="${ZERO_RELEASE_CHANNEL:-stable}"
 zero_package="${ZERO_PACKAGE:-zero}"
 zero_cmd="${ZERO_CMD:-zero}"
@@ -27,7 +32,7 @@ zero_color_dim="${zero_esc}[38;2;113;113;122m"
 zero_color_primary="${zero_esc}[38;2;127;91;213m"
 zero_color_scan="${zero_esc}[38;2;14;165;233m"
 zero_color_warning="${zero_esc}[38;2;245;158;11m"
-readonly zero_repo zero_release_channel zero_package zero_cmd zero_esc zero_original_path
+readonly zero_repo zero_curl_retry zero_release_channel zero_package zero_cmd zero_esc zero_original_path
 readonly zero_reset zero_bold zero_italic zero_hide_cursor zero_show_cursor zero_home_cursor zero_clear_screen zero_clear_line
 readonly zero_sync_start zero_sync_end
 readonly zero_color_text zero_color_muted zero_color_dim zero_color_primary zero_color_scan zero_color_warning
@@ -970,7 +975,6 @@ resolve_zero_version() {
 
 	if [ -z "$resolved_version" ] || [ -z "$resolved_tag" ]; then
 		printf 'error: could not resolve the latest Zero release from %s\n' "$zero_repo" >&2
-		printf 'Install the GitHub CLI (gh) and run "gh auth login", or make the %s repo public.\n' "$zero_repo" >&2
 		exit 1
 	fi
 
@@ -986,21 +990,15 @@ zero_write_resolved_beta_version() {
 	zero_resolve_beta_version >"$1"
 }
 
-# Prints the stable channel's current release tag (e.g. v0.7.3). Prefers
-# `gh` (works for private repos via the caller's own login); falls back to
-# the public, unauthenticated GitHub REST API otherwise.
+# Prints the stable channel's current release tag (e.g. v0.7.3) via the
+# public, unauthenticated GitHub REST API.
 zero_resolve_stable_tag() {
-	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-		gh release view --repo "$zero_repo" --json tagName -q .tagName 2>/dev/null
-		return
-	fi
-
 	if ! command -v curl >/dev/null 2>&1; then
 		printf 'error: curl is required to resolve the latest Zero version.\n' >&2
 		exit 1
 	fi
 
-	curl -fsSL -H "Accept: application/vnd.github+json" \
+	curl -fsSL $zero_curl_retry -H "Accept: application/vnd.github+json" \
 		"https://api.github.com/repos/$zero_repo/releases/latest" 2>/dev/null |
 		sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1
 }
@@ -1010,18 +1008,14 @@ zero_resolve_stable_tag() {
 # version starts with a digit, which is what distinguishes it from the
 # zero-ai/zero-core/zero-tui companion tarballs in the same release.
 zero_resolve_beta_version() {
-	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-		asset_name=$(gh release view beta --repo "$zero_repo" --json assets -q '.assets[].name' 2>/dev/null |
-			grep -E "^${zero_package}-[0-9].*\.tgz\$" | head -n1)
-	else
-		if ! command -v curl >/dev/null 2>&1; then
-			printf 'error: curl is required to resolve the latest Zero version.\n' >&2
-			exit 1
-		fi
-		asset_name=$(curl -fsSL -H "Accept: application/vnd.github+json" \
-			"https://api.github.com/repos/$zero_repo/releases/tags/beta" 2>/dev/null |
-			grep -oE "\"${zero_package}-[0-9][^\"]*\.tgz\"" | head -n1 | tr -d '"')
+	if ! command -v curl >/dev/null 2>&1; then
+		printf 'error: curl is required to resolve the latest Zero version.\n' >&2
+		exit 1
 	fi
+
+	asset_name=$(curl -fsSL $zero_curl_retry -H "Accept: application/vnd.github+json" \
+		"https://api.github.com/repos/$zero_repo/releases/tags/beta" 2>/dev/null |
+		grep -oE "\"${zero_package}-[0-9][^\"]*\.tgz\"" | head -n1 | tr -d '"')
 
 	if [ -n "$asset_name" ]; then
 		version="${asset_name#"${zero_package}"-}"
@@ -1245,7 +1239,7 @@ install_node_standalone() {
 	mkdir -p "$node_tmp_dir" "$node_base_dir"
 
 	printf 'Resolving Node.js binary for %s-%s\n' "$node_platform" "$node_arch"
-	curl -fsSL "$node_dist_base/SHASUMS256.txt" -o "$node_tmp_dir/SHASUMS256.txt"
+	curl -fsSL $zero_curl_retry "$node_dist_base/SHASUMS256.txt" -o "$node_tmp_dir/SHASUMS256.txt"
 	node_file=$(awk -v suffix="-$node_platform-$node_arch.tar.xz" '
 		index($2, "node-v") == 1 && length($2) >= length(suffix) && substr($2, length($2) - length(suffix) + 1) == suffix { print $2; exit }
 	' "$node_tmp_dir/SHASUMS256.txt")
@@ -1269,7 +1263,7 @@ install_node_standalone() {
 	esac
 
 	printf 'Downloading Node.js %s\n' "${node_file%.tar.xz}"
-	curl -fsSL "$node_dist_base/$node_file" -o "$node_tmp_dir/$node_file"
+	curl -fsSL $zero_curl_retry "$node_dist_base/$node_file" -o "$node_tmp_dir/$node_file"
 	verify_node_standalone_download "$node_tmp_dir" "$node_file"
 	ensure_node_standalone_extract_tools "$node_platform"
 
@@ -1513,33 +1507,22 @@ download_zero_package() {
 	tag="$2"
 	download_dir="$3"
 
-	if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-		zero_run_quiet_with_animation \
+	if ! command -v curl >/dev/null 2>&1; then
+		printf 'error: curl is required to download Zero.\n' >&2
+		exit 1
+	fi
+	for artifact_name in "$zero_package-$version.tgz" "zero-ai-$version.tgz" "zero-core-$version.tgz" \
+		"zero-tui-$version.tgz" SHA256SUMS; do
+		if ! zero_run_quiet_with_animation \
 			"Downloading Zero" \
-			"Downloading Zero v$version" \
-			"Fetching the verified release from GitHub." \
-			gh release download "$tag" --repo "$zero_repo" \
-				--pattern "*.tgz" --pattern "SHA256SUMS" \
-				--dir "$download_dir" --clobber
-	else
-		if ! command -v curl >/dev/null 2>&1; then
-			printf 'error: curl is required to download Zero.\n' >&2
+			"Downloading $artifact_name" \
+			"Zero v$version" \
+			curl -fsSL $zero_curl_retry "https://github.com/$zero_repo/releases/download/$tag/$artifact_name" \
+			-o "$download_dir/$artifact_name"; then
+			printf 'error: could not download %s from the %s release.\n' "$artifact_name" "$tag" >&2
 			exit 1
 		fi
-		for artifact_name in "$zero_package-$version.tgz" "zero-ai-$version.tgz" "zero-core-$version.tgz" \
-			"zero-tui-$version.tgz" SHA256SUMS; do
-			if ! zero_run_quiet_with_animation \
-				"Downloading Zero" \
-				"Downloading $artifact_name" \
-				"Zero v$version" \
-				curl -fsSL "https://github.com/$zero_repo/releases/download/$tag/$artifact_name" \
-				-o "$download_dir/$artifact_name"; then
-				printf 'error: could not download %s from the %s release.\n' "$artifact_name" "$tag" >&2
-				printf 'Install the GitHub CLI (gh) and run "gh auth login", or make the %s repo public.\n' "$zero_repo" >&2
-				exit 1
-			fi
-		done
-	fi
+	done
 
 	verify_zero_package_checksums "$download_dir"
 }

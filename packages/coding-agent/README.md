@@ -40,17 +40,16 @@ Zero began as a hard fork of [pi-mono](https://github.com/badlogic/pi-mono), but
 
 ## Quick Start
 
-Releases are [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo — clone it and run the installer (see the root [README](../../README.md#getting-started) for the full story):
+Releases are [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo (see the root [README](../../README.md#getting-started) for the full story):
 
 ```bash
-git clone https://github.com/Ruthvik-Anne/zero.git && cd zero
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh
 ```
 
 To install the beta built from the latest commit on `main`:
 
 ```bash
-./install.sh beta
+curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh -s -- beta
 ```
 
 Authenticate with an API key:

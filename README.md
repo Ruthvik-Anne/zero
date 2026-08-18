@@ -25,7 +25,7 @@ Zero: A Self-Improving RLM Agent
   </a>
 </p>
 
-> This is a personal fork of [PrimeIntellect-ai/prime-agent](https://github.com/PrimeIntellect-ai/prime-agent), rebranded and kept in a private repo. See [Acknowledgements](#acknowledgements).
+> This is a personal fork of [PrimeIntellect-ai/prime-agent](https://github.com/PrimeIntellect-ai/prime-agent), rebranded. See [Acknowledgements](#acknowledgements).
 
 Zero is an open-source coding and research agent for general and long-running work. It is designed around two core abstractions:
 
@@ -58,20 +58,20 @@ This always works and needs no release set up first — it's the fastest path wh
 
 ### Option 2: install a published release
 
-Releases are published as [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo (see [Creating a release](#creating-a-release) below) — there's no separate download host or CDN. Since the repo is private, grab a release with the [GitHub CLI](https://cli.github.com/) (`gh auth login` once, if you haven't):
+Releases are published as [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases) on this repo (see [Creating a release](#creating-a-release) below) — no separate download host, CDN, or `gh` CLI required, just `curl`:
 
 ```bash
-git clone https://github.com/Ruthvik-Anne/zero.git
-cd zero
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh
 ```
 
-`install.sh` resolves the latest release via `gh` (or the public GitHub API, once/if this repo is made public), downloads and SHA-256-verifies all four release tarballs, and runs `npm install -g` on the main one. Pass a channel or explicit version if you don't want the latest stable build:
+To install the beta built from the latest commit on `main`, or a specific version:
 
 ```bash
-./install.sh beta       # latest beta build from main
-./install.sh 0.7.3      # a specific version
+curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh -s -- beta
+curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh -s -- 0.7.3
 ```
+
+`install.sh` resolves the requested release via the public GitHub API, downloads and SHA-256-verifies all four release tarballs, and runs `npm install -g` on the main one.
 
 Start Zero from the repository or directory you want it to work in:
 
@@ -136,7 +136,7 @@ gh workflow run build-binaries.yml -f release_tag=v0.7.3
 
 ## Contributing
 
-This is a personal fork kept in a private repo, so there's no external contribution process — open an issue or PR against your own clone as needed. Read [CONTRIBUTING.md](CONTRIBUTING.md) if you want the fuller process this was forked from, and the [security policy](SECURITY.md) for how upstream handles vulnerability reports.
+This is a personal fork without an organized contribution process — feel free to open an issue or PR if something's broken, but there's no roadmap or review SLA. Read [CONTRIBUTING.md](CONTRIBUTING.md) if you want the fuller process this was forked from, and the [security policy](SECURITY.md) for how upstream handles vulnerability reports.
 
 ## Acknowledgements
 

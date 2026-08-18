@@ -4,11 +4,10 @@ Zero is an RLM-native coding and research harness built around a persistent IPyt
 
 ## Quick Start
 
-Install the latest stable release on Linux or macOS by cloning the repo and running its installer — releases are plain [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases), no separate download host:
+Install the latest stable release on Linux or macOS — releases are plain [GitHub Releases](https://github.com/Ruthvik-Anne/zero/releases), no separate download host:
 
 ```bash
-git clone https://github.com/Ruthvik-Anne/zero.git && cd zero
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Ruthvik-Anne/zero/main/install.sh | sh
 ```
 
 Then run it in a project directory:
