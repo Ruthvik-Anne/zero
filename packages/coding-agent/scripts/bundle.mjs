@@ -46,7 +46,20 @@ await build({
 	// chromium.launch() over CDP, so that require() never actually executes,
 	// but esbuild still needs to resolve it statically since playwright-core
 	// declares no dependency on it at all (assumed pre-bundled upstream).
-	external: ["zeromq", "koffi", "undici", "@silvia-odwyer/photon-node", "@mariozechner/clipboard", "chromium-bidi"],
+	// playwright/playwright-core: internally CJS and reads __dirname at module
+	// scope (e.g. to locate its own package root) — esbuild's ESM output has
+	// no __dirname, so bundling it in crashes on startup for every command,
+	// not just browser use, since browser-session.ts imports it statically.
+	external: [
+		"zeromq",
+		"koffi",
+		"undici",
+		"@silvia-odwyer/photon-node",
+		"@mariozechner/clipboard",
+		"chromium-bidi",
+		"playwright",
+		"playwright-core",
+	],
 	define: { __PI_BUNDLED__: "true", __PI_BUILD_ID__: JSON.stringify(buildId) },
 	banner: {
 		js: "import { createRequire as __piBundleCreateRequire } from 'node:module'; const require = __piBundleCreateRequire(import.meta.url);",
