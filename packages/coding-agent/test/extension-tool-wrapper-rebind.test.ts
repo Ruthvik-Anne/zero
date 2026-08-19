@@ -58,8 +58,8 @@ describe("wrapRegisteredTools runner rebinding", () => {
 		await expect(tool.execute("c1", {}, new AbortController().signal)).resolves.toBeTruthy();
 
 		runner.invalidate();
-		// The ctx is resolved synchronously as an execute() argument, so a stale runner
-		// throws at call time rather than rejecting.
-		expect(() => tool.execute("c2", {}, new AbortController().signal)).toThrow(STALE);
+		// execute() is itself async, so a stale runner's throw from createContext()
+		// always surfaces as a rejection, never a synchronous throw.
+		await expect(tool.execute("c2", {}, new AbortController().signal)).rejects.toThrow(STALE);
 	});
 });

@@ -24,8 +24,12 @@ const HARM_CHECKED_TOOLS: Record<string, { kind: HarmCheckKind; sourceKey: strin
 const PLAN_MODE_ALWAYS_BLOCKED_TOOLS = new Set(["edit"]);
 
 function resolveSessionArtifactDir(ctx: ExtensionContext): string | undefined {
-	const sessionDir = ctx.sessionManager.getSessionDir();
-	const sessionId = ctx.sessionManager.getSessionId();
+	// Audit/guardrail logging must never block or fail a tool call (see
+	// logAudit/recordGuardrailForVerdict below) — degrade the same way a
+	// missing sessionDir/sessionId already does if sessionManager itself
+	// is absent, rather than throwing.
+	const sessionDir = ctx.sessionManager?.getSessionDir();
+	const sessionId = ctx.sessionManager?.getSessionId();
 	if (!sessionDir || !sessionId) return undefined;
 	return getSessionArtifactPath(sessionDir, sessionId);
 }

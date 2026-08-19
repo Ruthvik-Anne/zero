@@ -52,7 +52,14 @@ afterEach(async () => {
 	}
 	daemonSockets.clear();
 	for (const root of tempRoots) {
-		rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+		// The socket-file-gone wait above only confirms the daemon supervisor
+		// exited — not that a worker subprocess it spawned (which some tests
+		// here have writing into `root`, e.g. a headless-services marker file)
+		// has also fully released its file handles. 500ms of retry budget was
+		// occasionally too short under CI's slower/loaded runners and raced
+		// into ENOTEMPTY; give it more room instead of assuming everything
+		// underneath is already quiescent.
+		rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 	}
 	tempRoots.clear();
 });
