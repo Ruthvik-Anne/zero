@@ -567,9 +567,12 @@ describe("self-update daemon restart", () => {
 
 	it("uses the interactive no-change sentinel only when self-update is unchanged", async () => {
 		process.env[SELF_UPDATE_INTERACTIVE_CHILD_ENV] = "1";
+		// No ZERO_DOWNLOAD_BASE_URL is set here, so version-check.ts falls back
+		// to the GitHub releases API by default — its response shape is
+		// {tag_name}, not the self-hosted manifest's {version}.
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => Response.json({ version: "0.2.6" })),
+			vi.fn(async () => Response.json({ tag_name: "v0.2.6" })),
 		);
 
 		await expect(handlePackageCommand(["update", "--self"])).resolves.toBe(true);

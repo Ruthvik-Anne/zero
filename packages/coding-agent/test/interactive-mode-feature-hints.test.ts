@@ -85,7 +85,7 @@ describe("feature hint deck", () => {
 		const hints = FEATURE_HINTS.map(() => deck.next({ getKeybinding: () => "Meta+A", isResidentSession: true }));
 		const textById = new Map(hints.map((hint) => [hint?.id, hint?.text]));
 
-		expect(textById.get("subagents")).toBe("Prime Agent can delegate tasks to subagents and run them in parallel.");
+		expect(textById.get("subagents")).toBe("Zero can delegate tasks to subagents and run them in parallel.");
 		expect(textById.get("agents-view")).toContain("Session View");
 		expect(textById.get("session-rewind")).toContain("/tree");
 		expect(textById.get("steering")).toContain("steer");

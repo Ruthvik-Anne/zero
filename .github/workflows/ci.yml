@@ -142,10 +142,21 @@ jobs:
       # (C1) Reuses build-check's build instead of every one of these 8 legs
       # separately re-running the full monorepo build (which also re-fetches
       # packages/ai's live model catalog on every invocation — see C3).
+      #
+      # upload-artifact strips the least-common-ancestor of the 4 uploaded
+      # paths (packages/{tui,ai,agent,coding-agent}/dist), so the artifact's
+      # own top level is {tui,ai,agent,coding-agent}/dist, not
+      # packages/.../dist — download into `packages/` to put that prefix
+      # back, or every package's dist/ silently never gets restored here
+      # (confirmed: this broke @zero-agent/* resolution for anything that
+      # loads a package via node_modules symlinks — e.g. dynamic extension
+      # loading — while tests importing straight from ../src/*.ts stayed
+      # unaffected, which is why only some suites showed this failure).
       - name: Download build output
         uses: actions/download-artifact@v4
         with:
           name: dist-output
+          path: packages
 
       - name: Install uv
         if: matrix.install_uv
