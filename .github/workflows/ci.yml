@@ -153,6 +153,14 @@ jobs:
           python3 -m pip install --user uv
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # agent-session-browser.test.ts (BrowserSession.launch) needs a real
+      # Chromium binary; nothing else in this job ever installs one, and
+      # vitest sharding can place that test in any of the coding-agent legs.
+      - name: Install Playwright Chromium
+        if: matrix.package == 'packages/coding-agent'
+        working-directory: packages/coding-agent
+        run: npx playwright install --with-deps chromium
+
       - name: Test
         working-directory: ${{ matrix.package }}
         run: ${{ matrix.command }}

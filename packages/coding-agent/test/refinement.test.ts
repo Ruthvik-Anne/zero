@@ -1,6 +1,6 @@
 import { appendFileSync, chmodSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { AgentMessage } from "@zero-agent/agent-core";
 import type * as PiAi from "@zero-agent/ai";
 import type { AssistantMessage, Model } from "@zero-agent/ai";
@@ -217,7 +217,7 @@ describe("harness refinement", () => {
 		const statePath = saveHarnessState(harnessStateDir, state);
 
 		expect(loadHarnessState(harnessStateDir).entries.memory.memory_entry).toBeDefined();
-		expect(readdirSync(harnessStateDir)).toEqual([statePath.split("/").at(-1)]);
+		expect(readdirSync(harnessStateDir)).toEqual([basename(statePath)]);
 		chmodSync(statePath, 0o600);
 		saveHarnessState(harnessStateDir, state);
 		expect(statSync(statePath).mode & 0o777).toBe(0o600);
@@ -675,7 +675,7 @@ describe("harness refinement", () => {
 
 			const state = loadHarnessState(dir);
 
-			expect(state.entries).toEqual({ prompt: {}, memory: {}, skill: {}, subagent: {} });
+			expect(state.entries).toEqual({ prompt: {}, memory: {}, skill: {}, subagent: {}, guardrail: {} });
 			expect(state.refinements).toEqual([]);
 			// Still usable: a refinement applies and persists cleanly over the bad file.
 			applyRefinementProposal(
@@ -924,7 +924,10 @@ describe("harness refinement", () => {
 			error: "unsupported kind tool",
 		});
 		expect(state.entries.memory.bad_action).toBeUndefined();
-		expect(Object.keys(state.entries)).toEqual([...kinds]);
+		// The full default entry-kind set, including "guardrail" — which is
+		// deliberately excluded from `kinds` above since it's host-managed only
+		// (recordGuardrailPrecedent), not something a manual proposal can create.
+		expect(Object.keys(state.entries)).toEqual(["prompt", "memory", "skill", "subagent", "guardrail"]);
 		expect(state.refinements.at(-1)?.changes).toEqual([]);
 	});
 

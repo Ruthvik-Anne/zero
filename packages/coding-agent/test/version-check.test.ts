@@ -37,12 +37,38 @@ describe("version checks", () => {
 		expect(isNewerPackageVersion("0.70.6", "0.70.5")).toBe(true);
 	});
 
-	it("skips the version check entirely when no download base URL is configured (Zero's default)", async () => {
+	it("skips the version check entirely when ZERO_SKIP_VERSION_CHECK or ZERO_OFFLINE is set", async () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
+		process.env.ZERO_SKIP_VERSION_CHECK = "1";
 		await expect(getLatestPiVersion("1.2.3")).resolves.toBeUndefined();
+		delete process.env.ZERO_SKIP_VERSION_CHECK;
+
+		process.env.ZERO_OFFLINE = "1";
+		await expect(getLatestPiVersion("1.2.3")).resolves.toBeUndefined();
+
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("falls back to the GitHub releases API when no download base URL is configured (Zero's default)", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "v1.2.4" }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getLatestPiVersion("1.2.3")).resolves.toBe("1.2.4");
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://api.github.com/repos/Ruthvik-Anne/zero/releases/latest",
+			expect.objectContaining({
+				headers: expect.objectContaining({ accept: "application/vnd.github+json" }),
+			}),
+		);
+	});
+
+	it("returns undefined when the GitHub releases API request fails", async () => {
+		const fetchMock = vi.fn(async () => new Response(null, { status: 404 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getLatestPiVersion("1.2.3")).resolves.toBeUndefined();
 	});
 
 	it("returns only newer versions once a download base URL is configured", async () => {
