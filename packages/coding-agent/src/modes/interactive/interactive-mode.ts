@@ -228,6 +228,7 @@ import {
 import { TreeSelectorComponent } from "./components/tree-selector.js";
 import { UserMessageComponent } from "./components/user-message.js";
 import { UserMessageSelectorComponent } from "./components/user-message-selector.js";
+import { formatExitSplash } from "./exit-splash.js";
 import { FeatureHintDeck } from "./feature-hints.js";
 import { scopeHeartbeatsToSession } from "./heartbeat-scope.js";
 import {
@@ -6778,10 +6779,7 @@ export class InteractiveMode {
 		} finally {
 			await this.options.onShutdown?.();
 		}
-		const resumeHint = formatResumeHint(sessionStats);
-		if (resumeHint) {
-			console.log(resumeHint);
-		}
+		console.log(formatExitSplash(formatResumeHint(sessionStats)));
 		process.exit(0);
 	}
 

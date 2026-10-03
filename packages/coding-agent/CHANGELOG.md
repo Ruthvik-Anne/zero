@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Added a branded exit splash showing the Zero logo, name, version and "by Ruthvik Anne" when the interactive TUI exits, with the resume hint below it.
+
 ## [0.8.0] - 2026-08-18
 
 - Added `install.ps1` for a one-line Windows install (`irm ... | iex`), matching `install.sh`; trimmed the README's Getting Started section to two lines.
