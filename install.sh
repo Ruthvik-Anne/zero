@@ -50,6 +50,7 @@ zero_screen_layout_lab_width=0
 zero_screen_render_lab_width=0
 zero_screen_compact=0
 zero_download_dir=
+zero_lock_dir=
 zero_bootstrap_kernel_on_install=0
 zero_screen_title=
 zero_screen_status=
@@ -59,6 +60,7 @@ zero_animation_frame=0
 
 main() {
 	zero_install_traps
+	zero_acquire_install_lock
 	zero_init_screen
 	if [ "$zero_screen_enabled" = 1 ]; then
 		zero_screen "Installing Zero" "" "" ""
@@ -95,17 +97,25 @@ main() {
 	version="$zero_resolved_version"
 	tag="$zero_resolved_tag"
 
-	confirm_install "$version" "$tag"
-	confirm_kernel_runtime_setup
+	zero_npm_prefix=$(zero_npm_prefix_lookup)
+	installed_version=$(zero_installed_version)
+	assert_no_conflicting_zero_install
 
-	download_dir=$(create_temp_dir)
-	zero_download_dir="$download_dir"
-	tarball_path="$download_dir/$zero_package-$version.tgz"
+	if [ "$installed_version" = "$version" ]; then
+		printf '\nZero v%s is already installed; nothing to do.\n' "$version"
+	else
+		confirm_install "$version" "$tag" "$installed_version"
+		confirm_kernel_runtime_setup
 
-	download_zero_package "$version" "$tag" "$download_dir"
-	install_zero_package "$tarball_path"
-	rm -rf "$download_dir"
-	zero_download_dir=
+		download_dir=$(create_temp_dir)
+		zero_download_dir="$download_dir"
+		tarball_path="$download_dir/$zero_package-$version.tgz"
+
+		download_zero_package "$version" "$tag" "$download_dir"
+		install_zero_package "$tarball_path"
+		rm -rf "$download_dir"
+		zero_download_dir=
+	fi
 
 	if [ "${ZERO_NODE_INSTALLED_STANDALONE:-0}" = 1 ]; then
 		zero_screen "Zero installed" "" "Checking your shell PATH." ""
@@ -153,11 +163,35 @@ zero_install_traps() {
 	trap 'zero_signal_cleanup 143' TERM
 }
 
+zero_acquire_install_lock() {
+	zero_lock_dir="${TMPDIR:-/tmp}/zero-install.lock"
+	if ! mkdir "$zero_lock_dir" 2>/dev/null; then
+		holder=$(cat "$zero_lock_dir/pid" 2>/dev/null || true)
+		if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+			printf 'error: another Zero install or update is already running (pid %s).\n' "$holder" >&2
+			exit 1
+		fi
+		rm -rf "$zero_lock_dir"
+		if ! mkdir "$zero_lock_dir" 2>/dev/null; then
+			printf 'error: could not acquire the Zero install lock at %s.\n' "$zero_lock_dir" >&2
+			exit 1
+		fi
+	fi
+	printf '%s' "$$" >"$zero_lock_dir/pid"
+}
+
+zero_release_install_lock() {
+	if [ -n "${zero_lock_dir:-}" ] && [ "$(cat "$zero_lock_dir/pid" 2>/dev/null || true)" = "$$" ]; then
+		rm -rf "$zero_lock_dir"
+	fi
+}
+
 zero_cleanup() {
 	status=$?
 	if [ -n "${zero_download_dir:-}" ] && [ -d "$zero_download_dir" ]; then
 		rm -rf "$zero_download_dir"
 	fi
+	zero_release_install_lock
 	zero_restore_terminal
 	return "$status"
 }
@@ -239,11 +273,15 @@ zero_screen() {
 	fi
 	zero_screen_frame_text=$(zero_render_screen)
 
-	if ( : <>/dev/tty ) 2>/dev/null; then
+	if zero_can_write_tty; then
 		printf '%s%s%s%s' "$zero_sync_start" "$zero_screen_prefix" "$zero_screen_frame_text" "$zero_sync_end" >/dev/tty
 	else
 		printf '%s%s%s%s' "$zero_sync_start" "$zero_screen_prefix" "$zero_screen_frame_text" "$zero_sync_end" >&2
 	fi
+}
+
+zero_can_write_tty() {
+	( : <>/dev/tty ) 2>/dev/null
 }
 
 zero_init_screen_layout() {
@@ -315,6 +353,10 @@ zero_render_screen() {
 	top=$(((zero_screen_rows - content_height) / 2))
 	if [ "$top" -lt 0 ]; then
 		top=0
+	fi
+
+	if zero_show_logo; then
+		zero_render_lab
 	fi
 
 	y=0
@@ -399,156 +441,103 @@ zero_screen_primary_text() {
 
 zero_set_lab_line() {
 	lab_row="$1"
-	zero_lab_width="$zero_screen_render_lab_width"
-
-	logo_line=$(zero_logo_line "$lab_row")
-	if [ -n "$logo_line" ]; then
-		logo_start=$(((zero_lab_width - 21) / 2))
-		logo_end=$((logo_start + 21))
-		left=$(zero_lab_background_range "$lab_row" 0 "$logo_start")
-		right=$(zero_lab_background_range "$lab_row" "$logo_end" "$zero_lab_width")
-		trace="${left}${zero_color_text}${logo_line}${zero_reset}${right}"
-	else
-		trace=$(zero_lab_background_range "$lab_row" 0 "$zero_lab_width")
-	fi
-
+	eval "zero_lab_text=\${zero_lab_row_$lab_row:-}"
 	zero_content_is_set=1
-	zero_content_text="$trace"
-	zero_content_width="$zero_lab_width"
+	zero_content_text="$zero_lab_text"
+	zero_content_width="$zero_screen_render_lab_width"
 	zero_content_style=
 }
 
-zero_logo_line() {
-	case "$1" in
-		2) printf '     ▄▄████████▄▄' ;;
-		3) printf '   ▄██▀▀      ▀▀██▄' ;;
-		4) printf '  ██▀            ▀██' ;;
-		5) printf ' ██                ██' ;;
-		6) printf ' ██                ██' ;;
-		7) printf ' ██                ██' ;;
-		8) printf ' ██                ██' ;;
-		9) printf '  ██▄            ▄██' ;;
-		10) printf '   ▀██▄▄      ▄▄██▀' ;;
-		11) printf '     ▀▀████████▀▀' ;;
-	esac
-}
+# One awk pass renders the whole lab field for the current frame and size.
+# The field is sampled in square units (cells are about twice as tall as wide),
+# so its shape stays the same at any terminal width or height.
+zero_lab_program='
+BEGIN {
+	logo[2] = "     ▄▄████████▄▄"
+	logo[3] = "   ▄██▀▀      ▀▀██▄"
+	logo[4] = "  ██▀            ▀██"
+	logo[5] = " ██                ██"
+	logo[6] = logo[5]
+	logo[7] = logo[5]
+	logo[8] = logo[5]
+	logo[9] = "  ██▄            ▄██"
+	logo[10] = "   ▀██▄▄      ▄▄██▀"
+	logo[11] = "     ▀▀████████▀▀"
+	cx = W / 2
+	cy = H / 2
+	unit = (W / 2 < H) ? W / 2 : H
+	t = frame * 0.42
+	ls = int((W - 21) / 2)
+	le = ls + 21
+	horizon = int(H * 0.58)
+	for (y = 0; y < H; y++) {
+		line = ""
+		active = ""
+		x = 0
+		while (x < W) {
+			if (LOGO && y >= 2 && y <= 11 && x == ls) {
+				if (active != "") line = line RESET
+				active = ""
+				line = line C_TEXT logo[y] RESET
+				x = le
+				continue
+			}
+			nx = (x + 0.5 - cx) / unit
+			ny = 2 * (y + 0.5 - cy) / unit
+			f = sin(3.1 * nx + t) + cos(2.4 * ny - 0.7 * t) + sin(1.7 * (nx + ny) + 0.4 * t)
+			g = sin(5.3 * nx * ny + 0.9 * t)
+			v = (f + g) / 4
+			a = v < 0 ? -v : v
+			ch = " "
+			st = ""
+			hash = (x * 37 + y * 53 + frame * 11 + x * y * 3) % 101
+			if (a < 0.12) {
+				if (hash < 3) { ch = "·"; st = C_DIM }
+			} else if (a < 0.5) {
+				ch = (int(a * 14) % 2) ? "╌" : "·"
+				st = C_DIM
+			} else if (a < 0.78) {
+				ch = ((x + y) % 2) ? "╎" : "┃"
+				st = C_SCAN
+			} else {
+				if ((x + frame) % 9 == 0) { ch = "◆"; st = C_WARN } else { ch = "•"; st = C_PRIMARY }
+			}
+			if (y == horizon && x % 2 == 0 && (x + frame) % 13 < 2) {
+				ch = "─"
+				st = (x > W * 0.6) ? C_PRIMARY : C_DIM
+			}
+			if (st != active) {
+				if (active != "") line = line RESET
+				if (st != "") line = line st
+				active = st
+			}
+			line = line ch
+			x++
+		}
+		if (active != "") line = line RESET
+		print line
+	}
+}'
 
-zero_lab_background_range() {
-	lab_row="$1"
-	range_start="$2"
-	range_end="$3"
-	active_style=
-	line=
-	x="$range_start"
-	while [ "$x" -lt "$range_end" ]; do
-		zero_lab_cell "$x" "$lab_row"
-		if [ "$zero_lab_cell_style" != "$active_style" ]; then
-			if [ -n "$active_style" ]; then
-				line="${line}${zero_reset}"
-			fi
-			if [ -n "$zero_lab_cell_style" ]; then
-				line="${line}${zero_lab_cell_style}"
-			fi
-			active_style="$zero_lab_cell_style"
-		fi
-		line="${line}${zero_lab_cell_char}"
-		x=$((x + 1))
+zero_render_lab() {
+	lab_index=0
+	while [ "$lab_index" -lt 14 ]; do
+		eval "zero_lab_row_$lab_index="
+		lab_index=$((lab_index + 1))
 	done
-	if [ -n "$active_style" ]; then
-		line="${line}${zero_reset}"
-	fi
-	printf '%s' "$line"
-}
 
-zero_lab_cell() {
-	x="$1"
-	y="$2"
-	width="$zero_lab_width"
-	height=14
-	frame="$zero_screen_frame"
-	zero_lab_cell_char=" "
-	zero_lab_cell_style=
+	zero_lab_rows=$(awk -v W="$zero_screen_render_lab_width" -v H=14 -v frame="$zero_screen_frame" -v LOGO=1 \
+		-v C_TEXT="$zero_color_text" -v C_DIM="$zero_color_dim" -v C_PRIMARY="$zero_color_primary" \
+		-v C_SCAN="$zero_color_scan" -v C_WARN="$zero_color_warning" -v RESET="$zero_reset" \
+		"$zero_lab_program" 2>/dev/null) || return 0
 
-	hash=$(((x * 37 + y * 53 + frame * 11 + x * y * 3) % 101))
-	if [ "$hash" -lt 3 ]; then
-		zero_lab_cell_char="·"
-		zero_lab_cell_style="$zero_color_dim"
-	fi
-
-	center_x=$((width * 36 / 100))
-	center_y=$((height * 54 / 100))
-	dx=$((x - center_x))
-	dy=$((y - center_y))
-	if [ "$dx" -lt 0 ]; then
-		dx=$((-dx))
-	fi
-	if [ "$dy" -lt 0 ]; then
-		dy=$((-dy))
-	fi
-	contour=$((dx + dy * 4 + x / 6 - frame))
-	if [ "$x" -lt $((width * 82 / 100)) ] && [ $(((contour % 24 + 24) % 24)) -eq 12 ]; then
-		if [ $(((x + y) % 5)) -eq 0 ]; then
-			zero_lab_cell_char="╌"
-		else
-			zero_lab_cell_char="·"
-		fi
-		zero_lab_cell_style="$zero_color_dim"
-	fi
-
-	horizon_y=$((height * 58 / 100))
-	if [ "$y" -eq "$horizon_y" ] && [ $((x % 2)) -eq 0 ] && [ $(((x + frame) % 13)) -lt 2 ]; then
-		zero_lab_cell_char="─"
-		if [ "$x" -gt $((width * 60 / 100)) ]; then
-			zero_lab_cell_style="$zero_color_primary"
-		else
-			zero_lab_cell_style="$zero_color_dim"
-		fi
-	fi
-
-	scan_start=$((width / 2))
-	if [ "$x" -ge "$scan_start" ]; then
-		scan_offset=$((x - scan_start))
-		if [ $((scan_offset % 5)) -eq 0 ]; then
-			scan_index=$((scan_offset / 5))
-			scan_top=$((1 + (scan_index + frame / 3) % 3))
-			scan_bottom=$((height - 2 - (scan_index * 2 + frame / 4) % 3))
-			if [ "$y" -ge "$scan_top" ] && [ "$y" -le "$scan_bottom" ] && [ $(((y + scan_index + frame) % 6)) -ne 0 ]; then
-				if [ $(((scan_index + y) % 4)) -eq 0 ]; then
-					zero_lab_cell_char="┃"
-				else
-					zero_lab_cell_char="╎"
-				fi
-				zero_lab_cell_style="$zero_color_scan"
-			fi
-		fi
-	fi
-
-	trace_index=0
-	while [ "$trace_index" -lt 3 ]; do
-		case "$trace_index" in
-			0) base=$((height * 30 / 100)) ;;
-			1) base=$((height * 49 / 100)) ;;
-			*) base=$((height * 72 / 100)) ;;
-		esac
-		wave=$(((x * 2 + frame + trace_index * 7) % 16))
-		if [ "$wave" -gt 7 ]; then
-			wave=$((15 - wave))
-		fi
-		trace_y=$((base + (wave - 3) / 2))
-		if [ "$y" -eq "$trace_y" ]; then
-			if [ $(((x + frame + trace_index * 13) % 41)) -eq 0 ]; then
-				zero_lab_cell_char="◆"
-				zero_lab_cell_style="$zero_color_warning"
-			elif [ $(((x + frame) % 12)) -eq 0 ]; then
-				zero_lab_cell_char="•"
-				zero_lab_cell_style="$zero_color_primary"
-			else
-				zero_lab_cell_char="·"
-				zero_lab_cell_style="$zero_color_primary"
-			fi
-		fi
-		trace_index=$((trace_index + 1))
-	done
+	lab_index=0
+	while IFS= read -r lab_line; do
+		eval "zero_lab_row_$lab_index=\$lab_line"
+		lab_index=$((lab_index + 1))
+	done <<EOF
+$zero_lab_rows
+EOF
 }
 
 zero_set_blank_line() {
@@ -1511,20 +1500,34 @@ download_zero_package() {
 		printf 'error: curl is required to download Zero.\n' >&2
 		exit 1
 	fi
-	for artifact_name in "$zero_package-$version.tgz" "zero-ai-$version.tgz" "zero-core-$version.tgz" \
-		"zero-tui-$version.tgz" SHA256SUMS; do
-		if ! zero_run_quiet_with_animation \
-			"Downloading Zero" \
-			"Downloading $artifact_name" \
-			"Zero v$version" \
-			curl -fsSL $zero_curl_retry "https://github.com/$zero_repo/releases/download/$tag/$artifact_name" \
-			-o "$download_dir/$artifact_name"; then
-			printf 'error: could not download %s from the %s release.\n' "$artifact_name" "$tag" >&2
-			exit 1
-		fi
-	done
+	if ! zero_run_quiet_with_animation \
+		"Downloading Zero" \
+		"Downloading Zero packages" \
+		"Zero v$version" \
+		zero_download_artifacts "$version" "$tag" "$download_dir"; then
+		printf 'error: could not download the Zero release artifacts from the %s release.\n' "$tag" >&2
+		exit 1
+	fi
 
 	verify_zero_package_checksums "$download_dir"
+}
+
+zero_download_artifacts() {
+	version="$1"
+	tag="$2"
+	download_dir="$3"
+	pids=
+	for artifact_name in "$zero_package-$version.tgz" "zero-ai-$version.tgz" "zero-core-$version.tgz" \
+		"zero-tui-$version.tgz" SHA256SUMS; do
+		curl -fsSL $zero_curl_retry "https://github.com/$zero_repo/releases/download/$tag/$artifact_name" \
+			-o "$download_dir/$artifact_name" &
+		pids="$pids $!"
+	done
+	download_status=0
+	for pid in $pids; do
+		wait "$pid" || download_status=1
+	done
+	return "$download_status"
 }
 
 # Checks every tarball in the download directory against SHA256SUMS at once —
@@ -1566,12 +1569,53 @@ zero_run_checksum_check() {
 	esac
 }
 
+zero_npm_prefix_lookup() {
+	command -v npm >/dev/null 2>&1 || return 0
+	npm prefix -g 2>/dev/null || true
+}
+
+zero_installed_version() {
+	[ -n "$zero_npm_prefix" ] || return 0
+	pkg_json="$zero_npm_prefix/lib/node_modules/$zero_package/package.json"
+	[ -f "$pkg_json" ] || return 0
+	while IFS= read -r pkg_line; do
+		case "$pkg_line" in
+			*'"version"'*)
+				pkg_version=${pkg_line#*\"version\"}
+				pkg_version=${pkg_version#*\"}
+				printf '%s' "${pkg_version%%\"*}"
+				return 0
+				;;
+		esac
+	done <"$pkg_json"
+}
+
+assert_no_conflicting_zero_install() {
+	existing=$(command -v "$zero_cmd" 2>/dev/null || true)
+	[ -n "$existing" ] || return 0
+	if [ -n "$zero_npm_prefix" ]; then
+		case "$existing" in
+			"$zero_npm_prefix"/*) return 0 ;;
+		esac
+	fi
+	printf 'error: another %s install is already on your PATH at: %s\n' "$zero_cmd" "$existing" >&2
+	printf 'Remove it (or uninstall it with the tool that installed it), then run this installer again.\n' >&2
+	exit 1
+}
+
 confirm_install() {
 	version="$1"
 	tag="$2"
+	installed_version="$3"
+
+	if [ -n "$installed_version" ]; then
+		install_prompt="Update Zero from v$installed_version to v$version globally with npm?"
+	else
+		install_prompt="Install Zero v$version globally with npm?"
+	fi
 
 	if zero_prompt_yes_no \
-		"Install Zero v$version globally with npm?" \
+		"$install_prompt" \
 		"Downloads the verified release and runs npm install -g." \
 		"Install? [Y/n]"; then
 		return 0

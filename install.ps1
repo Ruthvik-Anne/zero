@@ -28,6 +28,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Invoke-WebRequest's progress bar makes downloads several times slower on Windows PowerShell 5.1.
+$ProgressPreference = 'SilentlyContinue'
 # GitHub's API and release CDN require TLS 1.2; Windows PowerShell 5.1's
 # default SecurityProtocol on older Windows can still be TLS 1.0, which
 # fails the handshake outright rather than retrying.
@@ -127,6 +129,85 @@ function Install-NodeWithWinget {
     return $true
 }
 
+function Invoke-ZeroDownload([string]$Url, [string]$Destination) {
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        & $curl.Source -fsSL --retry 5 --retry-delay 1 --retry-connrefused -o $Destination $Url
+        if ($LASTEXITCODE -ne 0) { throw "curl exited with code $LASTEXITCODE for $Url" }
+        return
+    }
+    Invoke-ZeroWithRetry -Action { Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing }
+}
+
+function Add-ZeroUserPath([string[]]$Entries) {
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $parts = @()
+    if ($userPath) { $parts = @($userPath -split ';' | Where-Object { $_ }) }
+    $changed = $false
+    foreach ($entry in $Entries) {
+        if ($parts -notcontains $entry) {
+            $parts += $entry
+            $changed = $true
+        }
+        if (($env:Path -split ';') -notcontains $entry) {
+            $env:Path = "$entry;$env:Path"
+        }
+    }
+    if ($changed) {
+        [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')
+    }
+}
+
+function Get-NodeZipAsset {
+    $sums = Invoke-ZeroWithRetry -Action {
+        (Invoke-WebRequest -Uri 'https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt' -UseBasicParsing).Content
+    }
+    $best = $null
+    foreach ($line in ($sums -split "`n")) {
+        if ($line -match '^([0-9a-fA-F]{64})\s+(node-v(\d+\.\d+\.\d+)-win-x64\.zip)\s*$') {
+            $version = [version]$Matches[3]
+            if (-not $best -or $version -gt $best.Version) {
+                $best = [PSCustomObject]@{ Version = $version; File = $Matches[2]; Sha256 = $Matches[1].ToLowerInvariant() }
+            }
+        }
+    }
+    return $best
+}
+
+# Portable Node.js for machines without winget or Node.js; needs no admin rights.
+function Install-NodeFromZip([bool]$Confirm = $true) {
+    $asset = Get-NodeZipAsset
+    if (-not $asset) { return $false }
+    if ($Confirm -and -not (Confirm-ZeroAction "Install Node.js $($asset.Version) (portable copy, no admin rights needed)?" 'Required before Zero can be installed.')) {
+        return $false
+    }
+
+    $root = Join-Path $env:LOCALAPPDATA 'Zero'
+    $nodeDir = Join-Path $root 'node'
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('zero-node-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    try {
+        $zipPath = Join-Path $tmp $asset.File
+        Write-ZeroInfo "Downloading Node.js $($asset.Version)..."
+        Invoke-ZeroDownload -Url "https://nodejs.org/dist/latest-v22.x/$($asset.File)" -Destination $zipPath
+        $actual = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLowerInvariant()
+        if ($actual -ne $asset.Sha256) {
+            Write-ZeroError "checksum mismatch for $($asset.File)"
+            return $false
+        }
+        Expand-Archive -Path $zipPath -DestinationPath $tmp -Force
+        $extracted = Get-ChildItem -Path $tmp -Directory -Filter 'node-v*-win-x64' | Select-Object -First 1
+        if (Test-Path $nodeDir) { Remove-Item -Recurse -Force $nodeDir }
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+        Move-Item -Path $extracted.FullName -Destination $nodeDir
+    } finally {
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+
+    Add-ZeroUserPath -Entries @($nodeDir, (Join-Path $env:APPDATA 'npm'))
+    return $true
+}
+
 function Assert-NodeAndNpmAvailable {
     $nodeVersion = Get-InstalledNodeVersion
     $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
@@ -141,7 +222,9 @@ function Assert-NodeAndNpmAvailable {
         Write-ZeroError "Zero requires Node.js $MinNodeMajor.$MinNodeMinor.$MinNodePatch or newer. Found $($nodeVersion.Raw)."
     }
 
-    if (Install-NodeWithWinget) {
+    $installed = Install-NodeWithWinget
+    if (-not $installed) { $installed = Install-NodeFromZip }
+    if ($installed) {
         $nodeVersion = Get-InstalledNodeVersion
         $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
         if ((Test-NodeVersionIsNewEnough $nodeVersion) -and $npmCmd) {
@@ -235,14 +318,29 @@ function Get-ZeroReleaseAssets([string]$Version, [string]$Tag, [string]$Download
         "zero-tui-$Version.tgz",
         'SHA256SUMS'
     )
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    $transfers = @()
     foreach ($assetName in $assetNames) {
         $destination = Join-Path $DownloadDir $assetName
         $url = "https://github.com/$ZeroRepo/releases/download/$Tag/$assetName"
         Write-ZeroInfo "Downloading $assetName..."
+        if ($curl) {
+            $process = Start-Process -FilePath $curl.Source -NoNewWindow -PassThru `
+                -ArgumentList "-fsSL --retry 5 --retry-delay 1 --retry-connrefused -o `"$destination`" $url"
+            $transfers += [PSCustomObject]@{ Name = $assetName; Process = $process }
+            continue
+        }
         try {
             Invoke-ZeroWithRetry -Action { Invoke-WebRequest -Uri $url -OutFile $destination -UseBasicParsing }
         } catch {
             Write-ZeroError "could not download $assetName from the $Tag release. $($_.Exception.Message)"
+            exit 1
+        }
+    }
+    foreach ($transfer in $transfers) {
+        $transfer.Process.WaitForExit()
+        if ($transfer.Process.ExitCode -ne 0) {
+            Write-ZeroError "could not download $($transfer.Name) from the $Tag release (curl exit $($transfer.Process.ExitCode))."
             exit 1
         }
     }
@@ -296,24 +394,56 @@ function Install-ZeroPackage([string]$TarballPath, [bool]$BootstrapKernel) {
     }
 }
 
-function Main {
-    Write-Host ''
-    Write-Host 'Installing Zero' -ForegroundColor Magenta
-    Write-Host 'npm global install' -ForegroundColor DarkGray
-    Write-Host ''
-
-    Assert-NodeAndNpmAvailable
-
-    $existingZero = Get-Command $ZeroCmd -ErrorAction SilentlyContinue
-    if ($existingZero) {
-        Write-ZeroWarn "Existing $ZeroCmd found at: $($existingZero.Source)"
+function Get-InstalledZeroVersion {
+    if (-not $script:ZeroNpmPrefix) { return $null }
+    $packageJson = Join-Path $script:ZeroNpmPrefix "node_modules\$ZeroPackage\package.json"
+    if (-not (Test-Path $packageJson)) { return $null }
+    try {
+        return [string](Get-Content -Raw -Path $packageJson | ConvertFrom-Json).version
+    } catch {
+        return $null
     }
+}
 
-    $resolved = Resolve-ZeroVersion $Version
-    $version = $resolved.Version
-    $tag = $resolved.Tag
+function Get-NpmGlobalPrefix {
+    $prefix = (& npm prefix -g 2>$null | Select-Object -First 1)
+    if (-not $prefix) { return $null }
+    return $prefix.Trim().TrimEnd('\', '/')
+}
 
-    if (-not (Confirm-ZeroAction "Install Zero v$version globally with npm?" 'Downloads the verified release and runs npm install -g.')) {
+function Assert-NoConflictingZeroInstall {
+    $existingZero = Get-Command $ZeroCmd -ErrorAction SilentlyContinue
+    if (-not $existingZero -or -not $existingZero.Source) { return }
+    $prefix = $script:ZeroNpmPrefix
+    if ($prefix -and $existingZero.Source.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return }
+    Write-ZeroError "another $ZeroCmd install is already on your PATH at: $($existingZero.Source)"
+    Write-Host 'Remove it (or uninstall it with the tool that installed it), then run this installer again.'
+    exit 1
+}
+
+function Enter-ZeroInstallLock {
+    $script:ZeroInstallMutex = New-Object System.Threading.Mutex($false, 'Local\ZeroInstaller')
+    try {
+        if (-not $script:ZeroInstallMutex.WaitOne(0)) {
+            Write-ZeroError 'another Zero install or update is already running. Wait for it to finish, then run this again.'
+            exit 1
+        }
+    } catch [System.Threading.AbandonedMutexException] {
+        # A previous installer exited without releasing the lock; we now own it.
+    }
+}
+
+function Exit-ZeroInstallLock {
+    if ($script:ZeroInstallMutex) {
+        $script:ZeroInstallMutex.ReleaseMutex()
+        $script:ZeroInstallMutex.Dispose()
+        $script:ZeroInstallMutex = $null
+    }
+}
+
+function Install-ZeroRelease([string]$Version, [string]$Tag, [string]$InstalledVersion) {
+    $action = if ($InstalledVersion) { "Update Zero from v$InstalledVersion to v$Version" } else { "Install Zero v$Version" }
+    if (-not (Confirm-ZeroAction "$action globally with npm?" 'Downloads the verified release and runs npm install -g.')) {
         Write-Host 'Installation cancelled.'
         exit 0
     }
@@ -330,12 +460,39 @@ function Main {
     $downloadDir = Join-Path ([System.IO.Path]::GetTempPath()) "zero-install-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
     New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
     try {
-        Get-ZeroReleaseAssets -Version $version -Tag $tag -DownloadDir $downloadDir
+        Get-ZeroReleaseAssets -Version $Version -Tag $Tag -DownloadDir $downloadDir
         Test-ZeroPackageChecksums -DownloadDir $downloadDir
-        $tarballPath = Join-Path $downloadDir "$ZeroPackage-$version.tgz"
+        $tarballPath = Join-Path $downloadDir "$ZeroPackage-$Version.tgz"
         Install-ZeroPackage -TarballPath $tarballPath -BootstrapKernel $bootstrapKernel
     } finally {
         Remove-Item -Recurse -Force $downloadDir -ErrorAction SilentlyContinue
+    }
+}
+
+function Main {
+    Write-Host ''
+    Write-Host 'Installing Zero' -ForegroundColor Magenta
+    Write-Host 'npm global install' -ForegroundColor DarkGray
+    Write-Host ''
+
+    Enter-ZeroInstallLock
+    try {
+        Assert-NodeAndNpmAvailable
+        $script:ZeroNpmPrefix = Get-NpmGlobalPrefix
+        Assert-NoConflictingZeroInstall
+
+        $resolved = Resolve-ZeroVersion $Version
+        $version = $resolved.Version
+        $tag = $resolved.Tag
+
+        $installedVersion = Get-InstalledZeroVersion
+        if ($installedVersion -eq $version) {
+            Write-ZeroInfo "Zero v$version is already installed; nothing to do."
+        } else {
+            Install-ZeroRelease -Version $version -Tag $tag -InstalledVersion $installedVersion
+        }
+    } finally {
+        Exit-ZeroInstallLock
     }
 
     $installedZero = Get-Command $ZeroCmd -ErrorAction SilentlyContinue
