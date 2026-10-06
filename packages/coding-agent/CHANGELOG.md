@@ -1,5 +1,7 @@
 # Changelog
 
+## [Unreleased]
+
 ## [0.8.1] - 2026-10-06
 
 - Added native `subagent`, `agent_message`, `advisor`, `load_skill`, `coordination`, `read_file`, `write_file` and `code_map` model tools backed by the existing session services; searching stays in IPython.
