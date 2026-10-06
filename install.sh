@@ -57,6 +57,8 @@ zero_screen_status=
 zero_screen_detail=
 zero_screen_question=
 zero_animation_frame=0
+zero_last_quiet_command_permission_error=0
+zero_last_quiet_command_log_path=
 
 main() {
 	zero_install_traps
@@ -734,7 +736,7 @@ zero_run_quiet_with_animation() {
 	detail="$3"
 	shift 3
 
-	zero_run_quiet_with_animation_command "$title" "$status" "$detail" pulse "$@"
+	zero_run_quiet_with_animation_command "$title" "$status" "$detail" pulse 0 "$@"
 }
 
 zero_run_quiet_with_animation_steps() {
@@ -743,7 +745,7 @@ zero_run_quiet_with_animation_steps() {
 	details="$3"
 	shift 3
 
-	zero_run_quiet_with_animation_command "$title" "$status" "$details" static "$@"
+	zero_run_quiet_with_animation_command "$title" "$status" "$details" static 0 "$@"
 }
 
 zero_run_quiet_with_animation_command() {
@@ -751,10 +753,12 @@ zero_run_quiet_with_animation_command() {
 	status="$2"
 	details="$3"
 	status_mode="$4"
-	shift 4
+	suppress_error_display="${5:-0}"
+	shift 5
 
 	if [ "$zero_screen_enabled" != 1 ]; then
 		printf '%s\n' "$status" >&2
+		zero_last_quiet_command_permission_error=0
 		"$@"
 		return
 	fi
@@ -778,10 +782,22 @@ zero_run_quiet_with_animation_command() {
 		command_status=$?
 	fi
 
+	zero_last_quiet_command_permission_error=0
+	zero_last_quiet_command_log_path=
 	if [ "$command_status" -ne 0 ] && [ -s "$output_file" ]; then
-		zero_restore_terminal
-		printf '\n' >&2
-		cat "$output_file" >&2
+		if grep -qiE 'EACCES|permission denied' "$output_file"; then
+			zero_last_quiet_command_permission_error=1
+		fi
+		if [ "$suppress_error_display" = 1 ]; then
+			# Technical users can still ask to see this; a first-time user never
+			# needs npm's raw stack trace on screen.
+			zero_last_quiet_command_log_path="${TMPDIR:-/tmp}/zero-install-error.log"
+			cp "$output_file" "$zero_last_quiet_command_log_path" 2>/dev/null || zero_last_quiet_command_log_path=
+		else
+			zero_restore_terminal
+			printf '\n' >&2
+			cat "$output_file" >&2
+		fi
 	fi
 	rm -rf "$output_dir"
 	return "$command_status"
@@ -1168,16 +1184,42 @@ node_install_needs_sudo() {
 	esac
 }
 
+zero_has_sudo() {
+	command -v sudo >/dev/null 2>&1
+}
+
+zero_has_su() {
+	command -v su >/dev/null 2>&1
+}
+
+# No sudo and no su: there is no privilege-escalation mechanism to request through,
+# so fail with actionable guidance instead of a raw "sudo: command not found".
+zero_no_privilege_escalation() {
+	printf 'error: root access is required for %s, but neither sudo nor su is available.\n' "$1" >&2
+	printf 'Install sudo, or run this installer as root, then run it again.\n' >&2
+	return 1
+}
+
 prepare_sudo_for_node_install() {
 	method="$1"
 	if ! node_install_needs_sudo "$method"; then
 		return 0
 	fi
 
-	zero_screen "Preparing Node.js install" "" "This may ask for your sudo password." ""
-	zero_restore_terminal
-	printf '\n'
-	sudo -v
+	if zero_has_sudo; then
+		zero_screen "Preparing Node.js install" "" "This may ask for your sudo password." ""
+		zero_restore_terminal
+		printf '\n'
+		sudo -v
+	elif zero_has_su; then
+		zero_screen "Preparing Node.js install" "" "sudo is not installed; this may ask for the root password instead." ""
+		zero_restore_terminal
+		printf '\n'
+		su -c true
+	else
+		zero_restore_terminal
+		zero_no_privilege_escalation "installing Node.js with $method"
+	fi
 }
 
 run_node_install_method() {
@@ -1203,7 +1245,7 @@ install_node_with_apt() {
 		apt-get update
 		apt-get install -y nodejs npm
 	else
-		sudo sh -c 'apt-get update && apt-get install -y nodejs npm'
+		run_with_sudo sh -c 'apt-get update && apt-get install -y nodejs npm'
 	fi
 }
 
@@ -1335,17 +1377,37 @@ detect_node_binary_arch() {
 }
 
 print_sudo_note() {
-	if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+	if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+		return
+	fi
+	if zero_has_sudo; then
 		printf 'This may ask for your sudo password.\n\n'
+	elif zero_has_su; then
+		printf 'sudo is not installed; this may ask for the root password instead.\n\n'
 	fi
 }
 
 run_with_sudo() {
 	if [ "${EUID:-$(id -u)}" -eq 0 ]; then
 		"$@"
-	else
+	elif zero_has_sudo; then
 		sudo "$@"
+	elif zero_has_su; then
+		run_with_su "$@"
+	else
+		zero_no_privilege_escalation "$*"
 	fi
+}
+
+# su -c takes one shell command string, not an argv array, so each argument
+# must be quoted individually before joining (matches the existing
+# zero_shell_quote convention used for shell-profile commands below).
+run_with_su() {
+	command_string=""
+	for arg in "$@"; do
+		command_string="$command_string $(zero_shell_quote "$arg")"
+	done
+	su -c "${command_string# }"
 }
 
 configure_standalone_node_path() {
@@ -1684,9 +1746,7 @@ Installing runtime packages.
 Preloading search tools.
 Preparing IPython kernel.
 Finalizing npm install."
-		zero_run_quiet_with_animation_steps \
-			"Installing Zero" \
-			"Installing Zero" \
+		zero_install_zero_with_retry \
 			"$npm_install_details" \
 			env ZERO_BOOTSTRAP_TOOLS_ON_INSTALL=1 ZERO_BOOTSTRAP_KERNEL_ON_INSTALL=1 ZERO_INSTALL_UV=1 npm install -g --no-fund --no-audit --loglevel=error --progress=false "$tarball_path"
 	else
@@ -1695,12 +1755,71 @@ Linking command binaries.
 Installing runtime packages.
 Preloading search tools.
 Finalizing npm install."
-		zero_run_quiet_with_animation_steps \
-			"Installing Zero" \
-			"Installing Zero" \
+		zero_install_zero_with_retry \
 			"$npm_install_details" \
 			env ZERO_BOOTSTRAP_TOOLS_ON_INSTALL=1 npm install -g --no-fund --no-audit --loglevel=error --progress=false "$tarball_path"
 	fi
+}
+
+# Installs Zero via npm. A fresh machine's global npm directory is sometimes
+# only writable by root (common when Node came from a distro package manager).
+# On that failure this retries once with elevated privileges, and only ever
+# shows the person a plain explanation -- never npm's raw error output, which
+# would be meaningless noise to someone who has never used a terminal before.
+zero_install_zero_with_retry() {
+	details="$1"
+	shift
+
+	if zero_run_quiet_with_animation_command "Installing Zero" "Installing Zero" "$details" static 1 "$@"; then
+		return 0
+	fi
+	install_status=$?
+
+	if [ "$zero_last_quiet_command_permission_error" != 1 ]; then
+		zero_print_npm_failure_help 0
+		return "$install_status"
+	fi
+	if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+		# Already ran with full permission once; nothing left to retry with.
+		zero_print_npm_failure_help 1
+		return "$install_status"
+	fi
+	if ! zero_has_sudo && ! zero_has_su; then
+		# No way to request elevated permission on this system; never attempted it.
+		zero_print_npm_failure_help 0
+		return "$install_status"
+	fi
+
+	zero_screen "Installing Zero" "" "Your account needs permission for this step." ""
+	zero_restore_terminal
+	printf '\nZero needs permission to install for everyone on this computer.\n'
+	if zero_has_sudo; then
+		sudo -v
+	else
+		su -c true
+	fi
+
+	if zero_run_quiet_with_animation_command "Installing Zero" "Installing Zero" "$details" static 1 run_with_sudo "$@"; then
+		return 0
+	fi
+	retry_status=$?
+	zero_print_npm_failure_help 1
+	return "$retry_status"
+}
+
+zero_print_npm_failure_help() {
+	retried="$1"
+	printf '\n'
+	if [ "$retried" = 1 ]; then
+		printf 'Zero could not finish installing, even with extra permission.\n'
+	else
+		printf 'Zero could not finish installing.\n'
+	fi
+	printf 'This usually clears up by restarting your terminal and running this installer again.\n'
+	if [ -n "$zero_last_quiet_command_log_path" ]; then
+		printf 'If it keeps happening, share this file when asking for help: %s\n' "$zero_last_quiet_command_log_path"
+	fi
+	printf '\n'
 }
 
 main "$@"
