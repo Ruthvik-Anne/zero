@@ -146,6 +146,8 @@ import {
 	loadContextTreeChildFromDisk,
 	loadContextTreeChildrenFromDisk,
 } from "./context-tree.js";
+import { createSessionCoordination } from "./coordination/identity.js";
+import type { Coordination, WorkGraph } from "./coordination/service.js";
 import type { AgentCronJob, AgentRlmHeartbeatController, AgentRlmHeartbeatStatusUpdate } from "./cron-jobs.js";
 import { normalizeHeartbeatDeliveryMode } from "./cron-jobs.js";
 import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.js";
@@ -215,11 +217,13 @@ import {
 	HEARTBEAT_PROMPT_PREVIEW_LABEL,
 	IPYTHON_STATE_RESTORED_CUSTOM_TYPE,
 	isSessionSlashCommandMessage,
+	RLM_CHILD_FAILURE_CUSTOM_TYPE,
+	RLM_CHILD_TERMINAL_NOTICE_CUSTOM_TYPE,
 } from "./messages.js";
 import {
 	DEFAULT_SESSION_MODE,
 	isPersistedSessionMode,
-	parseModeSlashCommand,
+	resolveModeSlashCommand,
 	SESSION_MODE_CUSTOM_TYPE,
 	type SessionMode,
 } from "./mode/session-mode.js";
@@ -312,6 +316,7 @@ import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-promp
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
 import { createAllToolDefinitions } from "./tools/index.js";
 import { IpythonKernelProvisioner } from "./tools/ipython.js";
+import { awaitNativeOperation, createNativeRuntimeToolDefinitions } from "./tools/native-runtime.js";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
 import { addAssistantUsage, emptyUsage } from "./usage.js";
 import {
@@ -474,7 +479,7 @@ export interface AgentSessionConfig {
 	customTools?: ToolDefinition[];
 	/** Model registry for API key resolution and model discovery */
 	modelRegistry: ModelRegistry;
-	/** Initial active built-in tool names. Default: [ipython] */
+	/** Initial active built-in tool names. Default: IPython and available native runtime tools. */
 	initialActiveToolNames?: string[];
 	/** Optional allowlist of tool names. When provided, only these tool names are exposed. */
 	allowedToolNames?: string[];
@@ -869,6 +874,11 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function canDegradeCoordination(error: unknown): boolean {
+	const code = (error as NodeJS.ErrnoException | undefined)?.code;
+	return code === "EACCES" || code === "EPERM" || code === "EROFS";
+}
+
 function parsePersistedIpythonSentAgentMessage(value: unknown): PersistedIpythonSentAgentMessage | undefined {
 	if (!isObjectRecord(value) || typeof value.toolCallId !== "string" || !isObjectRecord(value.message)) {
 		return undefined;
@@ -1243,6 +1253,11 @@ export class AgentSession {
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
 	private _cwd: string;
+	private _coordination?: Promise<Coordination>;
+	private _coordinationParent?: Promise<Coordination>;
+	private _coordinationLifecycleTail: Promise<void> = Promise.resolve();
+	private _deferCoordinationLifecycleFinish = false;
+	private _nativeAbort = new AbortController();
 	private _agentDir?: string;
 	/** (task #78) Session-scoped, in-memory only — issued "credential" ask_user placeholder tokens. */
 	private readonly _vaultTokenRegistry = new VaultTokenRegistry();
@@ -1375,6 +1390,17 @@ export class AgentSession {
 		this._resourceLoader = config.resourceLoader;
 		this._customTools = config.customTools ?? [];
 		this._cwd = config.cwd;
+		this.registerDisposeCallback(async () => {
+			await this._coordinationLifecycleTail.catch(() => undefined);
+			if (this._coordination) {
+				await this._coordination.then(
+					(service) => service.close(),
+					(error: unknown) => {
+						if (!canDegradeCoordination(error)) throw error;
+					},
+				);
+			}
+		});
 		this._agentDir = config.agentDir;
 		this._modelRegistry = config.modelRegistry;
 		this._extensionRunnerRef = config.extensionRunnerRef;
@@ -1481,6 +1507,47 @@ export class AgentSession {
 
 	setSubagentRuntimeHost(host?: SubagentRuntimeHost): void {
 		this._subagentRuntimeHost = host;
+	}
+
+	async getCoordination(): Promise<Coordination> {
+		this._coordination ??= (async () =>
+			createSessionCoordination({
+				agentId: this.sessionId,
+				workspace: this._cwd,
+				header: this.sessionManager.getHeader(),
+				sessionFile: this.sessionFile,
+				parent: await this._coordinationParent,
+			}))();
+		return this._coordination;
+	}
+
+	async getCoordinationGraph(signal?: AbortSignal): Promise<WorkGraph> {
+		return (await this.getCoordination()).graph(signal);
+	}
+
+	/** Host-owned workspace root for native read-only tools. Never model-supplied. */
+	getWorkspaceDir(): string {
+		return this._cwd;
+	}
+
+	nativeOperationSignal(signal?: AbortSignal): AbortSignal {
+		return AbortSignal.any([
+			this._nativeAbort.signal,
+			this._sessionActionCommitDisposeAbortController.signal,
+			...(signal ? [signal] : []),
+		]);
+	}
+
+	async cancelCoordinationTask(taskId: string, signal?: AbortSignal): Promise<void> {
+		const service = await this.getCoordination();
+		await service.cancel(taskId, signal);
+		const task = (await service.snapshot(signal)).tasks[taskId];
+		const child = [...this._activeRlmChildRuns.values()].find((run) => run.session?.sessionId === task.agentId);
+		if (child) this._cancelRlmChildRun(child, "Coordination task cancelled by parent");
+		else {
+			const retained = [...this._rlmChildSessions.values()].find((session) => session.sessionId === task.agentId);
+			await retained?.abort();
+		}
 	}
 
 	/**
@@ -2198,9 +2265,9 @@ export class AgentSession {
 		// `text` is the full raw command ("/mode manual") — re-parse to get just the
 		// argument portion, mirroring _parseAutonomousSlashCommand's exact pattern.
 		const args = parseSessionSlashCommand(text)?.args ?? "";
-		const parsed = parseModeSlashCommand(args);
+		const parsed = resolveModeSlashCommand(args, this.getSessionMode());
 		if (!parsed) {
-			return `Usage: /mode [plan|auto|manual] (current: ${this._sessionMode})`;
+			return `Usage: /mode [plan|auto|manual|cycle] (current: ${this._sessionMode})`;
 		}
 		if (parsed.kind === "show") {
 			return `Current mode: ${this._sessionMode}`;
@@ -3092,7 +3159,10 @@ export class AgentSession {
 	 * side-conversation mechanism (advisor.ts wraps side-question.ts) rather
 	 * than a separate transcript-cloning implementation.
 	 */
-	async handleAdvisorHostRequest(payload: Record<string, unknown> = {}): Promise<{
+	async handleAdvisorHostRequest(
+		payload: Record<string, unknown> = {},
+		signal = this.agent.signal,
+	): Promise<{
 		advice: string;
 		outcome: string;
 		error_message: string | null;
@@ -3101,15 +3171,11 @@ export class AgentSession {
 			throw new Error("advisor.consult question must be a string when provided");
 		}
 		const overrideModel = await this._resolveAdvisorModel();
+		signal?.throwIfAborted();
 		// (D13) Same signal every other host-request handler in this class already
 		// forwards (e.g. askUser above) — a model-initiated advisor.consult() call
 		// is cancellable the same way an ask_user prompt already is.
-		const result = await consultAdvisor(
-			this.agent,
-			payload.question as string | undefined,
-			overrideModel,
-			this.agent.signal,
-		);
+		const result = await consultAdvisor(this.agent, payload.question as string | undefined, overrideModel, signal);
 		// Named "outcome", not "status": the kernel host bridge's reply envelope
 		// (kernel/index.ts's `sendCommMessage(commId, { status: "ok", ...result })`)
 		// already reserves a top-level "status" key for its own "ok"/"error" wire
@@ -6163,6 +6229,11 @@ export class AgentSession {
 	}
 
 	private async _startPreparedTurnActions(actions: QueuedSessionAction[], epoch: number): Promise<void> {
+		const coordinationSignal = this.nativeOperationSignal();
+		let coordinationTask: string | undefined;
+		let coordination: Coordination | undefined;
+		let coordinationCompleted = false;
+		let previousTerminalAssistant: AssistantMessage | undefined;
 		let nextTurnMessages: CustomMessage[] = [];
 		const activeTurns = () =>
 			actions.filter(
@@ -6225,9 +6296,23 @@ export class AgentSession {
 				return;
 			}
 			const { prepared, turns } = preparedTurn;
+			if (this._coordinationLifecycleEnabled(turns)) {
+				try {
+					await this._coordinationLifecycleTail;
+					coordination = await this.getCoordination();
+					coordinationTask = await coordination.begin(
+						turns.map((action) => action.payload.text).join("\n"),
+						coordinationSignal,
+					);
+				} catch (error) {
+					if (!canDegradeCoordination(error)) throw error;
+					coordination = undefined;
+				}
+			}
 			const commitFence = await this._acquireSessionActionCommitFence();
 			let promptPromise: Promise<void>;
 			try {
+				previousTerminalAssistant = this._findLastAssistantMessage();
 				promptPromise = this._sessionActionCommitContext.run(commitFence.owner, () => {
 					if (
 						this._isSessionInputHandoffDeferred(epoch) ||
@@ -6270,7 +6355,9 @@ export class AgentSession {
 			}
 			await promptPromise;
 			if (executionPolicy.completionIncludesRetryChain) await this.waitForRetry();
-			if (!this._hasCancelledDispatchCapture()) await this._agentEventQueue;
+			if (!this._hasCancelledDispatchCapture()) {
+				await this._agentEventQueue;
+			}
 			if (
 				turns.some(
 					(action) =>
@@ -6282,6 +6369,12 @@ export class AgentSession {
 				throw new Error("Session input dispatch settled without durable delivery");
 			}
 			this._forgetConsumedPostCompactionContinuations(turns.map((action) => primaryDeliveryRecord(action).message));
+			const terminalAssistant = this._findLastAssistantMessage();
+			coordinationCompleted =
+				terminalAssistant !== undefined &&
+				terminalAssistant !== previousTerminalAssistant &&
+				terminalAssistant.stopReason !== "aborted" &&
+				terminalAssistant.stopReason !== "error";
 		} catch (error) {
 			const delivered = new Set(this.agent.state.messages);
 			this._pendingNextTurnMessages.unshift(...nextTurnMessages.filter((message) => !delivered.has(message)));
@@ -6291,7 +6384,31 @@ export class AgentSession {
 				}
 			}
 			throw error;
+		} finally {
+			if (coordination && coordinationTask) {
+				const finish = coordination.finish(coordinationTask, !coordinationCompleted);
+				if (this._deferCoordinationLifecycleFinish) {
+					this._coordinationLifecycleTail = finish;
+					void finish.catch(() => undefined);
+				} else {
+					await finish;
+				}
+			}
 		}
+	}
+
+	private _coordinationLifecycleEnabled(turns: SessionAction<PreparedTurnPayload>[]): boolean {
+		const lifecycleOnly = turns.every((action) => {
+			const message = primaryDeliveryRecord(action).message;
+			return (
+				message.role === "custom" &&
+				(message.customType === RLM_CHILD_FAILURE_CUSTOM_TYPE ||
+					message.customType === RLM_CHILD_TERMINAL_NOTICE_CUSTOM_TYPE)
+			);
+		});
+		if (lifecycleOnly) return false;
+		const active = new Set(this.getActiveToolNames());
+		return ["write_file", "coordination", "subagent"].some((name) => active.has(name));
 	}
 
 	private async _executeQueuedSessionCommand(action: QueuedSessionAction): Promise<void> {
@@ -7078,6 +7195,8 @@ export class AgentSession {
 	}
 
 	requestAbort(): void {
+		this._nativeAbort.abort();
+		this._nativeAbort = new AbortController();
 		this._sessionInputPumpRequested = false;
 		this._sessionInputPumpEpoch++;
 		this._sessionInputPumpSuspended = true;
@@ -8945,6 +9064,12 @@ export class AgentSession {
 			});
 		}
 
+		const nativeDefinitions = createNativeRuntimeToolDefinitions(
+			this,
+			(signal) => this._createKernelHostHandlers(signal),
+			() => this._modelVisibleSkills(),
+		);
+		for (const definition of nativeDefinitions) configuredBaseToolDefinitions[definition.name] = definition;
 		this._baseToolDefinitions = new Map(
 			Object.entries(configuredBaseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
 		);
@@ -8975,7 +9100,10 @@ export class AgentSession {
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
 
-		const defaultActiveToolNames = this._baseToolsOverride ? Object.keys(this._baseToolsOverride) : ["ipython"];
+		const defaultActiveToolNames = [
+			...(this._baseToolsOverride ? Object.keys(this._baseToolsOverride) : ["ipython"]),
+			...nativeDefinitions.map((tool) => tool.name),
+		];
 		const baseActiveToolNames = [...(options.activeToolNames ?? defaultActiveToolNames)];
 		if (this._goalState.status === "active" && this._includeGoals) {
 			// An active goal needs ipython so the model can reach the goal skill.
@@ -9049,7 +9177,7 @@ export class AgentSession {
 	}
 
 	/** Typed handlers for host requests arriving from the IPython kernel comm bridge. */
-	private _createKernelHostHandlers(): HostRequestHandlers {
+	private _createKernelHostHandlers(signal?: AbortSignal): HostRequestHandlers {
 		const handlers: HostRequestHandlers = {
 			"rlm.run": createRlmRunHostHandler(async ({ prompt, kwargs, cellSourceCode }) => ({
 				...(await this.runRlmChild(prompt, kwargs, cellSourceCode)),
@@ -9118,8 +9246,10 @@ export class AgentSession {
 				createAgentMessageHostHandlers({
 					roster: async () =>
 						(await this.handleAgentMessageHostRequest("agent_message.list_agents")) as AgentFamilyRosterResult,
-					awaitPendingChildPublication: (selector) => this._awaitPendingRlmChildPublication(selector),
+					awaitPendingChildPublication: (selector) =>
+						awaitNativeOperation(this._awaitPendingRlmChildPublication(selector), signal),
 					sendAgentMessage: async (input) => {
+						signal?.throwIfAborted();
 						const receipt = (await this.handleAgentMessageHostRequest("agent_message.send", {
 							target: input.target,
 							message: input.message,
@@ -10091,15 +10221,35 @@ export class AgentSession {
 		prompt: string,
 		kwargs: Record<string, unknown> = {},
 		spawnCode?: string,
+		signal?: AbortSignal,
 	): Promise<RlmSpawnHandle> {
+		signal?.throwIfAborted();
 		const {
 			name: rawName,
 			model: rawModel,
 			isolation: rawIsolation,
 			modelClass: rawModelClass,
+			writeFiles: rawWriteFiles,
+			priority: rawPriority,
+			dependencies: rawDependencies,
 			...unsupported
 		} = kwargs;
 		const unsupportedKwargs = Object.keys(unsupported);
+		if (
+			rawWriteFiles !== undefined &&
+			(!Array.isArray(rawWriteFiles) || !rawWriteFiles.every((path) => typeof path === "string"))
+		)
+			throw new Error("subagent writeFiles must be file paths");
+		if (
+			rawDependencies !== undefined &&
+			(!Array.isArray(rawDependencies) || !rawDependencies.every((id) => typeof id === "string"))
+		)
+			throw new Error("subagent dependencies must be task IDs");
+		if (
+			rawPriority !== undefined &&
+			(typeof rawPriority !== "number" || !Number.isInteger(rawPriority) || Math.abs(rawPriority) > 100)
+		)
+			throw new Error("Invalid subagent priority");
 		if (unsupportedKwargs.length > 0) {
 			throw new Error(`Unsupported rlm.run kwargs: ${unsupportedKwargs.sort().join(", ")}`);
 		}
@@ -10137,9 +10287,13 @@ export class AgentSession {
 			if (requestedSessionName) this._pendingRlmSubagentSessionNames.delete(requestedSessionName);
 		}
 		if (this._disposed || this._disposing) throw new Error("Cannot spawn a subagent after its parent was disposed");
+		signal?.throwIfAborted();
 
 		const childSessionDir = this._createChildRlmSessionDir();
 		const childNodeId = basename(childSessionDir);
+		const sessionName = requestedSessionName ?? createDefaultRlmSubagentSessionName(prompt, childNodeId);
+		if (!requestedSessionName) await this._assertRlmSubagentSessionNameAvailable(sessionName);
+		signal?.throwIfAborted();
 		let cwdOverride: string | undefined;
 		if (rawIsolation === "worktree") {
 			const worktree = createWorktree(this._cwd, childNodeId);
@@ -10152,8 +10306,6 @@ export class AgentSession {
 			this._rlmChildWorktrees.set(childNodeId, worktree);
 			cwdOverride = worktree.path;
 		}
-		const sessionName = requestedSessionName ?? createDefaultRlmSubagentSessionName(prompt, childNodeId);
-		if (!requestedSessionName) await this._assertRlmSubagentSessionNameAvailable(sessionName);
 		const startedAt = Date.now();
 		const parentAssistantForUsage = this._findLastAssistantMessage();
 		const label = rlmChildLabel(prompt);
@@ -10204,11 +10356,17 @@ export class AgentSession {
 		emitChildUpdate();
 
 		const publishChildSession = (child: AgentSession) => {
+			child._coordinationParent ??= this.getCoordination();
+			child._deferCoordinationLifecycleFinish = true;
+			void child._coordinationParent.catch(() => undefined);
 			childSession = child;
 			if (this._activeRlmChildRuns.get(run.id) !== run) return;
 			run.session = child;
 			run.abort = () => void child.abort();
-			run.publication.resolve();
+			void child.getCoordination().then(
+				() => run.publication.resolve(),
+				(error: unknown) => run.publication.reject(this._asError(error)),
+			);
 		};
 		const subagentOptions: CreateRlmSubagentRuntimeOptions = {
 			...this._createRlmSubagentRuntimeOptions({
@@ -10255,6 +10413,18 @@ export class AgentSession {
 				if (run.status === "cancelled") throw new Error(run.error ?? "RLM child cancelled");
 				if (child.sessionName !== sessionName) child.setSessionName(sessionName);
 				publishChildSession(child);
+				await child.getCoordination();
+				throwIfCancelled();
+				if (rawWriteFiles !== undefined || rawPriority !== undefined || rawDependencies !== undefined) {
+					await (await this.getCoordination()).assign({
+						id: `spawn:${run.id}`,
+						agentId: child.sessionId,
+						title: prompt.slice(0, 500),
+						writeFiles: (rawWriteFiles ?? []) as string[],
+						dependencies: (rawDependencies ?? []) as string[],
+						priority: (rawPriority ?? 0) as number,
+					});
+				}
 				throwIfCancelled();
 				run.status = "running";
 				emitChildUpdate();
@@ -10484,11 +10654,12 @@ export class AgentSession {
 		prompt: string,
 		kwargs: Record<string, unknown> = {},
 		spawnCode?: string,
+		signal?: AbortSignal,
 	): Promise<RlmSpawnHandle> {
 		const scrubbedPrompt = await scrubKnownSecrets(prompt, this._vaultTokenRegistry, this._cwd);
 		const scrubbedSpawnCode =
 			spawnCode === undefined ? spawnCode : await scrubKnownSecrets(spawnCode, this._vaultTokenRegistry, this._cwd);
-		return this._startRlmChildRun(scrubbedPrompt, kwargs, scrubbedSpawnCode);
+		return this._startRlmChildRun(scrubbedPrompt, kwargs, scrubbedSpawnCode, signal);
 	}
 
 	// =========================================================================

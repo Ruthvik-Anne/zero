@@ -506,6 +506,50 @@ export class BrandSplashHeader implements Component {
 	}
 }
 
+export class RenderOnceContainer extends Container {
+	private pending: { width: number; lines: string[] } | undefined;
+	private lastRender: { width: number; height: number } | undefined;
+
+	override addChild(component: Component): void {
+		this.pending = undefined;
+		super.addChild(component);
+	}
+
+	override removeChild(component: Component): void {
+		this.pending = undefined;
+		super.removeChild(component);
+	}
+
+	override clear(): void {
+		this.pending = undefined;
+		super.clear();
+	}
+
+	override invalidate(): void {
+		this.pending = undefined;
+		this.lastRender = undefined;
+		super.invalidate();
+	}
+
+	measureNextRender(width: number): number {
+		if (!this.pending || this.pending.width !== width) {
+			this.pending = { width, lines: super.render(width) };
+		}
+		return this.pending.lines.length;
+	}
+
+	getLastRenderHeight(width: number): number | undefined {
+		return this.lastRender?.width === width ? this.lastRender.height : undefined;
+	}
+
+	override render(width: number): string[] {
+		const lines = this.pending?.width === width ? this.pending.lines : super.render(width);
+		this.pending = undefined;
+		this.lastRender = { width, height: lines.length };
+		return lines;
+	}
+}
+
 type StartupPromptBarrierOutcome = "admitted" | "retained" | "lifecycle-cancelled";
 
 type GoalAnnouncementSnapshot = {
@@ -886,9 +930,9 @@ export class InteractiveMode {
 	// prompt bar (editor + footer slot) — the only thing pinned to the bottom in fullscreen
 	private promptDock: Container;
 	// wraps the active footer so custom-footer swaps reflect in both layouts
-	private footerSlot: Container;
+	private footerSlot: RenderOnceContainer;
 	private fullscreenEnabled = false;
-	private editorContainer: Container;
+	private editorContainer: RenderOnceContainer;
 	private footer: FooterComponent;
 	private footerDataProvider: FooterDataProvider;
 	// Stored so the same manager can be injected into custom editors, selectors, and extension UI.
@@ -972,6 +1016,7 @@ export class InteractiveMode {
 	private sessionEventQueue: Promise<void> = Promise.resolve();
 	private sessionEventGeneration = 0;
 	private fastModeToggleQueue: Promise<void> = Promise.resolve();
+	private modeCycleQueue: Promise<void> = Promise.resolve();
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
@@ -1143,22 +1188,27 @@ export class InteractiveMode {
 		this.mainContainer = new Container();
 		this.mainViewContainer = new Container();
 		this.promptDock = new Container();
-		this.footerSlot = new Container();
+		this.footerSlot = new RenderOnceContainer();
 		this.mainViewContainer.addChild(this.chatContainer);
 		this.mainViewContainer.addChild(this.shortcutGuideContainer);
 		this.mainViewContainer.addChild(this.pendingMessagesContainer);
 		this.mainViewContainer.addChild(this.statusContainer);
-		this.editorContainer = new Container();
+		this.editorContainer = new RenderOnceContainer();
 		this.editorContainer.addChild(this.editor as Component);
 		this.subagentSummaryLine = new SubagentSummaryLine(
 			() => this.getTrayLocationLabel(),
 			() => this.getTrayContextLabel(),
 			() => this.getTrayOverrideLabel(),
+			() => this.getSubagentMaxRows(),
 		);
 		this.subagentSummaryLine.onCancel = () => this.focusEditor();
 		this.subagentSummaryLine.onChatAction = (data) => this.handleSubagentSummaryChatAction(data);
 		this.footerDataProvider = new FooterDataProvider(this.uiServices.getInitialCwd());
-		this.footer = new FooterComponent(this.footerDataProvider);
+		this.footer = new FooterComponent(this.footerDataProvider, {
+			getModelLabel: () => this.getFooterModelLabel(),
+			getContextLabel: () => this.getFooterContextLabel(),
+			getContextPercent: () => this.getFooterContextPercent(),
+		});
 		this.footer.setAutoCompactEnabled(this.settingsManager.getCompactionEnabled());
 		this.setGoalAnnouncementBaseline(emptyGoalState());
 
@@ -1416,6 +1466,7 @@ export class InteractiveMode {
 						keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
 						rawKeyHint("/effort", "to set thinking level"),
 						hint("app.model.select", "to select model"),
+						hint("app.mode.cycle", "to cycle session mode"),
 						hint("app.tools.expand", "to expand tools"),
 						hint("app.messages.expand", "to expand agent messages"),
 						hint("app.edits.expand", "to expand edit diffs"),
@@ -4167,6 +4218,7 @@ export class InteractiveMode {
 			void this.handleDebugCommand();
 		};
 		this.defaultEditor.onAction("app.model.select", () => this.showModelSelector());
+		this.defaultEditor.onAction("app.mode.cycle", () => this.handleModeCycle());
 		this.defaultEditor.onAction("app.tools.expand", () => this.toggleToolOutputExpansion());
 		this.defaultEditor.onAction("app.messages.expand", () => this.toggleAgentMessageExpansion());
 		this.defaultEditor.onAction("app.edits.expand", () => this.toggleEditDiffExpansion());
@@ -5979,6 +6031,7 @@ export class InteractiveMode {
 	}
 
 	private handleSubagentSummaryChatAction(data: string): void {
+		if (this.keybindings.matches(data, "app.mode.cycle")) return;
 		if (this.keybindings.matches(data, "app.tools.expand")) {
 			this.toggleToolOutputExpansion();
 			return;
@@ -6058,6 +6111,33 @@ export class InteractiveMode {
 			parts.push("fast");
 		}
 		return parts.join(" • ");
+	}
+
+	private getFooterModelLabel(): string | undefined {
+		return this.getCurrentModel() ? this.getModelTrayLabel() : undefined;
+	}
+
+	private getFooterContextLabel(): string | undefined {
+		const usage = this.getConnectionContextUsage();
+		return usage && typeof usage.tokens === "number" && typeof usage.percent === "number"
+			? `${formatTokenCount(usage.tokens)} (${Math.round(usage.percent)}%)`
+			: undefined;
+	}
+
+	private getFooterContextPercent(): number | undefined {
+		const percent = this.getConnectionContextUsage()?.percent;
+		return typeof percent === "number" ? percent : undefined;
+	}
+
+	private getSubagentMaxRows(): number {
+		const width = this.ui.terminal.columns;
+		const editorRows =
+			this.editorContainer.getLastRenderHeight(width) ?? this.editorContainer.measureNextRender(width);
+		const footerRows = this.footerSlot.measureNextRender(width);
+		return Math.max(
+			0,
+			Math.min(Math.floor(this.ui.terminal.rows / 3), this.ui.terminal.rows - editorRows - footerRows - 1),
+		);
 	}
 
 	private getAgentsViewTrayHint(): string | undefined {
@@ -7978,6 +8058,31 @@ export class InteractiveMode {
 			})
 			.catch((error) => {
 				this.showError(error instanceof Error ? error.message : String(error));
+			});
+	}
+
+	private handleModeCycle(): void {
+		if (this.sideQuestionComponent || this.isShuttingDown) return;
+		const connection = this.agentConnection;
+		const sessionId = this.connectionState?.sessionId;
+		const generation = this.sessionEventGeneration;
+		this.modeCycleQueue = this.modeCycleQueue
+			.then(async () => {
+				if (
+					this.isShuttingDown ||
+					this.agentConnection !== connection ||
+					this.connectionState?.sessionId !== sessionId ||
+					this.sessionEventGeneration !== generation
+				)
+					return;
+				// The session command reads live mode and persists through setSessionMode;
+				// never derive permissions from prompt text or a client-side default.
+				await connection.promptAndWait("/mode cycle", { queueIfBusy: true });
+			})
+			.catch((error) => {
+				if (this.agentConnection === connection && this.sessionEventGeneration === generation) {
+					this.showError(error instanceof Error ? error.message : String(error));
+				}
 			});
 	}
 

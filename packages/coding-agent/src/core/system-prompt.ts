@@ -83,7 +83,10 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 		// Append skills section only when the model has a way to inspect skill files.
 		const customPromptHasFileAccess =
-			!selectedTools || selectedTools.includes("ipython") || selectedTools.includes("bash");
+			!selectedTools ||
+			selectedTools.includes("ipython") ||
+			selectedTools.includes("bash") ||
+			selectedTools.includes("load_skill");
 		if (customPromptHasFileAccess && skills.length > 0) {
 			prompt += formatSkillsForPrompt(skills);
 		}
@@ -117,7 +120,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		cwd: promptCwd,
 		messagesPath: promptMessagesPath,
 		installedSkills: visiblePythonSkillImportNames,
-		activeTools: tools.filter((name) => name === "ipython" || name === "bash" || name === "edit"),
+		activeTools: tools,
 		allowRecursion,
 		depth: options.rlmDepth,
 		parentAgent: options.rlmParentAgent,
@@ -156,7 +159,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	}
 
 	// Append skills section only when the model has a way to inspect skill files.
-	const hasFileAccess = tools.includes("ipython") || tools.includes("bash");
+	const hasFileAccess = tools.includes("ipython") || tools.includes("bash") || tools.includes("load_skill");
 	if (hasFileAccess && skills.length > 0) {
 		prompt += formatSkillsForPrompt(skills);
 	}

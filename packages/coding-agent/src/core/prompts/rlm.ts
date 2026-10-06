@@ -49,7 +49,11 @@ export function buildChildAgentDoctrine(options: ChildAgentDoctrineOptions): str
 	const lines = [
 		`You are a child agent spawned by ${options.parentAgent ?? "your parent agent"}. Task prompts are labeled \`[task from parent]\`.`,
 	];
-	if (hasAgentMessage && hasIpython) {
+	if (options.activeTools?.includes("agent_message")) {
+		lines.push(
+			'When an answer is needed, reply explicitly with the agent_message tool: action="send", receiver_role="parent".',
+		);
+	} else if (hasAgentMessage && hasIpython) {
 		lines.push(
 			'When a task calls for an answer, reply explicitly with `await agent_message.send(message, receiver_role="parent")`. Not every message or task needs a reply; continue cleanup after sending and go idle normally.',
 		);
@@ -178,6 +182,16 @@ export function buildRlmPrompt(options: RlmPromptOptions): string {
 			);
 		}
 	}
+	if (activeTools.includes("subagent"))
+		parts.push(
+			"Use the native subagent tool for spawn/list/delete. Spawn returns admission only, not the child's answer; end your turn and collect replies or files. The same depth, authentication and permission rules apply as IPython delegation.",
+		);
+	if (activeTools.includes("advisor"))
+		parts.push("Use the native advisor tool for a skeptical second opinion, not action execution.");
+	if (activeTools.includes("load_skill"))
+		parts.push(
+			"Use load_skill to read an exact visible skill's instructions. It never executes skills; use only documented interfaces in IPython. File and web searching stay in IPython, not a native search tool.",
+		);
 
 	return parts.join("\n");
 }

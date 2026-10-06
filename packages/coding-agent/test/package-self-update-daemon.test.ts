@@ -10,6 +10,7 @@ import {
 	waitForActiveDaemonUpdateRestartCoordinator,
 } from "../src/cli/daemon-update-restart.js";
 import {
+	AUTO_UPDATE_CHILD_ENV,
 	ENV_AGENT_DIR,
 	getDaemonUpdateRestartManifestPath,
 	getLegacyDaemonUpdateRestartManifestPath,
@@ -541,6 +542,7 @@ describe("self-update daemon restart", () => {
 			process.env.ZERO_PACKAGE_DIR = originalPiPackageDir;
 		}
 		delete process.env[SELF_UPDATE_INTERACTIVE_CHILD_ENV];
+		delete process.env[AUTO_UPDATE_CHILD_ENV];
 		Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
 		rmSync(tempDir, { recursive: true, force: true });
 	});
@@ -604,6 +606,86 @@ describe("self-update daemon restart", () => {
 			expect(mockState.calls.some((call) => call.startsWith("spawn:npm "))).toBe(false);
 		} finally {
 			errorSpy.mockRestore();
+		}
+	});
+
+	it("defers an automatic update instead of interrupting a busy daemon", async () => {
+		process.env[AUTO_UPDATE_CHILD_ENV] = "1";
+		const releaseAssetNames = [
+			"zero-999.0.0.tgz",
+			"zero-ai-999.0.0.tgz",
+			"zero-core-999.0.0.tgz",
+			"zero-tui-999.0.0.tgz",
+			"SHA256SUMS",
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				Response.json({
+					tag_name: "v999.0.0",
+					assets: releaseAssetNames.map((name) => ({
+						name,
+						browser_download_url: `https://github.com/Ruthvik-Anne/zero/releases/download/v999.0.0/${name}`,
+					})),
+				}),
+			),
+		);
+		mockState.daemonProbe = {
+			reachable: true,
+			activeSessions: [
+				{
+					id: "busy",
+					activeSessionId: "busy",
+					isStreaming: true,
+					isCompacting: false,
+					sessionActions: { queuedCount: 0, steering: [], followUps: [] },
+				},
+			],
+		};
+
+		await expect(handlePackageCommand(["update", "--self"])).resolves.toBe(true);
+
+		expect(process.exitCode).toBe(SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE);
+		expect(mockState.calls).toContain("probe-daemon");
+		expect(mockState.calls.some((call) => call.startsWith("spawn:npm "))).toBe(false);
+	});
+
+	it("does not reinstall blindly when an automatic release check fails", async () => {
+		process.env[AUTO_UPDATE_CHILD_ENV] = "1";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(null, { status: 503 })),
+		);
+
+		await expect(handlePackageCommand(["update", "--self"])).resolves.toBe(true);
+
+		expect(process.exitCode).toBe(SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE);
+		expect(mockState.calls).not.toContain("probe-daemon");
+		expect(mockState.calls.some((call) => call.startsWith("spawn:npm "))).toBe(false);
+	});
+
+	it("leaves daemon replacement to the relaunched client after an automatic install", async () => {
+		process.env[AUTO_UPDATE_CHILD_ENV] = "1";
+		const originalDownloadBaseUrl = process.env.ZERO_DOWNLOAD_BASE_URL;
+		process.env.ZERO_DOWNLOAD_BASE_URL = "https://downloads.example.test/zero";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				Response.json({
+					version: "999.0.0",
+					package: PACKAGE_NAME,
+					tarball: "zero-999.0.0.tgz",
+				}),
+			),
+		);
+
+		try {
+			await expect(handlePackageCommand(["update", "--self"])).resolves.toBe(true);
+			expect(mockState.calls.some((call) => call.startsWith("spawn:npm "))).toBe(true);
+			expect(mockState.calls.some((call) => call.startsWith("launch-coordinator:"))).toBe(false);
+		} finally {
+			if (originalDownloadBaseUrl === undefined) delete process.env.ZERO_DOWNLOAD_BASE_URL;
+			else process.env.ZERO_DOWNLOAD_BASE_URL = originalDownloadBaseUrl;
 		}
 	});
 
@@ -907,7 +989,9 @@ describe("self-update daemon restart", () => {
 			expect(releaseAdmissionIndex).toBeGreaterThan(startupFenceIndex);
 			expect(ensureIndex).toBeGreaterThan(releaseAdmissionIndex);
 			expect(ensureIndex).toBeGreaterThan(shutdownIndex);
-			expect(statSync(join(agentDir, "update-restarts", "test-status.json")).mode & 0o777).toBe(0o600);
+			if (process.platform !== "win32") {
+				expect(statSync(join(agentDir, "update-restarts", "test-status.json")).mode & 0o777).toBe(0o600);
+			}
 		} finally {
 			errorSpy.mockRestore();
 			logSpy.mockRestore();

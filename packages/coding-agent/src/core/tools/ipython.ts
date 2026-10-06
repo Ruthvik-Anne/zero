@@ -531,7 +531,7 @@ export class IpythonKernelProvisioner {
 				if (snapshotDir) {
 					const snapshotExisted = existsSync(snapshotPathIn(snapshotDir));
 					this.emitStartupProgress("Restoring IPython state...");
-					const restore = await raceWithAbort(m.restoreState(), startupSignal);
+					const restore = await raceWithAbort(m.restoreState({ keepHostRequestsSuspended: true }), startupSignal);
 					if (snapshotExisted) {
 						pendingRestore = restore ?? { restored: [], failed: [], path: snapshotPathIn(snapshotDir) };
 					}
@@ -544,8 +544,9 @@ export class IpythonKernelProvisioner {
 					const details = [bootstrap.stderr, bootstrap.error?.traceback.join("\n")].filter(Boolean).join("\n");
 					throw new Error(`Failed to initialize rlm runtime in the IPython kernel:\n${details}`);
 				}
+				m.resumeHostRequests();
 			} catch (error) {
-				// Never leak the kernel's ZMQ sockets / temp dir if startup fails after spawn.
+				// Never leak the sandbox relay or its process tree if startup fails after spawn.
 				// (B11) Was `void m.dispose()` — not awaiting it defeated that stated
 				// intent: startKernel rejected while socket close, SIGTERM, and
 				// rmSync(tempDir) were still in flight, and the caller's memo-clear

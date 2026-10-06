@@ -5,6 +5,7 @@ import {
 	isPlanModeSafe,
 	isSessionMode,
 	parseModeSlashCommand,
+	resolveModeSlashCommand,
 } from "../src/core/mode/session-mode.js";
 
 describe("session-mode (module I)", () => {
@@ -82,6 +83,15 @@ describe("session-mode (module I)", () => {
 	});
 
 	describe("parseModeSlashCommand", () => {
+		it("resolves cycling from the authoritative mode without changing the legacy parser", () => {
+			expect(resolveModeSlashCommand(" cycle ", "plan")).toEqual({ kind: "set", mode: "auto" });
+			expect(resolveModeSlashCommand("CYCLE", "auto")).toEqual({ kind: "set", mode: "manual" });
+			expect(resolveModeSlashCommand("cycle", "manual")).toEqual({ kind: "set", mode: "plan" });
+			expect(resolveModeSlashCommand("", "manual")).toEqual({ kind: "show" });
+			expect(resolveModeSlashCommand("plan", "auto")).toEqual({ kind: "set", mode: "plan" });
+			expect(resolveModeSlashCommand("cycle\n/mode auto", "plan")).toBeUndefined();
+			expect(parseModeSlashCommand("cycle")).toBeUndefined();
+		});
 		it("parses an empty command as 'show'", () => {
 			expect(parseModeSlashCommand("")).toEqual({ kind: "show" });
 			expect(parseModeSlashCommand("   ")).toEqual({ kind: "show" });

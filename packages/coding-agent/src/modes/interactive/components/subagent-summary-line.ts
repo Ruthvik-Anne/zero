@@ -19,6 +19,10 @@ export interface SubagentDisplayEntry {
 	recap?: string;
 }
 
+function padToWidth(text: string, width: number): string {
+	return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+}
+
 function classifySubagentStatus(
 	child: AgentConnectionRlmChildAgentSnapshot,
 	activeHeartbeatSessionIds: ReadonlySet<string>,
@@ -82,7 +86,7 @@ export class SubagentSummaryLine implements Component, Focusable {
 	focused = false;
 	private counts: SubagentSummaryCounts = { total: 0, running: 0, idle: 0, inactive: 0 };
 	private entries: SubagentDisplayEntry[] = [];
-	private expanded = false;
+	private expanded = true;
 
 	onCancel?: () => void;
 	onChatAction?: (data: string) => void;
@@ -91,6 +95,7 @@ export class SubagentSummaryLine implements Component, Focusable {
 		private readonly getLocationLabel: () => string | undefined = () => undefined,
 		private readonly getContextLabel: () => string | undefined = () => undefined,
 		private readonly getOverrideLabel: () => string | undefined = () => undefined,
+		private readonly getMaxRows: () => number = () => Number.POSITIVE_INFINITY,
 	) {}
 
 	setSubagentCounts(counts: SubagentSummaryCounts): void {
@@ -127,16 +132,31 @@ export class SubagentSummaryLine implements Component, Focusable {
 	}
 
 	render(width: number): string[] {
+		const maxRows = Math.max(0, Math.floor(this.getMaxRows()));
+		if (maxRows === 0) return [];
 		const lines = this.renderInfoLine(width);
-		if (this.counts.total === 0) return lines;
+		if (this.counts.total === 0 || lines.length >= maxRows) return lines;
 		const summary = `${this.counts.total} subagent${this.counts.total === 1 ? "" : "s"}: ${this.counts.running} running · ${this.counts.idle} idle · ${this.counts.inactive} inactive`;
 		const toggleHint = `  ${keyText("tui.select.confirm")} or ${keyText("app.agents.open")} to ${this.expanded ? "collapse" : "expand"}`;
 		const text = `${this.focused ? "▸" : " "} ${summary}${toggleHint}`;
 		const line = truncateToWidth(text, width, "…");
-		lines.push(this.focused ? theme.bg("selectedBg", line.padEnd(width)) : theme.fg("dim", line));
+		lines.push(this.focused ? theme.bg("selectedBg", padToWidth(line, width)) : theme.fg("dim", line));
 		if (this.expanded) {
-			for (const entry of this.entries) {
+			const availableRows = maxRows - lines.length;
+			const visibleEntries = this.entries.slice(
+				0,
+				Math.max(0, availableRows - (this.entries.length > availableRows ? 1 : 0)),
+			);
+			for (const entry of visibleEntries) {
 				lines.push(this.renderEntryLine(entry, width));
+			}
+			if (this.entries.length > visibleEntries.length && availableRows > 0) {
+				lines.push(
+					theme.fg(
+						"dim",
+						truncateToWidth(`    ${this.entries.length - visibleEntries.length} more subagents`, width, "…"),
+					),
+				);
 			}
 		}
 		return lines;
@@ -146,7 +166,7 @@ export class SubagentSummaryLine implements Component, Focusable {
 		const recap = entry.recap?.trim() ? `  ${entry.recap.trim()}` : "";
 		const text = `    · ${entry.label} — ${entry.status}${recap}`;
 		const line = truncateToWidth(text, width, "…");
-		return theme.fg("dim", line.padEnd(width));
+		return theme.fg("dim", padToWidth(line, width));
 	}
 
 	private renderInfoLine(width: number): string[] {

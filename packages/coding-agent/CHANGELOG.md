@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Added native `subagent`, `agent_message`, `advisor`, `load_skill`, `coordination`, `read_file`, `write_file` and `code_map` model tools backed by the existing session services; searching stays in IPython.
+- Added `app.mode.cycle` (`shift+tab`) to cycle plan/auto/manual modes from the prompt while keeping shift+tab previous-tab behavior inside configuration menus.
+- Changed the subagent summary line below the prompt to show child rows by default within terminal height limits.
+- Added a compiler-resolved workspace code map (`code_map` tool) with forward/reverse dependency traversal; TypeScript/JavaScript edges are compiler-resolved via an aliased TypeScript 5.9 dependency and Python edges are labeled syntactic.
+- Added a fail-closed sandboxed IPython kernel backend on Linux/WSL2 (bubblewrap, network namespace, seccomp) with no unsandboxed fallback.
+- Added automatic stable self-updates before interactive startup, with exact GitHub release assets, one-time relaunch protection, and deferral while daemon work is active.
 - Added a branded exit splash showing the Zero logo, name, version and "by Ruthvik Anne" when the interactive TUI exits, with the resume hint below it.
 
 ## [0.8.0] - 2026-08-18

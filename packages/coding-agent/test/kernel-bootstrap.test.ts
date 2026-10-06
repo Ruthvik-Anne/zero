@@ -147,7 +147,7 @@ function installFakeUv(): string {
 	return logPath;
 }
 
-describe("kernel bootstrap", () => {
+describe.skipIf(process.platform === "win32")("kernel bootstrap", () => {
 	beforeEach(async () => {
 		runtimeIdentity = await resolveRuntimeIdentity();
 		originalEnv = { ...process.env };
@@ -155,6 +155,7 @@ describe("kernel bootstrap", () => {
 		process.env.HOME = tempDir;
 		process.env.PATH = originalEnv.PATH ?? "";
 		delete process.env.ZERO_KERNEL_PYTHON;
+		delete process.env.ZERO_KERNEL_SANDBOX_PYTHON;
 		delete process.env.ZERO_KERNEL_VENV;
 		delete process.env.XDG_DATA_HOME;
 	});
@@ -558,5 +559,18 @@ dependencies = ["httpx"]
 		process.env.ZERO_KERNEL_PYTHON = overridePython;
 
 		await expect(ensureKernelPython()).rejects.toThrow(/missing ipykernel/);
+	});
+});
+
+describe.runIf(process.platform === "win32")("Windows kernel bootstrap", () => {
+	it("does not accept a native Windows Python for the WSL sandbox", async () => {
+		const original = process.env.ZERO_KERNEL_SANDBOX_PYTHON;
+		process.env.ZERO_KERNEL_SANDBOX_PYTHON = "C:\\Python\\python.exe";
+		try {
+			await expect(ensureKernelPython()).rejects.toThrow(/absolute Linux path|WSL/i);
+		} finally {
+			if (original === undefined) delete process.env.ZERO_KERNEL_SANDBOX_PYTHON;
+			else process.env.ZERO_KERNEL_SANDBOX_PYTHON = original;
+		}
 	});
 });

@@ -30,6 +30,7 @@ import {
 } from "./cli/daemon-update-restart.js";
 import {
 	APP_NAME,
+	AUTO_UPDATE_CHILD_ENV,
 	CONFIG_DIR_NAME,
 	getAgentDir,
 	getDaemonUpdateRestartManifestPath,
@@ -68,6 +69,8 @@ import {
 	DAEMON_WORKER_SUPERVISOR_SOCKET_ENV,
 } from "./modes/daemon/daemon-worker-protocol.js";
 import { shouldUseWindowsShell } from "./utils/child-process.js";
+import { stageReleaseArtifacts } from "./utils/release-artifacts.js";
+import type { ReleaseArtifact } from "./utils/version-check.js";
 import { getLatestPiRelease, isNewerPackageVersion } from "./utils/version-check.js";
 
 export type PackageCommand = "install" | "remove" | "update" | "list";
@@ -425,7 +428,9 @@ function printSelfUpdateFallback(command: SelfUpdateCommand): void {
 }
 
 interface SelfUpdatePlan {
+	artifacts?: ReleaseArtifact[];
 	installSpec: string;
+	mainArtifactName?: string;
 	packageName: string;
 	shouldRun: boolean;
 	targetVersion?: string;
@@ -433,12 +438,17 @@ interface SelfUpdatePlan {
 
 function setSelfUpdateNoChangeExitCode(): void {
 	process.exitCode =
-		process.env[SELF_UPDATE_INTERACTIVE_CHILD_ENV] === "1" ? SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE : undefined;
+		process.env[SELF_UPDATE_INTERACTIVE_CHILD_ENV] === "1" || process.env[AUTO_UPDATE_CHILD_ENV] === "1"
+			? SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE
+			: undefined;
 }
 
-async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
+async function getSelfUpdatePlan(force: boolean, automatic = false): Promise<SelfUpdatePlan> {
 	try {
-		const latestRelease = await getLatestPiRelease(VERSION);
+		const latestRelease = await getLatestPiRelease(VERSION, automatic ? { timeoutMs: 2000 } : undefined);
+		if (automatic && (!latestRelease || (!latestRelease.installSpec && !latestRelease.artifacts))) {
+			return { installSpec: PACKAGE_NAME, packageName: PACKAGE_NAME, shouldRun: false };
+		}
 		const packageName = latestRelease?.packageName ?? PACKAGE_NAME;
 		const installSpec = latestRelease?.installSpec ?? packageName;
 		const packageRenameRequiresUpdate = !latestRelease?.installSpec && packageName !== PACKAGE_NAME;
@@ -448,9 +458,17 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
 			packageRenameRequiresUpdate ||
 			isNewerPackageVersion(latestRelease.version, VERSION)
 		) {
-			return { installSpec, packageName, shouldRun: true, targetVersion: latestRelease?.version };
+			return {
+				artifacts: latestRelease?.artifacts,
+				installSpec,
+				mainArtifactName: latestRelease?.mainArtifactName,
+				packageName,
+				shouldRun: true,
+				targetVersion: latestRelease?.version,
+			};
 		}
 	} catch {
+		if (automatic) return { installSpec: PACKAGE_NAME, packageName: PACKAGE_NAME, shouldRun: false };
 		return { installSpec: PACKAGE_NAME, packageName: PACKAGE_NAME, shouldRun: true };
 	}
 
@@ -1557,6 +1575,7 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 			}
 
 			case "update": {
+				const automatic = process.env[AUTO_UPDATE_CHILD_ENV] === "1";
 				const target = options.updateTarget ?? { type: "all" };
 				if (updateTargetIncludesExtensions(target)) {
 					const updateSource = target.type === "extensions" ? target.source : undefined;
@@ -1568,18 +1587,22 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
-					const selfUpdatePlan = await getSelfUpdatePlan(options.force);
+					const selfUpdatePlan = await getSelfUpdatePlan(options.force, automatic);
 					if (!selfUpdatePlan.shouldRun) {
 						setSelfUpdateNoChangeExitCode();
 						return true;
 					}
-					const selfUpdateCommand = getSelfUpdateCommand(
+					const preliminaryCommand = getSelfUpdateCommand(
 						PACKAGE_NAME,
 						selfUpdateNpmCommand,
 						selfUpdatePlan.installSpec,
 						selfUpdatePlan.packageName,
 					);
-					if (!selfUpdateCommand) {
+					if (!preliminaryCommand) {
+						if (automatic) {
+							setSelfUpdateNoChangeExitCode();
+							return true;
+						}
 						printSelfUpdateUnavailable(
 							selfUpdateNpmCommand,
 							selfUpdatePlan.installSpec,
@@ -1591,26 +1614,54 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 					// Confirm before the install, since upgrading the daemon afterward stops and resumes busy work.
 					const daemonSocketPath = resolveUpdateDaemonSocketPath(options.daemonSocketPath);
 					const daemonProbe = await probeRunningDaemonSessions(daemonSocketPath);
-					if (!(await confirmDaemonSessionLossBeforeUpdate(daemonProbe, options.force))) {
+					if (automatic && daemonProbeMayHaveBusySessions(daemonProbe)) {
+						setSelfUpdateNoChangeExitCode();
+						return true;
+					}
+					if (!automatic && !(await confirmDaemonSessionLossBeforeUpdate(daemonProbe, options.force))) {
 						if (process.stdin.isTTY) {
 							console.log(chalk.dim("Update cancelled."));
 						}
 						process.exitCode = 1;
 						return true;
 					}
+					let stagedRelease: Awaited<ReturnType<typeof stageReleaseArtifacts>> | undefined;
+					let selectedUpdateCommand: SelfUpdateCommand | undefined = preliminaryCommand;
 					try {
-						await runSelfUpdate(selfUpdateCommand);
+						if (selfUpdatePlan.artifacts && selfUpdatePlan.mainArtifactName) {
+							stagedRelease = await stageReleaseArtifacts(
+								selfUpdatePlan.artifacts,
+								selfUpdatePlan.mainArtifactName,
+							);
+						}
+						if (automatic && daemonProbeMayHaveBusySessions(await probeRunningDaemonSessions(daemonSocketPath))) {
+							setSelfUpdateNoChangeExitCode();
+							return true;
+						}
+						selectedUpdateCommand = stagedRelease
+							? getSelfUpdateCommand(
+									PACKAGE_NAME,
+									selfUpdateNpmCommand,
+									stagedRelease.installSpec,
+									selfUpdatePlan.packageName,
+								)
+							: preliminaryCommand;
+						if (!selectedUpdateCommand) throw new Error("Staged release cannot update this installation");
+						await runSelfUpdate(selectedUpdateCommand);
 					} catch (error: unknown) {
 						const message = error instanceof Error ? error.message : "Unknown package command error";
 						console.error(chalk.red(`Error: ${message}`));
-						printSelfUpdateFallback(selfUpdateCommand);
+						if (selectedUpdateCommand) printSelfUpdateFallback(selectedUpdateCommand);
 						process.exitCode = 1;
 						return true;
+					} finally {
+						await stagedRelease?.cleanup().catch(() => undefined);
 					}
 					const versionChange = selfUpdatePlan.targetVersion
 						? ` from v${VERSION} to v${selfUpdatePlan.targetVersion}`
 						: "";
 					console.log(chalk.green(`Updated ${APP_NAME}${versionChange}`));
+					if (automatic) return true;
 					if (process.env[SELF_UPDATE_INTERACTIVE_CHILD_ENV] === "1") {
 						return true;
 					}

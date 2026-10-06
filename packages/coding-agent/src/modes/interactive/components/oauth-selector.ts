@@ -5,6 +5,7 @@ import {
 	fuzzyFilter,
 	getKeybindings,
 	Spacer,
+	Text,
 	TruncatedText,
 } from "@zero-agent/tui";
 import type { AuthStatus, AuthStorage } from "../../../core/auth-storage.js";
@@ -49,6 +50,7 @@ const PROVIDER_LIST_RESERVED_ROWS = 7;
 /** Extra fixed rows the Providers/MCP Connections tab bar (text + spacer) consumes. */
 const TAB_BAR_RESERVED_ROWS = 2;
 const PROVIDER_SCROLL_INDICATOR_ROWS = 1;
+const POPULAR_PROVIDERS = new Set(["openai", "github-copilot", "anthropic", "google"]);
 
 /**
  * Component that renders an auth provider selector
@@ -72,6 +74,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 	private filteredProviders: AuthSelectorProvider[];
 	private selectedIndex: number = 0;
 	private searchQuery = "";
+	private sectionsVisible = false;
 	private mode: "login" | "logout";
 	/** Tabs present in the data, in display order. Empty/single → no tab bar. */
 	private categories: AuthSelectorCategory[] = [];
@@ -118,7 +121,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 				: (this.categories[0] ?? "provider");
 
 		const panel = new MenuPanel({
-			title: options.title ?? (mode === "login" ? "Providers" : "Saved Credentials"),
+			title: options.title ?? (mode === "login" ? "Zero · Connect a provider" : "Zero · Saved credentials"),
 			subtitle:
 				options.subtitle ??
 				(mode === "login" ? "Connect with a subscription or API key." : "Choose a credential to remove."),
@@ -146,7 +149,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		panel.addChild(new Spacer(1));
 
 		// Create list container
-		this.listContainer = new MenuList({ compact: () => this.listLayout.compact });
+		this.listContainer = new MenuList({ compact: true });
 		panel.addChild(this.listContainer);
 
 		// Initial render
@@ -187,7 +190,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		const queryChanged = query !== this.searchQuery;
 		this.searchQuery = query;
 		const inCategory = this.allProviders.filter((p) => this.inActiveCategory(p));
-		this.filteredProviders = query
+		this.filteredProviders = query.trim()
 			? fuzzyFilter(inCategory, query, (provider) => `${provider.name} ${provider.id} ${provider.authType}`)
 			: inCategory;
 		this.selectedIndex = queryChanged
@@ -233,7 +236,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		if (this.isProviderStale(provider)) {
 			return 1;
 		}
-		return 2;
+		return POPULAR_PROVIDERS.has(provider.id) && (provider.category ?? "provider") === "provider" ? 2 : 3;
 	}
 
 	private isProviderStale(provider: AuthSelectorProvider): boolean {
@@ -267,6 +270,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		const previousLayout = this.listLayout;
 		this.updateLayout();
 		if (
+			this.sectionsVisible !== this.shouldShowSections() ||
 			this.listLayout.compact !== previousLayout.compact ||
 			this.listLayout.visibleItems !== previousLayout.visibleItems
 		) {
@@ -277,6 +281,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 
 	private updateList(): void {
 		this.updateLayout();
+		this.sectionsVisible = this.shouldShowSections();
 		this.listContainer.clear();
 
 		const maxVisible = this.listLayout.visibleItems;
@@ -286,11 +291,20 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		);
 		const endIndex = Math.min(startIndex + maxVisible, this.filteredProviders.length);
 
+		let previousCategory: string | undefined;
 		for (let i = startIndex; i < endIndex; i++) {
 			const provider = this.filteredProviders[i];
 			if (!provider) continue;
 
 			const isSelected = i === this.selectedIndex;
+			if (this.shouldShowSections()) {
+				const rank = this.getProviderSortRank(provider);
+				const category = rank === 0 ? "Connected" : rank === 1 ? "Reconnect" : rank === 2 ? "Popular" : "Providers";
+				if (category !== previousCategory) {
+					this.listContainer.addChild(new Text(theme.bold(theme.fg("accent", category)), 0, 0));
+					previousCategory = category;
+				}
+			}
 
 			this.listContainer.addChild(
 				new MenuRow({
@@ -366,13 +380,13 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 		// Up arrow
 		if (kb.matches(keyData, "tui.select.up")) {
 			if (this.filteredProviders.length === 0) return;
-			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+			this.selectedIndex = this.selectedIndex === 0 ? this.filteredProviders.length - 1 : this.selectedIndex - 1;
 			this.updateList();
 		}
 		// Down arrow
 		else if (kb.matches(keyData, "tui.select.down")) {
 			if (this.filteredProviders.length === 0) return;
-			this.selectedIndex = Math.min(this.filteredProviders.length - 1, this.selectedIndex + 1);
+			this.selectedIndex = this.selectedIndex === this.filteredProviders.length - 1 ? 0 : this.selectedIndex + 1;
 			this.updateList();
 		}
 		// Only steal left/right for tabs when the search field is empty, so cursor
@@ -418,9 +432,19 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 			preferredVisibleItems: PREFERRED_VISIBLE_PROVIDERS,
 			totalItems: this.filteredProviders.length,
 			reservedRows: this.reservedRows,
-			comfortableItemRows: 3,
-			compactItemRows: 2,
+			comfortableItemRows: this.shouldShowSections() ? 3 : 2,
+			compactItemRows: this.shouldShowSections() ? 3 : 2,
+			comfortableListPaddingRows: 0,
 			scrollIndicatorRows: PROVIDER_SCROLL_INDICATOR_ROWS,
 		});
+	}
+
+	private shouldShowSections(): boolean {
+		const rows = this.viewport.getRows?.();
+		return (
+			this.activeCategory === "provider" &&
+			!this.searchQuery.trim() &&
+			(rows === undefined || !Number.isFinite(rows) || rows >= 16)
+		);
 	}
 }

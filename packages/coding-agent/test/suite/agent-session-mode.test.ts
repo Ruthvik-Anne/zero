@@ -105,4 +105,20 @@ describe("AgentSession session mode", () => {
 			restarted.dispose();
 		}
 	});
+
+	it("/mode cycle resolves against current mode and persists across reopen", async () => {
+		const harness = await createHarness({ persistSession: true });
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("ready")]);
+		await harness.session.prompt("ready");
+		await harness.session.prompt("/mode cycle");
+		expect(harness.session.getSessionMode()).toBe("manual");
+		harness.sessionManager.flushNow();
+		const restarted = createRestartSession(harness);
+		try {
+			expect(restarted.getSessionMode()).toBe("manual");
+		} finally {
+			restarted.dispose();
+		}
+	});
 });

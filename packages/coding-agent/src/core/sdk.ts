@@ -48,14 +48,14 @@ export interface CreateAgentSessionOptions extends AgentSessionCreationOptions {
 	 * Optional default tool suppression mode when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tool (ipython)
+	 * - "builtin": disable the default built-in tools (IPython and native runtime tools)
 	 *   but keep extension/custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
 	/**
 	 * Optional allowlist of tool names.
 	 *
-	 * When omitted, pi enables the default built-in tool (ipython)
+	 * When omitted, pi enables IPython and available native runtime tools
 	 * and leaves extension/custom tools enabled unless `noTools` changes that default.
 	 * When provided, only the listed tool names are enabled.
 	 */
@@ -95,6 +95,7 @@ export interface CreateAgentSessionResult {
 export type { AgentSessionRuntimeConfig } from "./agent-session-config.js";
 export * from "./agent-session-runtime.js";
 export type { AgentSessionCreationOptions } from "./agent-session-services.js";
+export type { EvidenceLink, LockOwner, WorkGraph, WorkSnapshot, WorkState, WorkTask } from "./coordination/service.js";
 export type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -256,8 +257,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	const allowedToolNames = options.allowedToolNames ?? options.tools ?? (options.noTools === "all" ? [] : undefined);
 	const includeGoals = options.includeGoals ?? (options.tools !== undefined || options.noTools !== "all");
-	const initialActiveToolNames: string[] =
-		options.initialActiveToolNames ?? (options.tools ? [...options.tools] : options.noTools ? [] : ["ipython"]);
+	const initialActiveToolNames =
+		options.initialActiveToolNames ?? (options.tools ? [...options.tools] : options.noTools ? [] : undefined);
 
 	let agent: Agent;
 

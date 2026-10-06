@@ -60,13 +60,14 @@ function createPythonSkill(name = "web-search"): KernelPythonSkill {
 	return { name, importName, packagePath, pyprojectPath };
 }
 
-describe("isKernelPythonLikelyCached", () => {
+describe.skipIf(process.platform === "win32")("isKernelPythonLikelyCached", () => {
 	beforeEach(async () => {
 		runtimeIdentity = await resolveRuntimeIdentity();
 		originalEnv = { ...process.env };
 		tempDir = mkdtempSync(join(tmpdir(), "prime-agent-kernel-cached-"));
 		process.env.HOME = tempDir;
 		delete process.env.ZERO_KERNEL_PYTHON;
+		delete process.env.ZERO_KERNEL_SANDBOX_PYTHON;
 		delete process.env.ZERO_KERNEL_VENV;
 		delete process.env.XDG_DATA_HOME;
 	});
@@ -127,5 +128,18 @@ describe("isKernelPythonLikelyCached", () => {
 		process.env.ZERO_KERNEL_PYTHON = join(tempDir, "override-python");
 
 		await expect(isKernelPythonLikelyCached()).resolves.toBe(true);
+	});
+});
+
+describe.runIf(process.platform === "win32")("isKernelPythonLikelyCached on Windows", () => {
+	it("does not report an unvalidated sandbox override as cached", async () => {
+		const original = process.env.ZERO_KERNEL_SANDBOX_PYTHON;
+		process.env.ZERO_KERNEL_SANDBOX_PYTHON = "C:\\Python\\python.exe";
+		try {
+			await expect(isKernelPythonLikelyCached()).resolves.toBe(false);
+		} finally {
+			if (original === undefined) delete process.env.ZERO_KERNEL_SANDBOX_PYTHON;
+			else process.env.ZERO_KERNEL_SANDBOX_PYTHON = original;
+		}
 	});
 });

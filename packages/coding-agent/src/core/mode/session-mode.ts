@@ -99,3 +99,10 @@ export function parseModeSlashCommand(text: string): ParsedModeCommand | undefin
 	if (!isSessionMode(candidate)) return undefined;
 	return { kind: "set", mode: candidate };
 }
+
+/** Resolve cycling at command execution time, using the session's live mode. */
+export function resolveModeSlashCommand(text: string, currentMode: SessionMode): ParsedModeCommand | undefined {
+	if (text.trim().toLowerCase() !== "cycle") return parseModeSlashCommand(text);
+	const nextMode = SESSION_MODES[(SESSION_MODES.indexOf(currentMode) + 1) % SESSION_MODES.length]!;
+	return { kind: "set", mode: nextMode };
+}

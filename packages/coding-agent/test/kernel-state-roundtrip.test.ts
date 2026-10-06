@@ -7,13 +7,18 @@ import { KernelManager } from "../src/core/kernel/index.js";
 
 /** Find a python that can launch an ipykernel and has dill, or null to skip. */
 function resolveKernelPython(): string | null {
+	if (process.platform === "win32" && !process.env.ZERO_KERNEL_SANDBOX_PYTHON) return null;
 	// uv/stdlib venvs lay out bin/python on POSIX but Scripts/python.exe on
 	// Windows — there is no bin/ dir there at all.
 	const defaultVenvPython =
 		process.platform === "win32"
 			? join(homedir(), ".zero", "agent", "kernel-venv", "Scripts", "python.exe")
 			: join(homedir(), ".zero", "agent", "kernel-venv", "bin", "python");
-	const candidates = [process.env.ZERO_KERNEL_PYTHON, defaultVenvPython].filter((p): p is string => Boolean(p));
+	const candidates = [
+		process.env.ZERO_KERNEL_SANDBOX_PYTHON,
+		process.env.ZERO_KERNEL_PYTHON,
+		defaultVenvPython,
+	].filter((p): p is string => Boolean(p));
 	for (const python of candidates) {
 		if (!existsSync(python)) continue;
 		const check = spawnSync(python, ["-c", "import ipykernel, dill"], { encoding: "utf8", windowsHide: true });

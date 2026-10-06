@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const installerSource = readFileSync("install.sh", "utf-8");
 const mainCall = '\nmain "$@"';
@@ -9,6 +9,7 @@ const mainCallIndex = installerSource.lastIndexOf(mainCall);
 const ansiPattern = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const syncEnd = "\x1b[?2026l";
 const failures = [];
+const posixShell = findPosixShell();
 
 if (mainCallIndex === -1) {
 	console.error('Installer render check failed: could not find final main "$@" call.');
@@ -23,6 +24,10 @@ zero_test_rows=24
 zero_read_terminal_size() {
 	zero_screen_cols="$zero_test_cols"
 	zero_screen_rows="$zero_test_rows"
+}
+
+zero_can_write_tty() {
+	return 1
 }
 
 print_render_meta() {
@@ -164,13 +169,15 @@ if (failures.length > 0) {
 console.log("Installer render check passed.");
 
 function runCase(name, initialCols, initialRows, resizedCols, resizedRows) {
-	const result = spawnSync("sh", [harnessPath, String(initialCols), String(initialRows), String(resizedCols), String(resizedRows)], {
-		detached: true,
+	const dimensions = [String(initialCols), String(initialRows), String(resizedCols), String(resizedRows)];
+	const result = spawnSync(posixShell.command, [...posixShell.args, posixShell.mapPath(harnessPath), ...dimensions], {
 		encoding: "utf-8",
 		windowsHide: true,
 	});
 	if (result.status !== 0) {
-		failures.push(`${name}: harness exited with ${result.status ?? "unknown"}\n${result.stderr}${result.stdout}`);
+		failures.push(
+			`${name}: harness exited with ${result.status ?? "unknown"}\n${result.error?.message ?? ""}${result.stderr ?? ""}${result.stdout ?? ""}`,
+		);
 		return emptyParsedCase();
 	}
 
@@ -181,6 +188,34 @@ function runCase(name, initialCols, initialRows, resizedCols, resizedRows) {
 	assertScreenFrame(name, "first", parsed, initialCols, initialRows);
 	assertScreenFrame(name, "second", parsed, resizedCols, resizedRows);
 	return parsed;
+}
+
+function findPosixShell() {
+	const direct = spawnSync("sh", ["-c", "exit 0"], { windowsHide: true });
+	if (!direct.error) return { command: "sh", args: [], mapPath: (path) => path };
+	if (process.platform !== "win32") return { command: "sh", args: [], mapPath: (path) => path };
+
+	const wsl = spawnSync("wsl.exe", ["-e", "sh", "-c", "exit 0"], { windowsHide: true });
+	if (wsl.status === 0) {
+		return {
+			command: "wsl.exe",
+			args: ["-e", "sh"],
+			mapPath: (path) => {
+				const mapped = spawnSync("wsl.exe", ["-e", "wslpath", "-a", realpathSync.native(path)], {
+					encoding: "utf-8",
+					windowsHide: true,
+				});
+				return mapped.status === 0 ? mapped.stdout.trim() : path;
+			},
+		};
+	}
+
+	const gitExecPath = spawnSync("git", ["--exec-path"], { encoding: "utf-8", windowsHide: true });
+	if (gitExecPath.status === 0) {
+		const candidate = resolve(gitExecPath.stdout.trim(), "..", "..", "..", "bin", "sh.exe");
+		if (existsSync(candidate)) return { command: candidate, args: [], mapPath: (path) => path };
+	}
+	return { command: "sh", args: [], mapPath: (path) => path };
 }
 
 function parseRenderOutput(output) {

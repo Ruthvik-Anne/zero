@@ -39,11 +39,9 @@ export class ForkServerUnavailable extends Error {
 	}
 }
 
-// On by default on Linux (fork-without-exec is unsafe on macOS);
-// ZERO_KERNEL_FORKSERVER=0 opts out.
+// The legacy template does not inherit the per-kernel isolation boundary.
 export function isForkServerEnabled(): boolean {
-	if (process.platform !== "linux") return false;
-	return process.env.ZERO_KERNEL_FORKSERVER !== "0";
+	return false;
 }
 
 // A forkserver template is defined solely by the interpreter — the imported

@@ -1,15 +1,12 @@
 // TODO: reconsider persistent kernel vs stateless `python -c` once RLM-1 weights land.
-import { type ChildProcess, spawn } from "node:child_process";
-import { createHmac, randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { registerSessionResourceCleanup } from "@zero-agent/ai";
 import { v4 as uuid } from "uuid";
-import { Dealer, Subscriber } from "zeromq";
 import { ensureKernelPython, type KernelBootstrapProgressHandler, type KernelPythonSkill } from "./bootstrap.js";
-import { ForkServerUnavailable, forkKernel, isForkServerEnabled } from "./fork-server.js";
+import { KernelSandbox, type RelayChannel } from "./sandbox.js";
 import {
 	buildListNamesCode,
 	buildRestoreCode,
@@ -24,10 +21,7 @@ import {
 
 const DELIM = Buffer.from("<IDS|MSG>");
 const PROTOCOL_VERSION = "5.3";
-const PORTS_RESOLVE_TIMEOUT_MS = 5000;
 const READY_TIMEOUT_MS = 5000;
-// Loopback PUB/SUB subscription propagation is usually sub-ms, but keep a small guard before first execute.
-const IOPUB_SUBSCRIBE_DELAY_MS = 50;
 const DEFAULT_MAX_OUTPUT_CHARS = 65536;
 const HOST_REQUEST_DISPOSE_TIMEOUT_MS = 5000;
 const DEFAULT_SNAPSHOT_DEBOUNCE_MS = 1500;
@@ -36,10 +30,9 @@ const DEFAULT_SNAPSHOT_DEBOUNCE_MS = 1500;
 // call sites below). Matches fork-server.ts's own STDERR_TAIL_MAX for the
 // identical accumulator, just in the non-forked kernel path.
 const KERNEL_STDERR_TAIL_MAX = 4096;
-// How often to poll a forked kernel's pid for unexpected death.
-const FORKED_LIVENESS_POLL_MS = 1000;
 // Snapshot/restore cells can be large to (de)serialize; give them room beyond the user cap.
 const SNAPSHOT_MAX_OUTPUT_CHARS = 1_000_000;
+const SANDBOX_SNAPSHOT_MAX_BYTES = 512000;
 // Cap how long a graceful dispose waits on the final snapshot; the debounced
 // on-disk copy is the fallback if this is exceeded.
 const SNAPSHOT_DISPOSE_TIMEOUT_MS = 5000;
@@ -151,7 +144,7 @@ export interface KernelSnapshotConfig {
 	path: string;
 	/** Absolute path for the JSON manifest written alongside the payload. */
 	manifestPath: string;
-	/** Skip variables (and abort the payload) above this many bytes. Default 256 MiB. */
+	/** Skip variables above this many bytes, capped by the sandbox relay at 512000 bytes. */
 	maxBytes?: number;
 	/** Debounce window for the auto-snapshot after a successful execution. Default 1500 ms. */
 	debounceMs?: number;
@@ -167,7 +160,7 @@ export interface KernelSnapshotConfig {
 }
 
 export interface KernelManagerOptions {
-	/** Python interpreter that has `ipykernel` available. Defaults to the auto-bootstrapped kernel. */
+	/** Linux Python in a trusted runtime. Defaults to the configured sandbox venv. */
 	python?: string;
 	cwd?: string;
 	env?: Record<string, string>;
@@ -475,10 +468,12 @@ function encode(msg: JupyterMessage, key: string): Buffer[] {
 	return [DELIM, sign(parts, key), ...parts];
 }
 
-function decode(frames: Buffer[]): JupyterMessage | null {
+function decode(frames: Buffer[], key: string): JupyterMessage | null {
 	let i = 0;
 	while (i < frames.length && !frames[i].equals(DELIM)) i++;
 	if (i + 5 >= frames.length) return null;
+	const signature = sign(frames.slice(i + 2, i + 6), key);
+	if (frames[i + 1].length !== signature.length || !timingSafeEqual(frames[i + 1], signature)) return null;
 	try {
 		return {
 			header: JSON.parse(frames[i + 2].toString()),
@@ -530,15 +525,7 @@ function parseConnectionInfo(value: unknown): ConnectionInfo | null {
 	};
 }
 
-function readConnectionInfo(path: string): ConnectionInfo | null {
-	try {
-		return parseConnectionInfo(JSON.parse(readFileSync(path, "utf8")));
-	} catch {
-		return null;
-	}
-}
-
-function makeConnection(): { info: ConnectionInfo; path: string; tempDir: string } {
+function makeConnection(): ConnectionInfo {
 	const info: ConnectionInfo = {
 		ip: "127.0.0.1",
 		transport: "tcp",
@@ -551,10 +538,7 @@ function makeConnection(): { info: ConnectionInfo; path: string; tempDir: string
 		key: randomBytes(16).toString("hex"),
 		kernel_name: "python3",
 	};
-	const tempDir = mkdtempSync(join(tmpdir(), "prime-agent-kernel-"));
-	const path = join(tempDir, "connection.json");
-	writeFileSync(path, JSON.stringify(info, null, 2), { mode: 0o600 });
-	return { info, path, tempDir };
+	return info;
 }
 
 // ---- process-wide cleanup -----------------------------------------------
@@ -607,18 +591,12 @@ export class KernelManager {
 	private readonly session = uuid();
 	private readonly commTargets = new Map<string, string>();
 	private readonly handledHostRequestCommIds = new Set<string>();
-	private kernel?: ChildProcess;
-	// Set instead of `kernel` when the kernel was forked from the forkserver: it is
-	// not a direct child, so it has no ChildProcess handle and is killed by pid.
-	private kernelPid?: number;
-	/** Polls a forked kernel's pid for death (no "exit" event on a non-child). */
-	private forkedLivenessTimer?: ReturnType<typeof globalThis.setInterval>;
-	private shell?: Dealer;
-	private iopub?: Subscriber;
-	private control?: Dealer;
+	private sandbox?: KernelSandbox;
+	private shell?: RelayChannel;
+	private iopub?: RelayChannel;
+	private control?: RelayChannel;
 	private iopubPumpPromise?: Promise<void>;
 	private connection?: ConnectionInfo;
-	private tempDir?: string;
 	private kernelStderr = "";
 	/** Serializes execute() calls — Jupyter shell channel is request/reply. */
 	private executionQueue: Promise<unknown> = Promise.resolve();
@@ -635,6 +613,7 @@ export class KernelManager {
 	private startPromise?: Promise<void>;
 	/** Pending debounced auto-snapshot, if one has been scheduled. */
 	private snapshotTimer?: ReturnType<typeof globalThis.setTimeout>;
+	private hostRequestsSuspended = false;
 
 	constructor(options: KernelManagerOptions) {
 		this.options = {
@@ -669,10 +648,14 @@ export class KernelManager {
 				throw error;
 			});
 		}
-		return raceStartupWithAbort(this.startPromise, options.signal);
+		return raceStartupWithAbort(this.startPromise, options.signal).catch(async (error) => {
+			if (options.signal?.aborted) await this.kill();
+			throw error;
+		});
 	}
 
 	private async doStart(startOptions: KernelStartOptions): Promise<void> {
+		if (this.state === "shutdown") throw new Error("Kernel has been shut down");
 		if (this.state !== "idle") return;
 		this.state = "starting";
 		installSignalHandlersOnce();
@@ -680,181 +663,50 @@ export class KernelManager {
 		// handlers can dispose a kernel that is still booting.
 		liveKernels.add(this);
 
-		let python: string;
 		try {
-			python =
+			startOptions.onBootstrapProgress?.("Starting isolated IPython kernel (bubblewrap + seccomp)...");
+			const python =
 				this.options.python ??
 				(await ensureKernelPython({
 					pythonSkills: this.options.pythonSkills,
 					onProgress: startOptions.onBootstrapProgress,
 				}));
 			this.options.python = python;
-		} catch (error) {
-			liveKernels.delete(this);
-			if ((this.state as string) !== "shutdown") this.state = "idle";
-			throw error;
-		}
-
-		if ((this.state as string) === "shutdown") {
-			throw new Error("Kernel was disposed during startup");
-		}
-
-		let connection = makeConnection();
-		this.tempDir = connection.tempDir;
-
-		// Fast path: fork a pre-imported kernel from the forkserver. Any failure
-		// (disabled, unavailable, fork error) degrades to the direct-spawn path so
-		// correctness never depends on fork.
-		let forked = false;
-		if (isForkServerEnabled()) {
-			try {
-				this.kernelPid = await forkKernel(python, {
-					connectionPath: connection.path,
-					cwd: this.options.cwd,
-					// Match the direct-spawn env exactly: merge the current host env with
-					// the per-kernel overrides, applied fresh in the child (the template's
-					// inherited env snapshot may be stale by fork time).
-					env: this.options.env ? { ...process.env, ...this.options.env } : { ...process.env },
-				});
-				forked = true;
-			} catch (err) {
-				if (!(err instanceof ForkServerUnavailable)) throw err;
-				this.appendKernelDiagnostic(`forkserver unavailable, spawning directly: ${err.message}`);
-				this.kernelPid = undefined;
-				// A fork request that times out or loses its pid reply may still have
-				// forked a child that binds the ports in this connection file. Mint a
-				// fresh connection for the direct spawn so a possible orphan can never
-				// collide with it (write the same file / re-bind the same ports).
-				try {
-					rmSync(connection.tempDir, { recursive: true, force: true });
-				} catch {
-					// Leave the temp dir for OS tmp cleanup.
-				}
-				connection = makeConnection();
-				this.tempDir = connection.tempDir;
-			}
-		}
-
-		if (!forked) {
-			const kernel = spawn(python, ["-m", "ipykernel_launcher", "-f", connection.path], {
-				cwd: this.options.cwd,
-				env: this.options.env ? { ...process.env, ...this.options.env } : process.env,
-				stdio: ["ignore", "pipe", "pipe"],
-				windowsHide: true,
+			const connection = makeConnection();
+			const sandbox = new KernelSandbox({
+				cwd: this.options.cwd ?? process.cwd(),
+				python,
+				connection,
+				env: this.options.env,
+				trustedPaths: this.options.pythonSkills?.map((skill) => skill.packagePath),
 			});
-			this.kernel = kernel;
-
-			kernel.stderr?.on("data", (buf: Buffer) => {
-				const s = buf.toString();
-				this.kernelStderr = `${this.kernelStderr}${s}`.slice(-KERNEL_STDERR_TAIL_MAX);
-			});
-
-			kernel.on("error", (err) => {
-				if (this.kernel !== kernel) return;
-				this.appendKernelDiagnostic(`spawn error: ${err.message}`);
+			this.sandbox = sandbox;
+			sandbox.process.on("exit", () => {
+				if (this.sandbox !== sandbox) return;
 				this.state = "shutdown";
 				liveKernels.delete(this);
 				this.cleanupResources();
 			});
-
-			kernel.on("exit", (code, signal) => {
-				if (this.kernel !== kernel) return;
-				if (this.state !== "shutdown") {
-					this.appendKernelDiagnostic(`unexpected exit code=${code} signal=${signal}`);
-				}
-				this.state = "shutdown";
-				liveKernels.delete(this);
-				this.cleanupResources();
-			});
-		}
-
-		const connectionPath = connection.path;
-		let conn: ConnectionInfo;
-		try {
-			conn = await this.waitForResolvedConnection(connectionPath);
+			const conn = parseConnectionInfo(await sandbox.ready);
+			if (!conn || !hasResolvedPorts(conn) || conn.key !== connection.key)
+				throw new Error("Invalid isolated kernel connection");
+			if ((this.state as string) === "shutdown") throw new Error("Kernel disposed during startup");
 			this.connection = conn;
-		} catch (e) {
-			const canRetryStartup = (this.state as string) !== "shutdown";
-			await this.shutdown();
-			if (canRetryStartup) this.state = "idle";
-			throw e;
-		}
-
-		this.shell = new Dealer();
-		this.iopub = new Subscriber();
-		this.control = new Dealer();
-		this.shell.connect(`${conn.transport}://${conn.ip}:${conn.shell_port}`);
-		this.iopub.connect(`${conn.transport}://${conn.ip}:${conn.iopub_port}`);
-		this.control.connect(`${conn.transport}://${conn.ip}:${conn.control_port}`);
-		this.iopub.subscribe("");
-
-		// ZMQ PUB/SUB slow-joiner: give the subscription a brief chance to reach the kernel before first execute.
-		await sleep(IOPUB_SUBSCRIBE_DELAY_MS);
-		this.startIopubPump();
-
-		try {
+			this.shell = sandbox.shell;
+			this.control = sandbox.control;
+			this.iopub = sandbox.iopub;
+			this.startIopubPump();
 			await this.probeReady();
 		} catch (e) {
 			const canRetryStartup = (this.state as string) !== "shutdown";
-			await this.shutdown();
+			await this.shutdown().catch((cleanupError) => {
+				this.appendKernelDiagnostic(`startup cleanup failed: ${errorMessage(cleanupError)}`);
+			});
 			if (canRetryStartup) this.state = "idle";
 			throw e;
 		}
 
 		this.state = "running";
-		this.startForkedLivenessMonitor();
-	}
-
-	// A forked kernel isn't a direct child, so no "exit" fires when it dies. Poll its
-	// pid so a mid-run death tears down like the direct-spawn exit handler: mark
-	// shutdown, drop from liveKernels, and reject any in-flight execution.
-	private startForkedLivenessMonitor(): void {
-		if (this.kernelPid === undefined) return;
-		this.forkedLivenessTimer = globalThis.setInterval(() => {
-			if (this.state !== "running") return;
-			if (!this.forkedKernelDied()) return;
-			this.appendKernelDiagnostic("forked kernel exited unexpectedly");
-			this.state = "shutdown";
-			liveKernels.delete(this);
-			this.cleanupResources();
-		}, FORKED_LIVENESS_POLL_MS);
-		this.forkedLivenessTimer.unref?.();
-	}
-
-	// A forked kernel is not a direct child, so it emits no "exit" event; poll its
-	// pid so a dead child fails fast instead of burning the full resolve timeout.
-	private forkedKernelDied(): boolean {
-		if (this.kernelPid === undefined) return false;
-		try {
-			process.kill(this.kernelPid, 0);
-			return false;
-		} catch (error) {
-			// EPERM means the pid exists but isn't signalable by us — still alive.
-			// Only ESRCH (no such process) is genuine death.
-			return !(error instanceof Error && (error as NodeJS.ErrnoException).code === "EPERM");
-		}
-	}
-
-	private async waitForResolvedConnection(connectionPath: string): Promise<ConnectionInfo> {
-		const startedAt = Date.now();
-		while (Date.now() - startedAt < PORTS_RESOLVE_TIMEOUT_MS) {
-			if ((this.state as string) === "shutdown" || this.forkedKernelDied()) {
-				const tail = this.kernelStderr.slice(-1024);
-				throw new Error(`Kernel exited before resolving ports. stderr:\n${tail || "(empty)"}`);
-			}
-
-			const info = readConnectionInfo(connectionPath);
-			if (info && hasResolvedPorts(info)) {
-				return info;
-			}
-
-			await sleep(25);
-		}
-
-		const tail = this.kernelStderr.slice(-1024);
-		throw new Error(
-			`Kernel did not resolve connection ports within ${PORTS_RESOLVE_TIMEOUT_MS}ms. stderr tail:\n${tail || "(empty)"}`,
-		);
 	}
 
 	private async probeReady(): Promise<void> {
@@ -867,7 +719,7 @@ export class KernelManager {
 
 		const startedAt = Date.now();
 		while (Date.now() - startedAt < READY_TIMEOUT_MS) {
-			if ((this.state as string) === "shutdown" || this.forkedKernelDied()) {
+			if ((this.state as string) === "shutdown") {
 				const tail = this.kernelStderr.slice(-1024);
 				throw new Error(`Kernel exited during startup. stderr:\n${tail || "(empty)"}`);
 			}
@@ -879,7 +731,7 @@ export class KernelManager {
 			]);
 			if (winner.kind === "timeout") break;
 
-			const incoming = decode(winner.frames);
+			const incoming = decode(winner.frames, conn.key);
 			if (
 				incoming?.header.msg_type === "kernel_info_reply" &&
 				(incoming.parent_header as { msg_id?: string }).msg_id === requestMsgId
@@ -1048,7 +900,7 @@ export class KernelManager {
 
 		try {
 			for await (const frames of iopub) {
-				const incoming = decode(frames);
+				const incoming = decode(frames, this.connection?.key ?? "");
 				if (!incoming) continue;
 				const t = incoming.header.msg_type;
 				if (t === "comm_open" || t === "comm_msg" || t === "comm_close") {
@@ -1345,6 +1197,9 @@ export class KernelManager {
 	}
 
 	private async handleHostRequest(data: unknown): Promise<Record<string, unknown>> {
+		if (this.hostRequestsSuspended) {
+			throw new Error("host requests are unavailable while restoring kernel state");
+		}
 		if (!isRecord(data)) {
 			throw new Error("host request payload must be an object");
 		}
@@ -1378,43 +1233,20 @@ export class KernelManager {
 		await this.control.send(encode(msg, this.connection.key));
 	}
 
-	private cleanupResources(killSignal: NodeJS.Signals = "SIGTERM"): void {
+	private cleanupResources(): void {
 		this.clearSnapshotTimer();
 		this.lateSentAgentMessageHandlers.clear();
-		if (this.forkedLivenessTimer) {
-			globalThis.clearInterval(this.forkedLivenessTimer);
-			this.forkedLivenessTimer = undefined;
-		}
 		this.rejectActiveExecution(new Error("Kernel has been shut down"));
 		this.shell?.close();
 		this.iopub?.close();
 		this.control?.close();
+		this.sandbox?.close();
+		this.sandbox = undefined;
 		this.shell = undefined;
 		this.iopub = undefined;
 		this.control = undefined;
 		this.iopubPumpPromise = undefined;
-		try {
-			if (this.kernel) {
-				this.kernel.kill(killSignal);
-			} else if (this.kernelPid !== undefined && !this.forkedKernelDied()) {
-				// Only signal a forked kernel confirmed still alive: a dead pid may have
-				// been recycled by the OS, and a kill would then hit an unrelated process.
-				process.kill(this.kernelPid, killSignal);
-			}
-		} catch {
-			// Kernel already exited.
-		}
-		this.kernel = undefined;
-		this.kernelPid = undefined;
 		this.connection = undefined;
-		if (this.tempDir) {
-			try {
-				rmSync(this.tempDir, { recursive: true, force: true });
-			} catch {
-				// Leave the temp dir for OS tmp cleanup.
-			}
-		}
-		this.tempDir = undefined;
 		this.startPromise = undefined;
 	}
 
@@ -1439,9 +1271,11 @@ export class KernelManager {
 	}
 
 	async shutdown(opts: { snapshot?: boolean } = {}): Promise<void> {
+		const sandbox = this.sandbox;
 		if (this.state === "shutdown") {
 			liveKernels.delete(this);
 			this.cleanupResources();
+			await sandbox?.waitForExit();
 			return;
 		}
 		// Best-effort final flush (bounded) before teardown — used by signal handlers
@@ -1465,6 +1299,7 @@ export class KernelManager {
 		}
 
 		this.cleanupResources();
+		await sandbox?.waitForExit();
 	}
 
 	async restart(): Promise<void> {
@@ -1486,9 +1321,11 @@ export class KernelManager {
 	}
 
 	async kill(): Promise<void> {
+		const sandbox = this.sandbox;
 		this.state = "shutdown";
 		liveKernels.delete(this);
-		this.cleanupResources("SIGKILL");
+		this.cleanupResources();
+		await sandbox?.waitForExit();
 	}
 
 	/**
@@ -1504,10 +1341,12 @@ export class KernelManager {
 			// read failure) falls through to the catch below — no snapshot is
 			// written rather than one written without its exclusion list.
 			const excludedSecrets = (await cfg.getActiveCredentialValues?.()) ?? [];
+			// Never transmit host credential plaintext into the sandbox, even for filtering.
+			if (excludedSecrets.length) return null;
 			const code = buildSnapshotCode(
-				cfg.path,
-				cfg.manifestPath,
-				cfg.maxBytes ?? DEFAULT_SNAPSHOT_MAX_BYTES,
+				"/tmp/zero-state.dill",
+				"/tmp/zero-state.json",
+				Math.min(cfg.maxBytes ?? DEFAULT_SNAPSHOT_MAX_BYTES, SANDBOX_SNAPSHOT_MAX_BYTES),
 				excludedSecrets,
 			);
 			const r = await this.enqueueExecute(code, { maxOutputChars: SNAPSHOT_MAX_OUTPUT_CHARS, internal: true });
@@ -1515,7 +1354,24 @@ export class KernelManager {
 				this.appendKernelDiagnostic(`state snapshot failed: ${r.error?.evalue ?? r.stderr}`);
 				return null;
 			}
-			return parseSnapshotResult(r.stdout, cfg.path);
+			const result = parseSnapshotResult(r.stdout, cfg.path);
+			if (!result) return null;
+			const transfer = await this.enqueueExecute(
+				"import base64 as _zero_b64, json as _zero_json\nprint(_zero_json.dumps([_zero_b64.b64encode(open('/tmp/zero-state.dill', 'rb').read()).decode('ascii'), open('/tmp/zero-state.json').read()]))",
+				{ internal: true, maxOutputChars: SNAPSHOT_MAX_OUTPUT_CHARS },
+			);
+			if (transfer.status !== "ok") return null;
+			const payload: unknown = JSON.parse(transfer.stdout.trim());
+			if (!Array.isArray(payload) || payload.length !== 2 || !payload.every((v) => typeof v === "string"))
+				return null;
+			const bytes = Buffer.from(payload[0], "base64");
+			if (bytes.length > Math.min(cfg.maxBytes ?? DEFAULT_SNAPSHOT_MAX_BYTES, SANDBOX_SNAPSHOT_MAX_BYTES))
+				return null;
+			mkdirSync(dirname(cfg.path), { recursive: true });
+			writeFileSync(`${cfg.path}.tmp`, bytes, { mode: 0o600 });
+			renameSync(`${cfg.path}.tmp`, cfg.path);
+			writeFileSync(cfg.manifestPath, payload[1], { mode: 0o600 });
+			return result;
 		} catch (error) {
 			this.appendKernelDiagnostic(`state snapshot error: ${errorMessage(error)}`);
 			return null;
@@ -1527,11 +1383,16 @@ export class KernelManager {
 	 * start() and before the runtime bootstrap, which then refreshes live handles
 	 * (rlm, skills) over anything restored. Never throws.
 	 */
-	async restoreState(): Promise<RestoreResult | null> {
+	async restoreState(options: { keepHostRequestsSuspended?: boolean } = {}): Promise<RestoreResult | null> {
 		const cfg = this.options.snapshot;
 		if (!cfg) return null;
-		const code = buildRestoreCode(cfg.path);
+		this.hostRequestsSuspended = true;
 		try {
+			const payload = readFileSync(cfg.path);
+			if (payload.length > Math.min(cfg.maxBytes ?? DEFAULT_SNAPSHOT_MAX_BYTES, SANDBOX_SNAPSHOT_MAX_BYTES)) {
+				throw new Error(`Snapshot exceeds sandbox relay restore limit (${SANDBOX_SNAPSHOT_MAX_BYTES} bytes)`);
+			}
+			const code = `import base64 as _zero_b64\nopen('/tmp/zero-state.dill', 'wb').write(_zero_b64.b64decode(${JSON.stringify(payload.toString("base64"))}))\n${buildRestoreCode("/tmp/zero-state.dill")}`;
 			const r = await this.enqueueExecute(code, { maxOutputChars: SNAPSHOT_MAX_OUTPUT_CHARS, internal: true });
 			if (r.status !== "ok") {
 				this.appendKernelDiagnostic(`state restore failed: ${r.error?.evalue ?? r.stderr}`);
@@ -1541,7 +1402,13 @@ export class KernelManager {
 		} catch (error) {
 			this.appendKernelDiagnostic(`state restore error: ${errorMessage(error)}`);
 			return null;
+		} finally {
+			if (!options.keepHostRequestsSuspended) this.resumeHostRequests();
 		}
+	}
+
+	resumeHostRequests(): void {
+		this.hostRequestsSuspended = false;
 	}
 
 	/** Live user-defined top-level names, or null if the kernel isn't running. Never throws. */
@@ -1602,6 +1469,7 @@ export class KernelManager {
 	/** Graceful cleanup. Waits briefly for in-flight host request handlers before closing sockets. */
 	dispose(): Promise<void> {
 		return (async () => {
+			const sandbox = this.sandbox;
 			// Final namespace flush while the kernel is still live (session end / reload).
 			await this.flushSnapshotForDispose();
 			this.state = "shutdown";
@@ -1614,6 +1482,7 @@ export class KernelManager {
 				}
 			} finally {
 				this.cleanupResources();
+				await sandbox?.waitForExit();
 			}
 		})();
 	}

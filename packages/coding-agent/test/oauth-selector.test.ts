@@ -1,6 +1,6 @@
 import { setKeybindings } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { KeybindingsManager } from "../src/core/keybindings.js";
 import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../src/core/provider-display-names.js";
@@ -81,6 +81,30 @@ describe("OAuthSelectorComponent", () => {
 		expect(selections).toEqual(["anthropic:api_key"]);
 	});
 
+	it("groups popular providers and wraps navigation without changing auth methods", () => {
+		const selected = vi.fn();
+		const selector = new OAuthSelectorComponent(
+			"login",
+			AuthStorage.inMemory(),
+			[
+				{ id: "anthropic", name: "Anthropic", authType: "oauth" },
+				{ id: "custom", name: "Custom", authType: "api_key" },
+			],
+			selected,
+			() => {},
+			() => ({ configured: false }),
+		);
+		const output = stripAnsi(selector.render(120).join("\n"));
+		expect(output).toContain("Zero");
+		expect(output).toContain("Popular");
+		selector.handleInput("\x1b[A");
+		selector.handleInput("\r");
+		expect(selected).toHaveBeenLastCalledWith({ id: "custom", name: "Custom", authType: "api_key" });
+		selector.handleInput("\x1b[B");
+		selector.handleInput("\r");
+		expect(selected).toHaveBeenLastCalledWith({ id: "anthropic", name: "Anthropic", authType: "oauth" });
+	});
+
 	it("shows configured providers before unconfigured providers", () => {
 		process.env.OPENAI_API_KEY = "test-openai-key";
 		const authStorage = AuthStorage.inMemory();
@@ -100,6 +124,31 @@ describe("OAuthSelectorComponent", () => {
 
 		expect(output.indexOf("OpenAI")).toBeLessThan(output.indexOf("Anthropic"));
 		expect(output.indexOf("OpenAI")).toBeLessThan(output.indexOf("GitHub Copilot"));
+	});
+
+	it("updates section visibility on resize while keeping focus and whitespace-only search", () => {
+		let rows = 14;
+		const selector = new OAuthSelectorComponent(
+			"login",
+			AuthStorage.inMemory(),
+			[{ id: "anthropic", name: "Anthropic", authType: "oauth" }],
+			() => {},
+			() => {},
+			() => ({ configured: false }),
+			{ getRows: () => rows },
+		);
+		selector.focused = true;
+		expect(selector.getSearchInput().focused).toBe(true);
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("Popular");
+		rows = 16;
+		expect(stripAnsi(selector.render(80).join("\n"))).toContain("Popular");
+		expect(selector.render(80).length).toBeLessThanOrEqual(rows);
+		selector.handleInput("   ");
+		expect(stripAnsi(selector.render(80).join("\n"))).toContain("Anthropic");
+		expect(selector.getSearchInput().getValue()).toBe("   ");
+		rows = 14;
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("Popular");
+		expect(selector.getSearchInput().focused).toBe(true);
 	});
 
 	it("shows stored OAuth auth distinctly in the API key selector", () => {

@@ -70,6 +70,37 @@ describe("ModelSelectorComponent", () => {
 		expect(selectedModel).toBe("faux-1");
 	});
 
+	it("groups recent models and searches human-readable names without losing provider identity", async () => {
+		const harness = await createHarness({ models: [{ id: "opaque-id", name: "Friendly Model", reasoning: true }] });
+		harnesses.push(harness);
+		const first = harness.getModel("opaque-id")!;
+		const second = { ...first, provider: "another-provider" };
+		const selected = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			undefined,
+			harness.session.modelRegistry,
+			[],
+			selected,
+			() => {},
+			undefined,
+			{
+				availableModels: [first, second],
+				configuredProviders: new Set([first.provider, second.provider]),
+				recentModels: [`${second.provider}/${second.id}`],
+			},
+		);
+		let output = stripAnsi(selector.render(120).join("\n"));
+		expect(output).toContain("Recent");
+		expect(output).toContain("Zero");
+		selector.handleInput("Friendly Model");
+		output = stripAnsi(selector.render(120).join("\n"));
+		expect(output).toContain("Friendly Model");
+		expect(output).not.toContain("Recent");
+		selector.handleInput("\r");
+		expect(selected).toHaveBeenCalledWith(second);
+	});
+
 	it("renders injected daemon models without refreshing the local registry", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1", name: "Local One", reasoning: true }],
@@ -100,6 +131,29 @@ describe("ModelSelectorComponent", () => {
 		selector.updateAvailableModels([connectionModel]);
 
 		expect(refresh).not.toHaveBeenCalled();
+	});
+
+	it("updates section visibility on resize even when the visible model count stays the same", async () => {
+		const harness = await createHarness({ models: [{ id: "one", name: "One", reasoning: true }] });
+		harnesses.push(harness);
+		let rows = 14;
+		const model = harness.getModel("one")!;
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			undefined,
+			harness.session.modelRegistry,
+			[],
+			() => {},
+			() => {},
+			undefined,
+			{ availableModels: [model], recentModels: [`${model.provider}/${model.id}`], getRows: () => rows },
+		);
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("Recent");
+		rows = 16;
+		expect(stripAnsi(selector.render(80).join("\n"))).toContain("Recent");
+		expect(selector.render(80).length).toBeLessThanOrEqual(rows);
+		rows = 14;
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("Recent");
 	});
 
 	it("updates injected models without clearing the current search", async () => {
@@ -135,6 +189,23 @@ describe("ModelSelectorComponent", () => {
 		expect(selector.getSearchInput().getValue()).toBe("beta");
 		expect(output).toContain("beta");
 		expect(output).toContain("Beta");
+	});
+
+	it("keeps long provider section labels within the terminal viewport", async () => {
+		const harness = await createHarness({ models: [{ id: "one", name: "One", reasoning: true }] });
+		harnesses.push(harness);
+		const model = { ...harness.getModel("one")!, provider: "custom-provider-".repeat(30) };
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			undefined,
+			harness.session.modelRegistry,
+			[],
+			() => {},
+			() => {},
+			undefined,
+			{ availableModels: [model], getRows: () => 16 },
+		);
+		expect(selector.render(80).length).toBeLessThanOrEqual(16);
 	});
 
 	it("keeps an empty injected model snapshot empty instead of falling back to local models", async () => {

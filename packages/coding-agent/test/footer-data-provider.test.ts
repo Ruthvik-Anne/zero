@@ -121,6 +121,23 @@ describe("FooterDataProvider reftable branch detection", () => {
 		}
 	});
 
+	it("replaces the extension status snapshot when its contents change", () => {
+		const provider = new FooterDataProvider(tempDir);
+		try {
+			const empty = provider.getExtensionStatuses();
+			provider.setExtensionStatus("sync", "Indexing");
+			const populated = provider.getExtensionStatuses();
+			expect(populated).not.toBe(empty);
+			expect(populated.get("sync")).toBe("Indexing");
+
+			provider.clearExtensionStatuses();
+			expect(provider.getExtensionStatuses()).not.toBe(populated);
+			expect(provider.getExtensionStatuses().size).toBe(0);
+		} finally {
+			provider.dispose();
+		}
+	});
+
 	it("resolves the branch via git when HEAD is .invalid in a reftable repo", () => {
 		const repoDir = createPlainReftableRepo(tempDir);
 		process.chdir(repoDir);

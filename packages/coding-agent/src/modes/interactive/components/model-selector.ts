@@ -7,6 +7,7 @@ import {
 	getKeybindings,
 	Spacer,
 	Text,
+	TruncatedText,
 	type TUI,
 } from "@zero-agent/tui";
 import type { ModelRegistry } from "../../../core/model-registry.js";
@@ -128,7 +129,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.getHeaderRows = options.header ? (options.getHeaderRows ?? (() => 2)) : () => 0;
 
 		this.panel = new MenuPanel({
-			title: "Models",
+			title: "Zero · Select model",
 			subtitle: options.subtitle ?? "All models across supported providers.",
 		});
 		this.addChild(this.panel);
@@ -161,7 +162,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.panel.addChild(new Spacer(1));
 
 		// Create list container
-		this.listContainer = new MenuList({ compact: () => this.listLayout.compact });
+		this.listContainer = new MenuList({ compact: true });
 		this.panel.addChild(this.listContainer);
 		this.updateResponsiveLayout();
 
@@ -324,7 +325,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const scored = fuzzyFilterScored(
 				this.activeModels,
 				query,
-				({ id, provider }) => `${id} ${provider} ${provider}/${id} ${provider} ${id}`,
+				({ id, provider, model }) => `${id} ${provider} ${provider}/${id} ${provider} ${id} ${model.name}`,
 			);
 			scored.sort(
 				(a, b) =>
@@ -361,7 +362,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		);
 		const endIndex = Math.min(startIndex + maxVisible, this.filteredModels.length);
 
-		// Show visible slice of filtered models
+		let previousCategory: string | undefined;
+		// Section headers are presentation only; navigation indexes model identities.
 		for (let i = startIndex; i < endIndex; i++) {
 			const item = this.filteredModels[i];
 			if (!item) continue;
@@ -369,6 +371,17 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			const isSelected = i === this.selectedIndex;
 			const isCurrent = modelsAreEqual(this.currentModel, item.model);
 			const isConfigured = this.isProviderConfigured(item);
+			if (this.shouldShowSections()) {
+				const category = isCurrent
+					? "Current"
+					: this.recentRank.has(this.getModelKey(item))
+						? "Recent"
+						: item.provider;
+				if (category !== previousCategory) {
+					this.listContainer.addChild(new TruncatedText(theme.bold(theme.fg("accent", category)), 0, 0));
+					previousCategory = category;
+				}
+			}
 			const meta = isConfigured
 				? isCurrent
 					? theme.fg("success", "current")
@@ -377,7 +390,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 			this.listContainer.addChild(
 				new MenuRow({
-					primary: item.id,
+					primary: item.model.name && item.model.name !== item.id ? `${item.model.name} (${item.id})` : item.id,
 					secondary: item.provider,
 					meta,
 					selected: isSelected,
@@ -498,8 +511,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			preferredVisibleItems: PREFERRED_VISIBLE_MODELS,
 			totalItems: this.filteredModels.length,
 			reservedRows,
-			comfortableItemRows: 3,
-			compactItemRows: 2,
+			comfortableItemRows: this.shouldShowSections() ? 3 : 2,
+			compactItemRows: this.shouldShowSections() ? 3 : 2,
+			comfortableListPaddingRows: 0,
 			scrollIndicatorRows: MODEL_SCROLL_INDICATOR_ROWS,
 		});
 		this.responsiveLayoutKey = [
@@ -507,6 +521,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			showHeaderHelp ? "help" : "no-help",
 			headerHelpRows,
 			this.shouldShowSelectedDetails() ? "detail" : "no-detail",
+			this.shouldShowSections() ? "sections" : "flat",
 			this.listLayout.compact ? "compact" : "comfortable",
 			this.listLayout.visibleItems,
 		].join(":");
@@ -514,6 +529,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private shouldShowHeaderHelp(): boolean {
 		return this.hasRows(MODEL_HELP_MIN_ROWS);
+	}
+
+	private shouldShowSections(): boolean {
+		return !this.searchQuery.trim() && this.hasRows(16);
 	}
 
 	private shouldShowSelectedDetails(): boolean {

@@ -1,4 +1,4 @@
-import { setKeybindings } from "@zero-agent/tui";
+import { setKeybindings, visibleWidth } from "@zero-agent/tui";
 import stripAnsi from "strip-ansi";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.js";
@@ -8,7 +8,7 @@ import {
 	listDirectSubagentEntries,
 	SubagentSummaryLine,
 } from "../src/modes/interactive/components/subagent-summary-line.js";
-import { InteractiveMode } from "../src/modes/interactive/interactive-mode.js";
+import { InteractiveMode, RenderOnceContainer } from "../src/modes/interactive/interactive-mode.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
 
 function child(
@@ -61,7 +61,7 @@ describe("SubagentSummaryLine", () => {
 		});
 	});
 
-	it("expands into a per-child list inline on Enter or Right, with no separate screen", () => {
+	it("shows children by default and toggles the inline list on Enter or Right", () => {
 		const line = new SubagentSummaryLine();
 		line.setSubagentCounts({ total: 2, running: 1, idle: 1, inactive: 0 });
 		line.setSubagentEntries([
@@ -70,18 +70,111 @@ describe("SubagentSummaryLine", () => {
 		]);
 
 		let rendered = line.render(100).map(stripAnsi);
-		expect(rendered).toHaveLength(1);
-
-		line.handleInput("\r");
-		rendered = line.render(100).map(stripAnsi);
 		expect(rendered).toHaveLength(3);
 		expect(rendered[1]).toContain("a — running");
 		expect(rendered[2]).toContain("b — idle");
 		expect(rendered[2]).toContain("wrote the report");
 
-		line.handleInput("\x1b[C");
+		line.handleInput("\r");
 		rendered = line.render(100).map(stripAnsi);
 		expect(rendered).toHaveLength(1);
+		line.setSubagentEntries([{ id: "a", label: "updated", status: "idle" }]);
+		expect(line.render(100)).toHaveLength(1);
+		line.handleInput("\x1b[C");
+		expect(stripAnsi(line.render(100)[1])).toContain("updated");
+	});
+
+	it("bounds expanded rows and widths as the terminal shrinks and grows", () => {
+		let rows = 4;
+		const line = new SubagentSummaryLine(
+			() => "location",
+			undefined,
+			undefined,
+			() => rows,
+		);
+		line.setSubagentCounts({ total: 5, running: 5, idle: 0, inactive: 0 });
+		line.setSubagentEntries(
+			Array.from({ length: 5 }, (_, i) => ({
+				id: String(i),
+				label: `long-worker-${i}`,
+				status: "running" as const,
+			})),
+		);
+		expect(line.render(30)).toHaveLength(4);
+		expect(stripAnsi(line.render(30).at(-1)!)).toContain("4 more");
+		for (const width of [1, 8, 30]) {
+			expect(line.render(width).every((text) => visibleWidth(text) <= width)).toBe(true);
+		}
+		rows = 2;
+		expect(line.render(30)).toHaveLength(2);
+		rows = 10;
+		expect(line.render(30)).toHaveLength(7);
+	});
+
+	it("pads focused and child rows by terminal display width", () => {
+		const line = new SubagentSummaryLine();
+		line.focused = true;
+		line.setSubagentCounts({ total: 1, running: 1, idle: 0, inactive: 0 });
+		line.setSubagentEntries([{ id: "wide", label: "界-worker", status: "running", recap: "✅ ready" }]);
+
+		const rendered = line.render(32);
+		expect(rendered).toHaveLength(2);
+		for (const row of rendered) expect(visibleWidth(row)).toBe(32);
+	});
+
+	it("measures a component for row budgeting without rendering it twice in the frame", () => {
+		const child = {
+			invalidate: vi.fn(),
+			render: vi.fn((width: number) => ["first".padEnd(width), "second".padEnd(width)]),
+		};
+		const container = new RenderOnceContainer();
+		container.addChild(child);
+
+		expect(container.measureNextRender(40)).toBe(2);
+		expect(container.render(40)).toHaveLength(2);
+		expect(child.render).toHaveBeenCalledTimes(1);
+		container.render(40);
+		expect(child.render).toHaveBeenCalledTimes(2);
+	});
+
+	it("budgets rows from the rendered editor and a custom footer with one render each", () => {
+		const editor = {
+			invalidate: vi.fn(),
+			render: vi.fn(() => ["editor", "editor"]),
+		};
+		const customFooter = {
+			invalidate: vi.fn(),
+			render: vi.fn(() => ["footer", "footer", "footer"]),
+		};
+		const editorContainer = new RenderOnceContainer();
+		const footerSlot = new RenderOnceContainer();
+		editorContainer.addChild(editor);
+		footerSlot.addChild(customFooter);
+		const mode = Object.assign(Object.create(InteractiveMode.prototype), {
+			editorContainer,
+			footerSlot,
+			ui: { terminal: { columns: 80, rows: 24 } },
+		});
+		const getMaxRows = Reflect.get(InteractiveMode.prototype, "getSubagentMaxRows") as (this: typeof mode) => number;
+
+		editorContainer.render(80);
+		expect(getMaxRows.call(mode)).toBe(8);
+		footerSlot.render(80);
+		expect(editor.render).toHaveBeenCalledTimes(1);
+		expect(customFooter.render).toHaveBeenCalledTimes(1);
+	});
+
+	it("collapses before returning focus and does not reopen on status updates", () => {
+		const line = new SubagentSummaryLine();
+		line.setSubagentCounts({ total: 1, running: 1, idle: 0, inactive: 0 });
+		line.setSubagentEntries([{ id: "a", label: "a", status: "running" }]);
+		line.onCancel = vi.fn();
+		line.handleInput("\x1b");
+		line.setSubagentCounts({ total: 1, running: 0, idle: 1, inactive: 0 });
+		expect(line.render(100)).toHaveLength(1);
+		expect(line.onCancel).not.toHaveBeenCalled();
+		line.handleInput("\x1b");
+		expect(line.onCancel).toHaveBeenCalledOnce();
 	});
 
 	it("stays visible but non-expandable with no subagents", () => {

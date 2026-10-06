@@ -89,16 +89,18 @@ export class FooterDataProvider {
 
 	/** Internal: set extension status */
 	setExtensionStatus(key: string, text: string | undefined): void {
+		const next = new Map(this.extensionStatuses);
 		if (text === undefined) {
-			this.extensionStatuses.delete(key);
+			next.delete(key);
 		} else {
-			this.extensionStatuses.set(key, text);
+			next.set(key, text);
 		}
+		this.extensionStatuses = next;
 	}
 
 	/** Internal: clear extension statuses */
 	clearExtensionStatuses(): void {
-		this.extensionStatuses.clear();
+		if (this.extensionStatuses.size > 0) this.extensionStatuses = new Map();
 	}
 
 	/** Number of unique providers with available models (for footer display) */

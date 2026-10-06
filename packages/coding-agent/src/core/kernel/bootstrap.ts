@@ -57,6 +57,7 @@ const BOOTSTRAP_VERSION_FILE = ".bootstrap-version";
 const BOOTSTRAP_LOCK_NAME = ".bootstrap.lock";
 const BOOTSTRAP_LOCK_RETRY_MS = 100;
 const BOOTSTRAP_LOCK_STALE_WITHOUT_PID_MS = 30_000;
+const DEFAULT_WINDOWS_SANDBOX_PYTHON = "~/.local/share/zero/kernel-sandbox/bin/python";
 
 let inFlightEnsureKernelPython: { key: string; promise: Promise<string> } | null = null;
 
@@ -934,6 +935,51 @@ async function ensureKernelPythonUncached(
 }
 
 export function ensureKernelPython(options: EnsureKernelPythonOptions = {}): Promise<string> {
+	if (process.platform === "win32") {
+		const python =
+			process.env.ZERO_KERNEL_SANDBOX_PYTHON ?? process.env.ZERO_KERNEL_PYTHON ?? DEFAULT_WINDOWS_SANDBOX_PYTHON;
+		if (!python.startsWith("/") && !python.startsWith("~/")) {
+			return Promise.reject(
+				new Error(`Windows kernel sandbox Python must be an absolute Linux path in WSL (or ~/...), not ${python}`),
+			);
+		}
+		options.onProgress?.("Validating WSL Linux kernel runtime...");
+		const imports = [
+			"ipykernel",
+			"zmq",
+			"dill",
+			...DEFAULT_RLM_EXTRA_IMPORT_NAMES,
+			...(options.pythonSkills ?? []).map((skill) => skill.importName),
+		];
+		const script = [
+			"import os, subprocess, sys",
+			"python = os.path.expanduser(sys.argv[1])",
+			"mods = sys.argv[2:]",
+			"assert os.path.isabs(python) and os.path.isfile(python), 'Linux Python not found: ' + python",
+			"subprocess.check_call([python, '-c', 'import ' + ', '.join(mods)])",
+			`subprocess.check_call([python, '-c', ${JSON.stringify(RUNTIME_READY_CHECK)}])`,
+		].join("\n");
+		return run(
+			"wsl.exe",
+			[
+				"-d",
+				process.env.ZERO_KERNEL_WSL_DISTRO ?? "Ubuntu",
+				"--exec",
+				"/usr/bin/python3",
+				"-I",
+				"-c",
+				script,
+				python,
+				...imports,
+			],
+			{ stdio: "ignore" },
+		).then(
+			() => python,
+			(error) => {
+				throw new Error(`WSL kernel Python validation failed for ${python}: ${errorMessage(error)}`);
+			},
+		);
+	}
 	const pythonSkills = normalizePythonSkills(options.pythonSkills);
 	const key = ensureKernelPythonKey(pythonSkills);
 	if (inFlightEnsureKernelPython?.key === key) return inFlightEnsureKernelPython.promise;
@@ -967,6 +1013,12 @@ export async function isKernelPythonLikelyCached(
 	options: Pick<EnsureKernelPythonOptions, "pythonSkills"> = {},
 ): Promise<boolean> {
 	try {
+		if (process.platform === "win32") {
+			const configured = process.env.ZERO_KERNEL_SANDBOX_PYTHON ?? process.env.ZERO_KERNEL_PYTHON;
+			if (!configured) return false;
+			await ensureKernelPython({ pythonSkills: options.pythonSkills, onProgress: () => {} });
+			return true;
+		}
 		// ZERO_KERNEL_PYTHON never triggers a venv build (bootstrap.ts's override branch
 		// only runs fast `python -c "import ..."` probes, or throws) — always safe to prewarm.
 		if (process.env.ZERO_KERNEL_PYTHON) return true;
