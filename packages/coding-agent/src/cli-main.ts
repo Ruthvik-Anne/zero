@@ -1,4 +1,5 @@
 import { enableCompileCache } from "node:module";
+import { maybeRunAutomaticUpdate, shouldAttemptAutomaticUpdate } from "./cli/auto-update.js";
 import { maybeStartDaemonEarly } from "./cli/daemon-launch.js";
 import {
 	closeOwnedSessionWorkerOwnerWatch,
@@ -22,11 +23,20 @@ export async function runCli(): Promise<void> {
 	installOwnedSessionWorkerOwnerWatch();
 
 	const args = process.argv.slice(2);
+
 	const handledByOwnedWorker = await maybeRunOwnedSessionWorkerFrontend(args);
 	if (!handledByOwnedWorker) {
+		if (shouldAttemptAutomaticUpdate(args, process.stdin.isTTY)) {
+			const automaticUpdate = maybeRunAutomaticUpdate(args);
+			if (automaticUpdate.handled) {
+				process.exitCode = automaticUpdate.exitCode;
+				closeOwnedSessionWorkerOwnerWatch();
+				return;
+			}
+		}
 		if (!isOwnedSessionWorkerProcess()) {
 			// Boot a cold daemon concurrently with this process's heavy imports.
-			maybeStartDaemonEarly(process.argv.slice(2));
+			maybeStartDaemonEarly(args);
 		}
 		const [{ EnvHttpProxyAgent, setGlobalDispatcher }, { main }] = await Promise.all([
 			import("undici"),
@@ -38,7 +48,7 @@ export async function runCli(): Promise<void> {
 		setGlobalDispatcher(new EnvHttpProxyAgent({ bodyTimeout: 0, headersTimeout: 0 }));
 
 		try {
-			await main(process.argv.slice(2));
+			await main(args);
 		} finally {
 			closeOwnedSessionWorkerOwnerWatch();
 		}

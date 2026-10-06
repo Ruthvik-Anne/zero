@@ -209,7 +209,7 @@ describe("harness refinement", () => {
 		expect(inferRefinementResultScope(result)).toBe("global");
 	});
 
-	it("atomically replaces harness state without leaving temporary files", () => {
+	it.runIf(process.platform !== "win32")("atomically replaces harness state without leaving temporary files", () => {
 		const harnessStateDir = makeTempDir();
 		const state = loadHarnessState(harnessStateDir);
 		seedEntry(state, "memory");

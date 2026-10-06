@@ -35,6 +35,8 @@ export const isBunBinary =
 export const isBunRuntime = !!process.versions.bun;
 
 export const SELF_UPDATE_INTERACTIVE_CHILD_ENV = "ZERO_INTERACTIVE_SELF_UPDATE";
+export const AUTO_UPDATE_CHILD_ENV = "ZERO_AUTO_UPDATE_CHILD";
+export const AUTO_UPDATE_RELAUNCHED_ENV = "ZERO_AUTO_UPDATE_RELAUNCHED";
 export const SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE = 75;
 
 // =============================================================================

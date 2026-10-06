@@ -16,12 +16,19 @@ export interface LatestPiRelease {
 	version: string;
 	packageName?: string;
 	installSpec?: string;
+	artifacts?: ReleaseArtifact[];
+	mainArtifactName?: string;
+}
+
+export interface ReleaseArtifact {
+	name: string;
+	url: string;
 }
 
 interface ParsedVersion {
-	major: number;
-	minor: number;
-	patch: number;
+	major: bigint;
+	minor: bigint;
+	patch: bigint;
 	prerelease?: string;
 }
 
@@ -56,14 +63,24 @@ function comparePrereleaseIdentifiers(leftPrerelease: string, rightPrerelease: s
 }
 
 function parsePackageVersion(version: string): ParsedVersion | undefined {
-	const match = version.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/);
+	const match = version
+		.trim()
+		.match(
+			/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+		);
 	if (!match) {
 		return undefined;
 	}
+	if (
+		match[4]
+			?.split(".")
+			.some((identifier) => /^\d+$/.test(identifier) && identifier.length > 1 && identifier[0] === "0")
+	)
+		return undefined;
 	return {
-		major: Number.parseInt(match[1], 10),
-		minor: Number.parseInt(match[2], 10),
-		patch: Number.parseInt(match[3], 10),
+		major: BigInt(match[1]),
+		minor: BigInt(match[2]),
+		patch: BigInt(match[3]),
 		prerelease: match[4],
 	};
 }
@@ -75,9 +92,9 @@ export function comparePackageVersions(leftVersion: string, rightVersion: string
 		return undefined;
 	}
 
-	if (left.major !== right.major) return left.major - right.major;
-	if (left.minor !== right.minor) return left.minor - right.minor;
-	if (left.patch !== right.patch) return left.patch - right.patch;
+	if (left.major !== right.major) return left.major > right.major ? 1 : -1;
+	if (left.minor !== right.minor) return left.minor > right.minor ? 1 : -1;
+	if (left.patch !== right.patch) return left.patch > right.patch ? 1 : -1;
 	if (left.prerelease === right.prerelease) return 0;
 	if (!left.prerelease) return 1;
 	if (!right.prerelease) return -1;
@@ -86,10 +103,7 @@ export function comparePackageVersions(leftVersion: string, rightVersion: string
 
 export function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
 	const comparison = comparePackageVersions(candidateVersion, currentVersion);
-	if (comparison !== undefined) {
-		return comparison > 0;
-	}
-	return candidateVersion.trim() !== currentVersion.trim();
+	return comparison !== undefined && comparison > 0;
 }
 
 function getZeroDownloadBaseUrl(): string | undefined {
@@ -117,9 +131,15 @@ function resolveReleaseUrl(baseUrl: string, pathOrUrl: string): string | undefin
 	const trimmed = pathOrUrl.trim();
 	if (!trimmed) return undefined;
 	try {
-		return new URL(trimmed).toString();
+		let resolved: URL;
+		try {
+			resolved = new URL(trimmed);
+		} catch {
+			resolved = new URL(trimmed.replace(/^\/+/, ""), `${baseUrl.replace(/\/+$/, "")}/`);
+		}
+		return resolved.protocol === "https:" ? resolved.toString() : undefined;
 	} catch {
-		return `${baseUrl}/${trimmed.replace(/^\/+/, "")}`;
+		return undefined;
 	}
 }
 
@@ -167,7 +187,9 @@ async function getLatestReleaseFromManifest(
 				? data.packageName.trim()
 				: undefined;
 	const installSpec = typeof data.tarball === "string" ? resolveReleaseUrl(baseUrl, data.tarball) : undefined;
-	const release: LatestPiRelease = { version: normalizeReleaseVersion(data.version) };
+	const version = normalizeReleaseVersion(data.version);
+	if (!parsePackageVersion(version)) return undefined;
+	const release: LatestPiRelease = { version };
 	if (packageName) {
 		release.packageName = packageName;
 	}
@@ -179,6 +201,7 @@ async function getLatestReleaseFromManifest(
 
 interface GithubReleaseAsset {
 	name?: unknown;
+	browser_download_url?: unknown;
 }
 
 interface GithubReleaseResponse {
@@ -186,12 +209,44 @@ interface GithubReleaseResponse {
 	assets?: unknown;
 }
 
-// No installSpec: a GitHub release asset URL needs authentication to fetch
-// from a private repo (which this fork's is, by default), and there is no
-// generic way to hand that off to a plain `npm install -g <spec>` call. This
-// only answers "is there a newer version" — self-update still needs either a
-// self-hosted manifest (ZERO_DOWNLOAD_BASE_URL) or a real npm-published
-// package to fully automate.
+function githubAsset(assets: unknown, name: string, repo: string): ReleaseArtifact | undefined {
+	if (!Array.isArray(assets)) return undefined;
+	const asset = (assets as GithubReleaseAsset[]).find((candidate) => candidate.name === name);
+	if (typeof asset?.browser_download_url !== "string") return undefined;
+	try {
+		const url = new URL(asset.browser_download_url);
+		if (
+			url.protocol !== "https:" ||
+			url.hostname !== "github.com" ||
+			!url.pathname.toLowerCase().startsWith(`/${repo.toLowerCase()}/releases/download/`)
+		)
+			return undefined;
+		return { name, url: url.toString() };
+	} catch {
+		return undefined;
+	}
+}
+
+function githubReleaseBundle(
+	assets: unknown,
+	version: string,
+	repo: string,
+): Pick<LatestPiRelease, "artifacts" | "mainArtifactName" | "packageName"> {
+	const mainArtifactName = `zero-${version}.tgz`;
+	const names = [
+		mainArtifactName,
+		`zero-ai-${version}.tgz`,
+		`zero-core-${version}.tgz`,
+		`zero-tui-${version}.tgz`,
+		"SHA256SUMS",
+	];
+	const releaseArtifacts = names.map((name) => githubAsset(assets, name, repo));
+	if (releaseArtifacts.some((asset) => asset === undefined)) return {};
+	return { artifacts: releaseArtifacts as ReleaseArtifact[], mainArtifactName, packageName: "zero" };
+}
+
+// Exact release assets are installable for this public repository. Do not use
+// similarly named or off-repository URLs as package-manager input.
 async function getLatestReleaseFromGithub(
 	currentVersion: string,
 	timeoutMs: number,
@@ -205,6 +260,7 @@ async function getLatestReleaseFromGithub(
 			headers: {
 				"User-Agent": getZeroUserAgent(currentVersion),
 				accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2026-03-10",
 			},
 			signal: AbortSignal.timeout(timeoutMs),
 		});
@@ -221,10 +277,13 @@ async function getLatestReleaseFromGithub(
 		);
 		if (!versionedAsset) return undefined;
 		const version = versionedAsset.name.replace(/^zero-/, "").replace(/\.tgz$/, "");
-		return version ? { version } : undefined;
+		if (!parsePackageVersion(version)) return undefined;
+		return { version, ...githubReleaseBundle(data.assets, version, repo) };
 	}
 	if (typeof data.tag_name !== "string" || !data.tag_name.trim()) return undefined;
-	return { version: normalizeReleaseVersion(data.tag_name) };
+	const version = normalizeReleaseVersion(data.tag_name);
+	if (!parsePackageVersion(version)) return undefined;
+	return { version, ...githubReleaseBundle(data.assets, version, repo) };
 }
 
 export async function getLatestPiVersion(
