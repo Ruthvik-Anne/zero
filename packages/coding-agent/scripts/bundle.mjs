@@ -59,6 +59,11 @@ await build({
 		"chromium-bidi",
 		"playwright",
 		"playwright-core",
+		// @mistralai/mistralai's own hooks/tracing.js dynamically imports this behind a
+		// try/catch, documenting it as "an optional peer; without it, tracing is a no-op."
+		// We don't use that tracing feature and don't depend on it, but esbuild still
+		// resolves the dynamic import() statically at bundle time.
+		"@opentelemetry/api",
 	],
 	define: { __PI_BUNDLED__: "true", __PI_BUILD_ID__: JSON.stringify(buildId) },
 	banner: {
