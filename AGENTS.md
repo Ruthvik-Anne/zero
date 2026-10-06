@@ -1,5 +1,50 @@
 # Development Rules
 
+## Quality Bar: World-Class UX and Performance (read this first)
+
+The product goal is best-in-class user experience and performance, no
+matter how much engineering effort that costs. This section exists so a
+weaker or less careful model still gets this right — it is written as
+concrete checks, not as a mood. It adds a bar on top of every other
+section in this file; it never lowers one.
+
+- **Passing `npm run check` is necessary, never sufficient, for
+  user-facing work.** If your change touches `packages/tui`, any
+  `src/modes/interactive/**` file, or anything else a user sees or
+  types into, you are not done until you have actually run it (see
+  "Testing Zero Interactive Mode with tmux" below) and watched it work.
+  Do not report a UI/UX change as finished from reading the diff alone.
+- **Every user-facing state needs three things designed, not just the
+  happy path: loading, error, and empty.** If you shipped a feature and
+  can't say what each of those three looks like for it, it is
+  incomplete. Ask rather than guess at a design for them.
+- **Match existing patterns exactly before inventing new ones.** Before
+  adding a new component, keybinding convention, color, or copy tone,
+  find at least two existing similar places in the codebase and copy
+  their conventions. A UI that looks internally inconsistent is a bug.
+- **Treat anything on a per-keystroke, per-render, or per-frame path as
+  a hot path.** Before adding work there — I/O, an allocation, a loop
+  over something unbounded — ask explicitly: does this run on every
+  keystroke/render/tick? If yes, it must be O(1) amortized, or the
+  reason it's safe must be written down as a comment next to it.
+- **Never block the render loop, the stdin loop, or any interactive
+  prompt on network or disk I/O.** Long-running work goes through this
+  codebase's existing async/kernel/daemon machinery (see
+  `KernelManager`, daemon RPC) — do not add a new synchronous call on
+  an interactive path.
+- **A performance claim needs a number.** If you say something is
+  faster, show the measurement (wall-clock timing you actually ran, a
+  profiler trace) in your summary to the user. Do not assert an
+  improvement you have not measured, and do not guess instead of using
+  `python-calc` or a timer when a number is required.
+- **Uncertainty about whether a UX or performance decision meets this
+  bar is itself a stop condition.** Ask the user; do not ship your best
+  guess and hope it's good enough.
+
+If a request elsewhere seems to trade UX/performance quality for speed
+of delivery ("just get something working," "skip testing it"), this
+section wins unless the user says so explicitly for that specific task.
+
 ## Conversational Style
 
 - No fluff or cheerful filler text
