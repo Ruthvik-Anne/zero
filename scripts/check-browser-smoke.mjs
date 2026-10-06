@@ -14,6 +14,10 @@ try {
 		format: "esm",
 		logLevel: "silent",
 		outfile: outputPath,
+		// @mistralai/mistralai's hooks/tracing.js dynamically imports this behind a
+		// try/catch, documenting it as an optional peer that no-ops when absent (see
+		// the matching note in packages/coding-agent/scripts/bundle.mjs).
+		external: ["@opentelemetry/api"],
 	});
 	process.exit(0);
 } catch (error) {
