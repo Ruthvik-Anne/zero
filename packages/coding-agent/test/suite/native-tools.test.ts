@@ -52,6 +52,19 @@ describe("native runtime tools", () => {
 		expect(python).not.toHaveBeenCalled();
 	});
 
+	it("session cancellation settles a direct host wait even without a caller signal", async () => {
+		const h = await createHarness();
+		harnesses.push(h);
+		const browser = vi.spyOn(h.session, "handleBrowserHostRequest").mockImplementation(() => new Promise(() => {}));
+		const operation = h.session.state.tools
+			.find((tool) => tool.name === "browser")!
+			.execute("wait", { action: "navigate", url: "https://example.com" });
+		const rejection = expect(operation).rejects.toThrow("cancelled");
+		await vi.waitFor(() => expect(browser).toHaveBeenCalled());
+		h.session.requestAbort();
+		await rejection;
+	});
+
 	it("produces durable native file evidence and lifecycle state through a real faux-provider turn", async () => {
 		const h = await createHarness();
 		harnesses.push(h);

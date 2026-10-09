@@ -81,6 +81,7 @@ export function createHostRuntimeTools(
 	getHandlers: (signal?: AbortSignal) => HostRequestHandlers,
 	permission: RuntimePermission,
 	wait: <T>(operation: Promise<T>, signal?: AbortSignal) => Promise<T>,
+	operationSignal: (signal?: AbortSignal) => AbortSignal | undefined = (signal) => signal,
 ): ToolDefinition[] {
 	const tools: ToolDefinition[] = [];
 	function register<S extends TSchema>(
@@ -103,6 +104,7 @@ export function createHostRuntimeTools(
 					"Use direct runtime tools for their documented operations; IPython is for programmable computation and shell cells.",
 				],
 				execute: async (_id, params, signal, _update, ctx) => {
+					signal = operationSignal(signal);
 					signal?.throwIfAborted();
 					const blocked = await permission(ctx, name, mutates(params), signal);
 					if (blocked) return blocked;

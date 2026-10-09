@@ -39,6 +39,7 @@ export function createKernelRuntimeTools(
 				executionMode: "sequential",
 				renderShell: "self",
 				execute: async (id, params, signal, update, ctx) => {
+					signal = session.nativeOperationSignal(signal);
 					signal?.throwIfAborted();
 					const blocked = ctx.mode === "manual" ? undefined : await permission(ctx, name, mutates, signal);
 					if (blocked) return blocked;
