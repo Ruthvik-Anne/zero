@@ -2,6 +2,30 @@
 
 Zero gives each agent session a persistent IPython kernel and a native recursive sub-agent interface. The Python `rlm` package is a model-facing shim; the TypeScript host owns child execution, persistence, usage accounting, and lifecycle.
 
+## Direct runtime tools
+
+Models use schema-defined tools for routine runtime operations. They do not need to discover a Python module or write a cell for each operation. Explicit tool allowlists still control which tools are active.
+
+| Tools | Execution boundary |
+|---|---|
+| `goal`, `compact`, `refine`, `ask_user`, `vault`, `browser`, `agent_observe`, `rlm_heartbeat`, `find_models` | Existing TypeScript host handlers; no kernel startup. Feature-specific tools are omitted when their handlers are unavailable. |
+| `subagent`, `advisor`, `agent_message`, `coordination`, `read_file`, `write_file`, `code_map` | Existing native adapters, with their session and family policies. |
+| `edit`, `attach_image`, `websearch`, `linear`, `notion` | Direct schemas over the existing Python implementation. Only enabled Python packages are registered; the kernel starts lazily. Arguments are encoded as JSON data into fixed expressions. |
+| `ipython` | Persistent programmable computation and shell cells. |
+| `load_skill` | Reads instructional skills. Callable built-ins with active tools are omitted from the model's skill catalog; their Python packages remain installed for runtime execution. |
+
+Mutation checks and manual confirmation apply to direct operations. Kernel-backed calls also pass through the existing IPython permission and credential wrapper. MCP tools require their existing configured connection; `list_tools` discovers exact input schemas before `call_tool` executes one.
+
+The model selector browses providers first, then that provider's models. Typing at the provider screen searches all models. Back/cancel inside a provider returns to providers. Scope filtering, recent models, authentication, and exact provider/model identities are preserved.
+
+## Kernel output in the terminal
+
+Kernel streams publish bounded cumulative snapshots rather than individual chunks. The IPython tool coalesces bursts into updates every 50 ms and discards pending updates after completion or cancellation. Final results remain authoritative.
+
+Collapsed cells show the last three nonempty output lines, their stdout/stderr/result labels, and a count of hidden earlier lines. Expanded cells separate stdout, stderr, result, and errors. Progress carriage returns and terminal control sequences are normalized before rendering. File diffs retain their separate expansion control, including for direct `edit` calls. Images use the existing terminal metadata fallback and model image-content path.
+
+Text results and displays are bounded at ingestion; Jupyter `clear_output`, including delayed clearing, resets accumulated text. Normal PNG/JPEG/GIF/WebP display payloads use the same attachment validation as `attach_image`.
+
 ## Architecture
 
 ```mermaid

@@ -5,6 +5,7 @@
 import { buildChildAgentDoctrine, buildRlmPrompt, buildSubagentGuidance } from "./prompts/index.js";
 import { formatHarnessStateForPrompt, type HarnessState, REFINE_SKILL_NAME } from "./refinement/index.js";
 import { formatSkillsForPrompt, getPythonSkillRuntimeInfo, type Skill } from "./skills.js";
+import { RUNTIME_SKILL_TO_TOOL } from "./tools/runtime-operations.js";
 
 export interface BuildSystemPromptOptions {
 	/** Custom system prompt (replaces default). */
@@ -61,8 +62,10 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	const appendSection = appendSystemPrompt ? `\n\n${appendSystemPrompt}` : "";
 
 	const contextFiles = providedContextFiles ?? [];
-	const skills = providedSkills ?? [];
 	const tools = selectedTools ?? ["ipython"];
+	const skills = (providedSkills ?? []).filter(
+		(skill) => skill.kind !== "python" || !tools.includes(RUNTIME_SKILL_TO_TOOL[skill.name]),
+	);
 	const hasIpython = tools.includes("ipython");
 	const hasBash = tools.includes("bash");
 	const visibleSkills = skills.filter((skill) => !skill.disableModelInvocation);

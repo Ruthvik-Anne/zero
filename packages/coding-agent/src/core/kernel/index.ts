@@ -182,6 +182,8 @@ export interface ExecuteOptions {
 	/** Aborting interrupts the kernel via the control channel. */
 	signal?: AbortSignal;
 	onStream?: (chunk: string, name: "stdout" | "stderr") => void;
+	/** Bounded cumulative output, including display updates and clear_output. */
+	onOutput?: (output: Pick<ExecuteResult, "stdout" | "stderr" | "result">) => void;
 	onLateSentAgentMessage?: (message: KernelSentAgentMessage) => void;
 	/** Cap stdout / stderr / result at this many characters. Default 65536. */
 	maxOutputChars?: number;
@@ -234,6 +236,10 @@ export interface KernelSentAgentMessage {
 		sessionId: string;
 		sessionName?: string;
 	};
+}
+
+export function boundedKernelResult(text: string, limit: number): string {
+	return text.length > limit ? `${text.slice(0, limit)}\n[... output truncated at ${limit} chars ...]` : text;
 }
 
 export interface ExecuteResult {
@@ -398,6 +404,7 @@ interface ActiveExecution {
 	diffs: KernelDiffDisplay[];
 	attachments: KernelAttachment[];
 	sentAgentMessages: KernelSentAgentMessage[];
+	clearOutputPending?: boolean;
 	error?: ExecuteResult["error"];
 	status: ExecuteResult["status"];
 	settled: boolean;
@@ -939,34 +946,54 @@ export class KernelManager {
 				return;
 			}
 		}
-		if (t === "stream") {
-			const c = incoming.content as { name: "stdout" | "stderr"; text: string };
-			if (c.name === "stdout") {
-				if (execution.stdout.length < execution.maxChars) {
-					execution.stdout += c.text;
-					if (execution.stdout.length > execution.maxChars) {
-						execution.stdout = execution.stdout.slice(0, execution.maxChars);
-						execution.stdoutTruncated = true;
-					}
-				}
-			} else if (c.name === "stderr") {
-				if (execution.stderr.length < execution.maxChars) {
-					execution.stderr += c.text;
-					if (execution.stderr.length > execution.maxChars) {
-						execution.stderr = execution.stderr.slice(0, execution.maxChars);
-						execution.stderrTruncated = true;
-					}
-				}
-			}
-			execution.opts.onStream?.(c.text, c.name);
+		const clearOutput = () => {
+			execution.stdout = "";
+			execution.stderr = "";
+			execution.result = undefined;
+			execution.stdoutTruncated = false;
+			execution.stderrTruncated = false;
+			execution.clearOutputPending = false;
+		};
+		if (
+			execution.clearOutputPending &&
+			["stream", "execute_result", "display_data", "update_display_data", "error"].includes(t)
+		)
+			clearOutput();
+		if (t === "clear_output") {
+			if (incoming.content.wait === true) execution.clearOutputPending = true;
+			else clearOutput();
+		} else if (t === "stream") {
+			const c = incoming.content;
+			if ((c.name !== "stdout" && c.name !== "stderr") || typeof c.text !== "string") return;
+			const name = c.name;
+			const remaining = Math.max(0, execution.maxChars - execution[name].length);
+			const accepted = c.text.slice(0, remaining);
+			execution[name] += accepted;
+			if (c.text.length > remaining) execution[name === "stdout" ? "stdoutTruncated" : "stderrTruncated"] = true;
+			if (accepted) execution.opts.onStream?.(accepted, name);
 		} else if (t === "execute_result") {
-			const c = incoming.content as { data: Record<string, string> };
-			if (c.data["text/plain"]) execution.result = c.data["text/plain"];
+			const c = incoming.content as { data: Record<string, unknown> };
+			if (typeof c.data?.["text/plain"] === "string")
+				execution.result = boundedKernelResult(c.data["text/plain"], execution.maxChars);
 		} else if (t === "display_data" || t === "update_display_data") {
 			const c = incoming.content as { data?: Record<string, unknown> };
+			if (
+				typeof c.data?.["text/plain"] === "string" &&
+				!c.data[DIFF_DISPLAY_MIME] &&
+				!c.data[ATTACHMENT_DISPLAY_MIME] &&
+				!c.data[AGENT_MESSAGE_DISPLAY_MIME]
+			) {
+				execution.result = boundedKernelResult(c.data["text/plain"], execution.maxChars);
+			}
 			const diff = parseDiffDisplay(c.data?.[DIFF_DISPLAY_MIME]);
 			if (diff) execution.diffs.push(diff);
-			const attachment = parseAttachmentDisplay(c.data?.[ATTACHMENT_DISPLAY_MIME]);
+			const imageMime = ["image/png", "image/jpeg", "image/gif", "image/webp"].find(
+				(mime) => typeof c.data?.[mime] === "string",
+			);
+			const attachment = parseAttachmentDisplay(
+				c.data?.[ATTACHMENT_DISPLAY_MIME] ??
+					(imageMime ? { mime_type: imageMime, data: c.data?.[imageMime] } : undefined),
+			);
 			if (attachment === "oversized") {
 				execution.stderr += `${execution.stderr ? "\n" : ""}attachment dropped: exceeds ${MAX_ATTACHMENT_DATA_CHARS} base64 chars`;
 				execution.status = "error";
@@ -984,6 +1011,9 @@ export class KernelManager {
 			if (c.execution_state === "idle") {
 				this.finishActiveExecution(execution);
 			}
+		}
+		if (["stream", "execute_result", "display_data", "update_display_data", "clear_output"].includes(t)) {
+			execution.opts.onOutput?.({ stdout: execution.stdout, stderr: execution.stderr, result: execution.result });
 		}
 	}
 

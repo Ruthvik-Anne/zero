@@ -6,6 +6,7 @@ import { createBashToolDefinition } from "../../../core/tools/bash.js";
 import { createEditToolDefinition } from "../../../core/tools/edit.js";
 import { createAllToolDefinitions } from "../../../core/tools/index.js";
 import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
+import { KERNEL_RUNTIME_TOOL_NAMES } from "../../../core/tools/runtime-python-tools.js";
 import type { AgentConnectionToolDefinition } from "../../agent-connection/index.js";
 import { type Theme, theme } from "../theme/theme.js";
 import { getWorkingPulseFrame, workingIconFrame } from "../theme/working-icon.js";
@@ -172,7 +173,14 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private shouldUseIpythonRenderer(): boolean {
-		return this.toolName === "ipython" && !this.toolDefinition?.renderCall && !this.toolDefinition?.renderResult;
+		return (
+			(this.toolName === "ipython" ||
+				(this.toolDefinition?.renderShell === "self" &&
+					!this.toolDefinition.replayBuiltInToolName &&
+					KERNEL_RUNTIME_TOOL_NAMES.has(this.toolName))) &&
+			!this.toolDefinition?.renderCall &&
+			!this.toolDefinition?.renderResult
+		);
 	}
 
 	private isBuiltInEditTool(): boolean {
@@ -349,7 +357,9 @@ export class ToolExecutionComponent extends Container {
 
 			if (this.shouldUseIpythonRenderer()) {
 				const state = {
-					code: getIpythonCodeFromArgs(this.args),
+					code:
+						this.toolName === "ipython" ? getIpythonCodeFromArgs(this.args) : JSON.stringify(this.args, null, 2),
+					displayName: this.toolName === "ipython" ? undefined : this.toolName,
 					content: this.result?.content,
 					details: this.result?.details,
 					isPartial: this.isPartial,

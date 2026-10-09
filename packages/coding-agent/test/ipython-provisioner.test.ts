@@ -276,7 +276,7 @@ describe("IpythonKernelProvisioner", () => {
 
 		expect(execute).toHaveBeenCalledWith(
 			"\n \r\n\t%%script /custom/bash\r\nexport TEST_PREFIX=1\necho body",
-			expect.objectContaining({ signal: undefined, onStream: expect.any(Function) }),
+			expect.objectContaining({ signal: undefined, onOutput: expect.any(Function) }),
 		);
 	});
 

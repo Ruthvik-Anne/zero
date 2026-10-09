@@ -7,6 +7,8 @@ import { readWorkspaceFile } from "../coordination/service.js";
 import { defineTool, type ExtensionContext, type ToolDefinition } from "../extensions/types.js";
 import type { HostRequestHandlers } from "../kernel/index.js";
 import type { Skill } from "../skills.js";
+import { createHostRuntimeTools } from "./runtime-operations.js";
+import { createKernelRuntimeTools } from "./runtime-python-tools.js";
 
 async function nativePermission(ctx: ExtensionContext, name: string, mutates: boolean, signal?: AbortSignal) {
 	signal?.throwIfAborted();
@@ -345,7 +347,17 @@ export function createNativeRuntimeToolDefinitions(
 			return result({ path, action: params.action, neighbors });
 		},
 	});
-	const definitions: ToolDefinition[] = [subagent, advisor, loadSkill, coordination, read, write, codeMap];
+	const definitions: ToolDefinition[] = [
+		subagent,
+		advisor,
+		loadSkill,
+		coordination,
+		read,
+		write,
+		codeMap,
+		...createHostRuntimeTools(getHandlers, nativePermission, awaitNativeOperation),
+		...createKernelRuntimeTools(session, getSkills, nativePermission),
+	];
 	if (getHandlers()["agent_message.send"])
 		definitions.push(
 			defineTool({
