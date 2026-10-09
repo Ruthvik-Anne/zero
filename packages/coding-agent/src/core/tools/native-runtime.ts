@@ -7,6 +7,8 @@ import { readWorkspaceFile } from "../coordination/service.js";
 import { defineTool, type ExtensionContext, type ToolDefinition } from "../extensions/types.js";
 import type { HostRequestHandlers } from "../kernel/index.js";
 import type { Skill } from "../skills.js";
+import { createHostRuntimeTools, runtimeToolSchema } from "./runtime-operations.js";
+import { createKernelRuntimeTools } from "./runtime-python-tools.js";
 
 async function nativePermission(ctx: ExtensionContext, name: string, mutates: boolean, signal?: AbortSignal) {
 	signal?.throwIfAborted();
@@ -69,7 +71,7 @@ export function createNativeRuntimeToolDefinitions(
 		name: "subagent",
 		label: "Subagent",
 		description:
-			"Spawn independent work, list direct children, or delete a direct child. Spawn returns an admission handle, not an answer. Children inherit tools, permissions, model and depth limits. Use IPython for searching and model discovery.",
+			"Spawn independent work, list direct children, or delete a direct child. Spawn returns an admission handle, not an answer. Children inherit tools, permissions, model and depth limits. Use IPython for programmable searching and find_models for authenticated model discovery.",
 		promptGuidelines: [
 			"Use subagent to delegate independent work. End your turn after admission; collect replies via agent_message or files.",
 		],
@@ -153,9 +155,9 @@ export function createNativeRuntimeToolDefinitions(
 		name: "load_skill",
 		label: "Load Skill",
 		description:
-			"Load instructions for an exact visible skill name. Returns SKILL.md and reference directory; never executes a skill or guesses a callable. Execute only documented APIs using IPython.",
+			"Load instructions for an exact visible skill name. Returns SKILL.md and reference directory; never executes a skill or guesses a callable. Use direct tools for runtime operations and documented Python APIs for programmable work.",
 		promptGuidelines: [
-			"Use load_skill with an exact available skill name before using its documented interface. Searching remains in IPython.",
+			"Use load_skill with an exact available skill name before using its documented interface. File searching remains in IPython.",
 		],
 		parameters: Type.Object({ name: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
 		execute: async (_id, params, signal, _update, ctx) => {
@@ -345,7 +347,19 @@ export function createNativeRuntimeToolDefinitions(
 			return result({ path, action: params.action, neighbors });
 		},
 	});
-	const definitions: ToolDefinition[] = [subagent, advisor, loadSkill, coordination, read, write, codeMap];
+	const definitions: ToolDefinition[] = [
+		subagent,
+		advisor,
+		loadSkill,
+		coordination,
+		read,
+		write,
+		codeMap,
+		...createHostRuntimeTools(getHandlers, nativePermission, awaitNativeOperation, (signal) =>
+			session.nativeOperationSignal(signal),
+		),
+		...createKernelRuntimeTools(session, getSkills, nativePermission),
+	];
 	if (getHandlers()["agent_message.send"])
 		definitions.push(
 			defineTool({
@@ -387,5 +401,5 @@ export function createNativeRuntimeToolDefinitions(
 				},
 			}),
 		);
-	return definitions;
+	return definitions.map((definition) => ({ ...definition, parameters: runtimeToolSchema(definition.parameters) }));
 }

@@ -88,9 +88,9 @@ describe("IPythonCellComponent diff rendering", () => {
 		const collapsedWithDiffs = renderCell({ ...state, expanded: false, editDiffsExpanded: true });
 		expect(collapsedWithDiffs).toMatch(/11 - .*gamma/);
 		expect(collapsedWithDiffs).toMatch(/11 \+ .*GAMMA/);
-		// The cell stays collapsed otherwise: no code body beyond the summary preview, no stdout.
+		// The cell stays collapsed otherwise: no code body beyond the summary preview; stdout stays visible.
 		expect(collapsedWithDiffs).not.toContain('print("edit-done-marker")');
-		expect(collapsedWithDiffs).not.toContain("unrelated stdout line");
+		expect(collapsedWithDiffs).toContain("unrelated stdout line");
 
 		const collapsed = renderCell({ ...state, expanded: false, editDiffsExpanded: false });
 		expect(collapsed).not.toMatch(/11 - .*gamma/);
@@ -368,7 +368,7 @@ describe("IPythonCellComponent diff rendering", () => {
 		);
 	});
 
-	it("keeps non-edit cells collapsed to a single summary line", () => {
+	it("shows a bounded output tail on collapsed non-edit cells", () => {
 		const collapsed = renderCell({
 			code: "print('hello')",
 			details: { status: "ok", durationMs: 3, stdout: "hello\nworld\nmore\noutput\nlines" },
@@ -376,8 +376,9 @@ describe("IPythonCellComponent diff rendering", () => {
 			argsComplete: true,
 			expanded: false,
 		});
-		// No diffs → the collapsed view stays a single line; output hides behind expand.
-		expect(collapsed.split("\n")).toHaveLength(1);
+		expect(collapsed.split("\n")).toHaveLength(5);
+		expect(collapsed).toContain("2 earlier lines");
+		expect(collapsed).toContain("lines");
 		expect(collapsed).toContain("to expand");
 		expect(collapsed).not.toContain("world");
 	});

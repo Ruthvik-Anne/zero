@@ -20,11 +20,11 @@ const IPYTHON_CONTROL_PROMPT = [
 	"",
 	"Important: do not install dependencies into the IPython kernel just to make an external project import or run there. If a project import, test, script, CLI, or dependency check is needed, run it through that project's own environment and normal command interface. For example, in a Python repo use its documented commands, `uv run ...`, `.venv/bin/python ...`, or the active project interpreter from the repo root. Treat failures from that native environment as the relevant result.",
 	"",
-	"Use Python for reading, searching, and editing files — it gives you reusable variables you can slice, filter, and act on without re-reading. Always assign read/search results to named variables so you can revisit them later.",
+	"Prefer available direct tools for documented file and runtime operations. Use Python when programmable processing helps; assign reusable read/search results to named variables.",
 	"",
 	"Each `%%bash` cell runs in a throw-away subshell, so shell-level state (`cd`, `export`, `source`, shell variables) does NOT carry to later cells. Keep dependent shell steps inside one `%%bash` cell when they need shared shell state, or use kernel-level equivalents that survive across calls: `%cd <dir>` for the working directory and `os.environ['VAR'] = '...'` (or `%env VAR=...`) for environment variables — these apply to all subsequent `%%bash` calls.",
 	"",
-	"Python state in the kernel, by contrast, persists across cells: named variables, helper functions, classes, imports, notes, parsed outputs, and helper data structures all remain available in every later turn. Tool calls are themselves Python `await` expressions, so their return values can be bound to variables and composed into program logic just like any other call.",
+	"Python state in the kernel, by contrast, persists across cells: named variables, helper functions, classes, imports, notes, parsed outputs, and helper data structures all remain available in every later turn. Documented Python interfaces can also be called with `await` and composed in kernel code; prefer the direct tool when its schema covers the operation.",
 	"",
 	"Continual harness state is available as `rlm.harness` and `rlm.get_harness_state()`. CRUD calls are local to this Prime Agent session by default: `rlm.harness.create_memory(...)`, `rlm.harness.update_memory(...)`, `rlm.harness.delete_memory(...)`, `rlm.harness.create_skill(...)`, `rlm.harness.update_skill(...)`, `rlm.harness.delete_skill(...)`, `rlm.harness.create_subagent(...)`, `rlm.harness.update_subagent(...)`, `rlm.harness.delete_subagent(...)`, `rlm.harness.create_prompt_note(...)`, `rlm.harness.update_prompt_note(...)`, `rlm.harness.delete_prompt_note(...)`, plus `rlm.harness.record_refinement(...)` and `rlm.harness.overview()`. Use `global_=True` only for stable cross-session lessons; Python reserves `global`, so literal `global=True` is invalid syntax.",
 	"",
@@ -190,7 +190,7 @@ export function buildRlmPrompt(options: RlmPromptOptions): string {
 		parts.push("Use the native advisor tool for a skeptical second opinion, not action execution.");
 	if (activeTools.includes("load_skill"))
 		parts.push(
-			"Use load_skill to read an exact visible skill's instructions. It never executes skills; use only documented interfaces in IPython. File and web searching stay in IPython, not a native search tool.",
+			"Use load_skill to read an exact visible skill's instructions. It reads instructions rather than executing them. Use available direct tools for runtime operations, and documented Python interfaces for programmable work.",
 		);
 
 	return parts.join("\n");

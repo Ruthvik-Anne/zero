@@ -91,14 +91,44 @@ describe("ModelSelectorComponent", () => {
 			},
 		);
 		let output = stripAnsi(selector.render(120).join("\n"));
-		expect(output).toContain("Recent");
+		expect(output).toContain("another-provider");
 		expect(output).toContain("Zero");
+		expect(output).not.toContain("Friendly Model");
 		selector.handleInput("Friendly Model");
 		output = stripAnsi(selector.render(120).join("\n"));
 		expect(output).toContain("Friendly Model");
 		expect(output).not.toContain("Recent");
 		selector.handleInput("\r");
 		expect(selected).toHaveBeenCalledWith(second);
+	});
+
+	it("opens a provider before selecting and returns to providers on cancel", async () => {
+		const harness = await createHarness({ models: [{ id: "one", name: "Model One", reasoning: true }] });
+		harnesses.push(harness);
+		const model = harness.getModel("one")!;
+		const selected = vi.fn();
+		const cancel = vi.fn();
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			model,
+			harness.session.modelRegistry,
+			[],
+			selected,
+			cancel,
+			undefined,
+			{ availableModels: [model, { ...model, provider: "other-provider" }] },
+		);
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("Model One");
+		selector.handleInput("\r");
+		expect(selected).not.toHaveBeenCalled();
+		expect(stripAnsi(selector.render(80).join("\n"))).toContain("Model One");
+		selector.handleInput("\x1b");
+		expect(cancel).not.toHaveBeenCalled();
+		expect(stripAnsi(selector.render(80).join("\n"))).not.toContain("Model One");
+		selector.updateAvailableModels([model, { ...model, provider: "other-provider" }]);
+		selector.handleInput("\r");
+		selector.handleInput("\r");
+		expect(selected).toHaveBeenCalledWith(model);
 	});
 
 	it("renders injected daemon models without refreshing the local registry", async () => {

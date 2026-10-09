@@ -19,6 +19,7 @@ export interface IPythonCellContentBlock {
 }
 
 export interface IPythonCellState {
+	displayName?: string;
 	code: string;
 	content?: readonly IPythonCellContentBlock[];
 	details?: unknown;
@@ -325,6 +326,17 @@ function formatIpythonErrorSummary(error: IpythonErrorDetails): string {
 	return visibleWidth(value) <= 48 ? `${error.ename}: ${value}` : error.ename;
 }
 
+/** Treat carriage returns as progress-line replacement, never terminal control. */
+export function normalizeKernelOutput(text: string): string {
+	return normalizeErrorDetails(
+		text
+			.replace(/\r\n/g, "\n")
+			.split("\n")
+			.map((line) => line.replace(/\r$/, "").split("\r").at(-1) ?? "")
+			.join("\n"),
+	).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+}
+
 export class IPythonCellComponent implements Component {
 	private readonly renderCache = new VersionedRenderCache();
 	private state: IPythonCellState;
@@ -373,6 +385,7 @@ export class IPythonCellComponent implements Component {
 		}
 
 		if (!this.state.expanded) {
+			this.renderOutputPreview(lines, safeWidth, details);
 			return this.renderCache.set(safeWidth, cacheVersion, lines);
 		}
 
@@ -380,11 +393,50 @@ export class IPythonCellComponent implements Component {
 		return this.renderCache.set(safeWidth, cacheVersion, lines);
 	}
 
+	private renderOutputPreview(lines: string[], width: number, details: IpythonDetails): void {
+		const sentMessages = details.sentAgentMessages ?? [];
+		const diffs = details.diffs ?? [];
+		const hasStructuredOutput =
+			details.stdout !== undefined || details.stderr !== undefined || details.result !== undefined;
+		const sources = hasStructuredOutput
+			? [
+					{ text: details.stdout, label: "stdout" },
+					{ text: details.stderr, label: "stderr" },
+					{ text: details.result, label: "result" },
+				]
+			: [{ text: textFromBlocks(this.state.content), label: "output" }];
+		// Output is bounded at kernel ingress and cached by state version.
+		const rows = sources.flatMap(({ text, label }) => {
+			if (!text || isEditConfirmation(text, diffs) || isAgentMessageReceipt(text, sentMessages)) return [];
+			return normalizeKernelOutput(text)
+				.split("\n")
+				.filter((line) => !!line.trim())
+				.map((text) => ({ text, label }));
+		});
+		for (const row of rows.slice(-3)) {
+			const color = row.label === "stderr" ? "warning" : "toolOutput";
+			lines.push(
+				truncateToWidth(`   ${theme.fg("dim", `${row.label} · `)}${theme.fg(color, row.text)}`, width, "…"),
+			);
+		}
+		if (rows.length > 3)
+			this.addWrapped(
+				lines,
+				OUTPUT_INDENT,
+				theme.fg("dim", `${rows.length - 3} earlier lines · expand for full output`),
+				width,
+			);
+		if (details.error)
+			this.addWrapped(lines, OUTPUT_INDENT, theme.fg("error", formatIpythonErrorSummary(details.error)), width);
+	}
+
 	private collapsedLine(details: IpythonDetails): string {
 		const code = this.state.code.trimEnd();
 		const isBashCell = parseIpythonBashCell(code) !== undefined;
 		const preview = previewIpythonCode(code);
-		const languageLabel = isBashCell && preview.language !== "bash" ? `bash · ${preview.language}` : preview.language;
+		const languageLabel =
+			this.state.displayName ??
+			(isBashCell && preview.language !== "bash" ? `bash · ${preview.language}` : preview.language);
 		const parts = [`${this.marker(details)} ${theme.fg("muted", languageLabel)}`];
 
 		if (preview.text) {
@@ -552,12 +604,12 @@ export class IPythonCellComponent implements Component {
 			if (details.stdout?.trim() && !isEditConfirmation(details.stdout, diffs)) {
 				startOutput();
 				renderedTextOutput = true;
-				this.renderOutputText(lines, width, normalizeErrorDetails(details.stdout), "out");
+				this.renderOutputText(lines, width, normalizeKernelOutput(details.stdout), "out");
 			}
 			if (details.stderr?.trim()) {
 				startOutput();
 				renderedTextOutput = true;
-				this.renderOutputText(lines, width, normalizeErrorDetails(details.stderr), "err");
+				this.renderOutputText(lines, width, normalizeKernelOutput(details.stderr), "err");
 			}
 			if (
 				details.result?.trim() &&
@@ -566,7 +618,7 @@ export class IPythonCellComponent implements Component {
 			) {
 				startOutput();
 				renderedTextOutput = true;
-				this.renderOutputText(lines, width, normalizeErrorDetails(details.result), "out");
+				this.renderOutputText(lines, width, normalizeKernelOutput(details.result), "result");
 			}
 		} else if (traceback) {
 			if (traceback.output) {
@@ -707,14 +759,21 @@ export class IPythonCellComponent implements Component {
 		}
 	}
 
-	private renderOutputText(lines: string[], width: number, text: string, label: "out" | "err"): void {
-		const color = label === "err" ? "muted" : "toolOutput";
+	private renderOutputText(lines: string[], width: number, text: string, label: "out" | "err" | "result"): void {
+		const color = label === "err" ? "warning" : "toolOutput";
+		this.addWrapped(
+			lines,
+			OUTPUT_INDENT,
+			theme.fg("dim", label === "out" ? "stdout" : label === "err" ? "stderr" : "result"),
+			width,
+		);
 		for (const line of text.split("\n")) {
 			this.addWrapped(lines, OUTPUT_INDENT, theme.fg(color, line || " "), width);
 		}
 	}
 
 	private renderTraceback(lines: string[], width: number, traceback: string): void {
+		this.addWrapped(lines, OUTPUT_INDENT, theme.fg("error", "traceback"), width);
 		for (const line of traceback.split("\n")) {
 			this.addWrapped(lines, OUTPUT_INDENT, theme.fg("muted", line || " "), width);
 		}

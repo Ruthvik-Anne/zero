@@ -11,6 +11,7 @@ import {
 	type TUI,
 } from "@zero-agent/tui";
 import type { ModelRegistry } from "../../../core/model-registry.js";
+import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../../../core/provider-display-names.js";
 import { theme } from "../theme/theme.js";
 import { keyHint } from "./keybinding-hints.js";
 import {
@@ -77,6 +78,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private filteredModels: ModelItem[] = [];
 	private selectedIndex: number = 0;
 	private searchQuery = "";
+	private provider?: string;
+	private providerItems: ModelItem[][] = [];
+	private providerModels = new Map<string, ModelItem[]>();
+	private providerInfo = new Map<string, { configured: boolean; current: boolean }>();
 	private currentModel?: Model<any>;
 	private modelRegistry: ModelRegistry;
 	private onSelectCallback: (model: Model<any>) => void;
@@ -129,8 +134,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.getHeaderRows = options.header ? (options.getHeaderRows ?? (() => 2)) : () => 0;
 
 		this.panel = new MenuPanel({
-			title: "Zero · Select model",
-			subtitle: options.subtitle ?? "All models across supported providers.",
+			title: this.isProviderView() ? "Zero · Select provider" : "Zero · Select model",
+			subtitle: options.subtitle ?? "Browse providers or type to search models.",
 		});
 		this.addChild(this.panel);
 		if (options.header) {
@@ -188,11 +193,19 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.availableModels = availableModels;
 		this.configuredProviders = configuredProviders;
 		const query = this.searchInput.getValue();
-		const selectedKey = this.getSelectedModelKey();
+		const selectedProvider = this.isProviderView() ? this.providerItems[this.selectedIndex]?.[0].provider : undefined;
+		const selectedKey = this.isProviderView() ? undefined : this.getSelectedModelKey();
 
 		this.loadModels();
 		this.filterModels(query);
 
+		if (selectedProvider && this.isProviderView()) {
+			this.selectedIndex = Math.max(
+				0,
+				this.providerItems.findIndex((group) => group[0].provider === selectedProvider),
+			);
+			this.updateList();
+		}
 		if (selectedKey) {
 			const selectedIndex = this.filteredModels.findIndex((item) => this.getModelKey(item) === selectedKey);
 			if (selectedIndex >= 0) {
@@ -231,6 +244,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.scopedModelItems = [];
 			this.activeModels = [];
 			this.filteredModels = [];
+			this.providerItems = [];
 			this.errorMessage = error instanceof Error ? error.message : String(error);
 			return;
 		}
@@ -252,10 +266,37 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			model: scoped.model,
 		}));
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
+		this.refreshProviders();
 		this.filteredModels = this.activeModels;
 		const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-		this.selectedIndex =
-			currentIndex >= 0 ? currentIndex : Math.min(this.selectedIndex, Math.max(0, this.getSelectableCount() - 1));
+		this.selectedIndex = this.isProviderView()
+			? 0
+			: currentIndex >= 0
+				? currentIndex
+				: Math.min(this.selectedIndex, Math.max(0, this.getSelectableCount() - 1));
+	}
+
+	private isProviderView(): boolean {
+		return (
+			this.provider === undefined && !this.errorMessage && !this.searchQuery.trim() && this.providerItems.length > 1
+		);
+	}
+
+	private refreshProviders(): void {
+		const groups = new Map<string, ModelItem[]>();
+		this.providerInfo.clear();
+		for (const item of this.activeModels) {
+			const group = groups.get(item.provider) ?? [];
+			group.push(item);
+			groups.set(item.provider, group);
+			const info = this.providerInfo.get(item.provider) ?? { configured: false, current: false };
+			info.configured ||= this.isProviderConfigured(item);
+			info.current ||= modelsAreEqual(this.currentModel, item.model);
+			this.providerInfo.set(item.provider, info);
+		}
+		this.providerModels = groups;
+		this.providerItems = [...groups.values()];
+		if (this.provider && !groups.has(this.provider)) this.provider = undefined;
 	}
 
 	private getModelKey(item: ModelItem): string {
@@ -310,6 +351,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		if (this.scope === scope) return;
 		this.scope = scope;
 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
+		this.provider = undefined;
+		this.refreshProviders();
 		const currentIndex = this.activeModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
 		this.selectedIndex = currentIndex >= 0 ? currentIndex : 0;
 		this.filterModels(this.searchInput.getValue());
@@ -321,9 +364,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private filterModels(query: string): void {
 		const queryChanged = query !== this.searchQuery;
 		this.searchQuery = query;
+		const candidates = this.provider ? (this.providerModels.get(this.provider) ?? []) : this.activeModels;
 		if (query.trim()) {
 			const scored = fuzzyFilterScored(
-				this.activeModels,
+				candidates,
 				query,
 				({ id, provider, model }) => `${id} ${provider} ${provider}/${id} ${provider} ${id} ${model.name}`,
 			);
@@ -335,7 +379,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			);
 			this.filteredModels = scored.map((r) => r.item);
 		} else {
-			this.filteredModels = this.activeModels;
+			this.filteredModels = candidates;
 		}
 		this.selectedIndex = queryChanged ? 0 : Math.min(this.selectedIndex, Math.max(0, this.getSelectableCount() - 1));
 		this.updateList();
@@ -354,7 +398,46 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.updateResponsiveLayout();
 		this.listContainer.clear();
 
+		if (this.warningText)
+			this.warningText.setText(
+				this.provider
+					? keyHint("tui.select.cancel", "providers")
+					: theme.fg("muted", "Signed-in providers first. Other models prompt sign-in."),
+			);
+		this.panel.setTitle(
+			this.provider
+				? `Zero · ${BUILT_IN_PROVIDER_DISPLAY_NAMES[this.provider] ?? this.provider}`
+				: this.isProviderView()
+					? "Zero · Select provider"
+					: "Zero · Select model",
+		);
 		const maxVisible = this.listLayout.visibleItems;
+		if (this.isProviderView()) {
+			const start = Math.max(
+				0,
+				Math.min(this.selectedIndex - Math.floor(maxVisible / 2), this.providerItems.length - maxVisible),
+			);
+			const end = Math.min(start + maxVisible, this.providerItems.length);
+			for (let i = start; i < end; i++) {
+				// Provider metadata is precomputed; navigation only touches visible rows.
+				const group = this.providerItems[i];
+				const provider = group[0].provider;
+				const info = this.providerInfo.get(provider)!;
+				this.listContainer.addChild(
+					new MenuRow({
+						primary: BUILT_IN_PROVIDER_DISPLAY_NAMES[provider] ?? provider,
+						secondary: `${group.length} model${group.length === 1 ? "" : "s"} · ${info.configured ? "signed in" : "sign in required"}`,
+						meta: info.current ? "current" : "›",
+						selected: i === this.selectedIndex,
+					}),
+				);
+			}
+			if (start > 0 || end < this.providerItems.length)
+				this.listContainer.addChild(
+					new Text(theme.fg("muted", `  (${this.selectedIndex + 1}/${this.providerItems.length})`), 0, 0),
+				);
+			return;
+		}
 		const selectedModelIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 		const startIndex = Math.max(
 			0,
@@ -391,7 +474,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.listContainer.addChild(
 				new MenuRow({
 					primary: item.model.name && item.model.name !== item.id ? `${item.model.name} (${item.id})` : item.id,
-					secondary: item.provider,
+					secondary: this.provider
+						? `${item.model.contextWindow.toLocaleString()} token context${item.model.reasoning ? " · reasoning" : ""}${item.model.input.includes("image") ? " · vision" : ""}`
+						: item.provider,
 					meta,
 					selected: isSelected,
 				}),
@@ -454,7 +539,19 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		}
 		// Escape / Ctrl+C, or left arrow when the search field is at its start
 		else if (kb.matches(keyData, "tui.select.cancel") || shouldTreatAsBack(keyData, this.searchInput)) {
-			this.onCancelCallback();
+			if (this.provider) {
+				const previousProvider = this.provider;
+				this.provider = undefined;
+				this.searchInput.setValue("");
+				this.filterModels("");
+				this.selectedIndex = Math.max(
+					0,
+					this.providerItems.findIndex((group) => group[0].provider === previousProvider),
+				);
+				this.updateList();
+			} else {
+				this.onCancelCallback();
+			}
 		}
 		// Pass everything else to search input
 		else {
@@ -468,6 +565,16 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	private handleConfirm(): void {
+		if (this.isProviderView()) {
+			const group = this.providerItems[this.selectedIndex];
+			if (!group) return;
+			this.provider = group[0].provider;
+			this.filterModels("");
+			const current = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
+			this.selectedIndex = Math.max(0, current);
+			this.updateList();
+			return;
+		}
 		const selectedModel = this.filteredModels[this.selectedIndex];
 		if (selectedModel) {
 			this.handleSelect(selectedModel.model);
@@ -476,7 +583,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	private getSelectableCount(): number {
-		return this.filteredModels.length;
+		return this.isProviderView() ? this.providerItems.length : this.filteredModels.length;
 	}
 
 	getSearchInput(): MenuSearchInput {
@@ -509,7 +616,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.listLayout = getMenuListLayout({
 			getRows: this.viewport.getRows,
 			preferredVisibleItems: PREFERRED_VISIBLE_MODELS,
-			totalItems: this.filteredModels.length,
+			totalItems: this.getSelectableCount(),
 			reservedRows,
 			comfortableItemRows: this.shouldShowSections() ? 3 : 2,
 			compactItemRows: this.shouldShowSections() ? 3 : 2,
@@ -532,11 +639,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	}
 
 	private shouldShowSections(): boolean {
-		return !this.searchQuery.trim() && this.hasRows(16);
+		return !this.provider && !this.isProviderView() && !this.searchQuery.trim() && this.hasRows(16);
 	}
 
 	private shouldShowSelectedDetails(): boolean {
-		return this.hasRows(MODEL_DETAIL_MIN_ROWS);
+		return !this.provider && !this.isProviderView() && this.hasRows(MODEL_DETAIL_MIN_ROWS);
 	}
 
 	private hasRows(minRows: number): boolean {

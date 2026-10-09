@@ -849,6 +849,40 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).not.toContain("README.md +1 -1");
 	});
 
+	test("renders kernel-backed direct tools with their name and edit diffs", () => {
+		const definition = {
+			...createMetadataOnlyToolDefinition(createBaseToolDefinition("edit")),
+			renderShell: "self" as const,
+		};
+		const component = new ToolExecutionComponent(
+			"edit",
+			"direct-edit",
+			{ path: "a.ts", old_str: "x", new_str: "X" },
+			{},
+			definition,
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.markExecutionStarted();
+		component.setArgsComplete();
+		component.updateResult(
+			{
+				content: [],
+				details: { status: "ok", diffs: [{ path: "a.ts", oldStr: "x", newStr: "X", startLine: 1 }] },
+				isError: false,
+			},
+			false,
+		);
+		let output = stripAnsi(component.render(80).join("\n"));
+		expect(output).toContain("edit ·");
+		expect(output).toContain("a.ts +1 -1");
+		expect(output).not.toContain("python ·");
+		component.setEditDiffsExpanded(true);
+		output = stripAnsi(component.render(80).join("\n"));
+		expect(output).toMatch(/1 - .*x/);
+		expect(output).toMatch(/1 \+ .*X/);
+	});
+
 	test("globally expands built-in IPython source associated with diffs", () => {
 		const component = new ToolExecutionComponent(
 			"ipython",

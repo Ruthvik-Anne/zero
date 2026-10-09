@@ -596,7 +596,7 @@ async function executeWithBusyKernelChoice(
 	toolCallId: string,
 	code: string,
 	signal: AbortSignal | undefined,
-	onStream: (chunk: string, name: "stdout" | "stderr") => void,
+	onOutput: (output: Pick<ExecuteResult, "stdout" | "stderr" | "result">) => void,
 	onWorkingMessage: (message?: string) => void,
 	onLateSentAgentMessage: ((toolCallId: string, message: KernelSentAgentMessage) => void) | undefined,
 	ctx: ExtensionContext | undefined,
@@ -608,7 +608,7 @@ async function executeWithBusyKernelChoice(
 			return {
 				result: await m.execute(code, {
 					signal,
-					onStream,
+					onOutput,
 					onLateSentAgentMessage: onLateSentAgentMessage
 						? (message) => onLateSentAgentMessage(toolCallId, message)
 						: undefined,
@@ -660,6 +660,20 @@ export function createIpythonToolDefinition(
 		parameters: ipythonSchema,
 		execute: async (toolCallId, params, signal, onUpdate, ctx) => {
 			let hasWorkingMessage = false;
+			let pendingOutput: Pick<ExecuteResult, "stdout" | "stderr" | "result"> | undefined;
+			let outputTimer: ReturnType<typeof setTimeout> | undefined;
+			const flushOutput = () => {
+				outputTimer = undefined;
+				if (!pendingOutput || signal?.aborted) return;
+				const output = pendingOutput;
+				pendingOutput = undefined;
+				onUpdate?.({
+					content: [
+						{ type: "text", text: [output.stdout, output.stderr, output.result].filter(Boolean).join("\n") },
+					],
+					details: { status: "ok", ...output },
+				});
+			};
 			const setToolWorkingMessage = (message?: string) => {
 				setWorkingMessage(ctx, message);
 				hasWorkingMessage = message !== undefined;
@@ -680,11 +694,10 @@ export function createIpythonToolDefinition(
 					toolCallId,
 					code,
 					signal,
-					(chunk) => {
-						onUpdate?.({
-							content: [{ type: "text", text: chunk }],
-							details: { status: "ok" },
-						});
+					(output) => {
+						pendingOutput = output;
+						// Coalesce IOPub bursts; bounded snapshots replace previous output.
+						if (!outputTimer) outputTimer = setTimeout(flushOutput, 50);
 					},
 					setToolWorkingMessage,
 					options?.onLateSentAgentMessage,
@@ -722,6 +735,8 @@ export function createIpythonToolDefinition(
 					isError: r.status === "error" || r.status === "aborted",
 				};
 			} finally {
+				if (outputTimer) clearTimeout(outputTimer);
+				pendingOutput = undefined;
 				if (hasWorkingMessage) {
 					setToolWorkingMessage();
 				}
