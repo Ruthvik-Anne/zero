@@ -67,7 +67,7 @@ jobs:
       # plus this job) — every dist/ is a pure function of the checked-out
       # source, so the same npm-run-build output is what every leg needs.
       - name: Upload build output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-output
           path: |
