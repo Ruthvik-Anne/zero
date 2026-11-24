@@ -1,0 +1,5 @@
+{
+  "model": "tinyllama",
+  "capabilities": ["completion"],
+  "details": {"family": "llama", "parameter_size": "1B"}
+}

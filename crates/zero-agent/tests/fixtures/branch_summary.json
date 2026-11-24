@@ -1,0 +1,11 @@
+{
+  "goal": "ship the release with a verified session log",
+  "constraints": ["no network in CI", "append-only logs"],
+  "progress": ["session log and index", "attach reads only the tail"],
+  "decisions": ["journal before dispatch", "report uncertain results once"],
+  "next_steps": ["wire the supervisor", "record the benchmark"],
+  "critical_context": ["seq orders records; timestamps do not"],
+  "files": {
+    "crates/zero-store/src/session.rs": {"path": "crates/zero-store/src/session.rs", "edits": 3, "last_seq": 41}
+  }
+}

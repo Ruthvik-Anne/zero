@@ -1,0 +1,53 @@
+[
+  {
+    "correlation": "corr-hello",
+    "generation": null,
+    "kind": "hello",
+    "payload": {
+      "agent": "zero",
+      "protocol": 1
+    },
+    "sequence": null,
+    "session": null,
+    "v": 1
+  },
+  {
+    "correlation": "corr-event",
+    "generation": 2,
+    "kind": "event",
+    "payload": {
+      "entry": {
+        "kind": "message",
+        "text": "hello"
+      }
+    },
+    "sequence": 17,
+    "session": "sess-1",
+    "v": 1
+  },
+  {
+    "correlation": "corr-command",
+    "generation": 2,
+    "kind": "command",
+    "payload": {
+      "action": "session.rename",
+      "args": {
+        "name": "demo"
+      }
+    },
+    "sequence": 18,
+    "session": "sess-1",
+    "v": 1
+  },
+  {
+    "correlation": "corr-error",
+    "generation": null,
+    "kind": "error",
+    "payload": {
+      "code": "zero.prv.auth"
+    },
+    "sequence": null,
+    "session": null,
+    "v": 1
+  }
+]

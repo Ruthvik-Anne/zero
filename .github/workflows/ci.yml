@@ -1,191 +1,91 @@
-name: CI
+name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  trust:
-    name: Contributor trust
-    runs-on: ubuntu-latest
-    outputs:
-      allowed: ${{ github.event_name == 'push' || steps.vouch.outputs.vouched == 'true' }}
-    steps:
-      - name: Check pull request author
-        id: vouch
-        if: github.event_name == 'pull_request'
-        uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1
-        with:
-          user: ${{ github.event.pull_request.user.login }}
-          allow-fail: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-check:
-    name: Build and check
-    needs: trust
-    if: needs.trust.outputs.allowed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s $(which fdfind) /usr/local/bin/fd
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Check
-        run: npm run check
-
-      # (C1) Built once here rather than 10x (once per test-matrix leg below,
-      # plus this job) — every dist/ is a pure function of the checked-out
-      # source, so the same npm-run-build output is what every leg needs.
-      - name: Upload build output
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-output
-          path: |
-            packages/tui/dist
-            packages/ai/dist
-            packages/agent/dist
-            packages/coding-agent/dist
-          retention-days: 1
-
-  test:
-    name: Test (${{ matrix.name }})
-    needs: build-check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  # T-TST-01: six targets, build + lint + test on each.
+  matrix:
+    name: ${{ matrix.target }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: agent-core
-            package: packages/agent
-            command: npm test
-            install_uv: false
-          - name: ai
-            package: packages/ai
-            command: npm test
-            install_uv: false
-          - name: tui
-            package: packages/tui
-            command: npm test
-            install_uv: false
-          - name: coding-agent 1/3
-            package: packages/coding-agent
-            command: npm run test:ci -- --shard=1/3
-            install_uv: true
-          - name: coding-agent 2/3
-            package: packages/coding-agent
-            command: npm run test:ci -- --shard=2/3
-            install_uv: true
-          - name: coding-agent 3/3
-            package: packages/coding-agent
-            command: npm run test:ci -- --shard=3/3
-            install_uv: true
-          - name: coding-agent process smoke
-            package: packages/coding-agent
-            command: npm run test:process
-            install_uv: true
-          - name: coding-agent kernel
-            package: packages/coding-agent
-            command: npm run test:kernel
-            install_uv: true
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+          - target: x86_64-apple-darwin
+            runner: macos-13
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
         with:
-          node-version: 22
-          cache: npm
+          key: ${{ matrix.target }}
+      - name: build
+        run: cargo build --workspace --all-targets --locked
+      - name: lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test
+        run: cargo test --workspace --locked
+      - name: docs and traceability gates
+        run: cargo run -p xtask --locked -- check-docs
+      - name: architecture gate
+        run: cargo run -p xtask --locked -- check-arch
+      # Baselines are recorded on one reference machine; only that target enforces
+      # the performance gate. Every target still builds, lints, and tests.
+      - name: benchmark gate
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo run -p xtask --locked -- bench --check
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s $(which fdfind) /usr/local/bin/fd
-
-      - name: Install dependencies
-        run: npm ci
-
-      # (C1) Reuses build-check's build instead of every one of these 8 legs
-      # separately re-running the full monorepo build (which also re-fetches
-      # packages/ai's live model catalog on every invocation — see C3).
-      #
-      # upload-artifact strips the least-common-ancestor of the 4 uploaded
-      # paths (packages/{tui,ai,agent,coding-agent}/dist), so the artifact's
-      # own top level is {tui,ai,agent,coding-agent}/dist, not
-      # packages/.../dist — download into `packages/` to put that prefix
-      # back, or every package's dist/ silently never gets restored here
-      # (confirmed: this broke @zero-agent/* resolution for anything that
-      # loads a package via node_modules symlinks — e.g. dynamic extension
-      # loading — while tests importing straight from ../src/*.ts stayed
-      # unaffected, which is why only some suites showed this failure).
-      - name: Download build output
-        uses: actions/download-artifact@v4
-        with:
-          name: dist-output
-          path: packages
-
-      - name: Install uv
-        if: matrix.install_uv
-        run: |
-          python3 -m pip install --user uv
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      # agent-session-browser.test.ts (BrowserSession.launch) needs a real
-      # Chromium binary; nothing else in this job ever installs one, and
-      # vitest sharding can place that test in any of the coding-agent legs.
-      - name: Install Playwright Chromium
-        if: matrix.package == 'packages/coding-agent'
-        working-directory: packages/coding-agent
-        run: npx playwright install --with-deps chromium
-
-      - name: Test
-        working-directory: ${{ matrix.package }}
-        run: ${{ matrix.command }}
-
-  build-check-test:
-    name: build-check-test
-    if: always() && needs.trust.outputs.allowed == 'true'
-    needs: [trust, build-check, test]
+  protocol-readers:
+    name: protocol readers (Rust + TypeScript)
     runs-on: ubuntu-latest
     steps:
-      - name: Verify CI results
-        env:
-          BUILD_CHECK_RESULT: ${{ needs.build-check.result }}
-          TEST_RESULT: ${{ needs.test.result }}
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rust golden fixture test
+        run: cargo test -p zero-types proto::tests::golden_fixtures_decode_identically --locked
+      - name: TypeScript reader
+        run: node protocol/ts/check.mjs
+
+  # T-PAR-01: the traceability check also runs on every documentation change.
+  docs:
+    name: traceability and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: check docs
+        run: cargo run -p xtask --locked -- check-docs
+      - name: docs index is current
         run: |
-          test "$BUILD_CHECK_RESULT" = success
-          test "$TEST_RESULT" = success
+          cargo run -p xtask --locked -- docs-index --write
+          git diff --exit-code docs/requirements-index.md
+      - name: error and path tables are current
+        run: |
+          cargo run -p xtask --locked -- errors-doc --write
+          cargo run -p xtask --locked -- paths-doc --write
+          git diff --exit-code docs/errors.md docs/data-directories.md

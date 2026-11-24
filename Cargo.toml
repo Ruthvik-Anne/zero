@@ -1,0 +1,69 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/zero-types",
+  "crates/zero-store",
+  "crates/zero-policy",
+  "crates/zero-actions",
+  "crates/zero-fs",
+  "crates/zero-tasks",
+  "crates/zero-sched",
+  "crates/zero-agent",
+  "crates/zero-kernel",
+  "crates/zero-model",
+  "crates/zero-secrets",
+  "crates/zero-web",
+  "crates/zero-mcp",
+  "crates/zero-review",
+  "crates/zero-halcyon",
+  "crates/zero-mesh",
+  "crates/zero-mm",
+  "crates/zero-tui",
+  "crates/zero-daemon-app",
+  "crates/zero-daemon",
+  "crates/zero-doctor",
+  "crates/zero-cli",
+  "crates/zero-arch",
+  "crates/xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/zero/zero"
+
+[workspace.dependencies]
+zero-types = { path = "crates/zero-types" }
+zero-store = { path = "crates/zero-store" }
+zero-policy = { path = "crates/zero-policy" }
+zero-actions = { path = "crates/zero-actions" }
+zero-fs = { path = "crates/zero-fs" }
+zero-tasks = { path = "crates/zero-tasks" }
+zero-sched = { path = "crates/zero-sched" }
+zero-agent = { path = "crates/zero-agent" }
+zero-kernel = { path = "crates/zero-kernel" }
+zero-model = { path = "crates/zero-model" }
+zero-secrets = { path = "crates/zero-secrets" }
+zero-web = { path = "crates/zero-web" }
+zero-mcp = { path = "crates/zero-mcp" }
+zero-review = { path = "crates/zero-review" }
+zero-halcyon = { path = "crates/zero-halcyon" }
+zero-mesh = { path = "crates/zero-mesh" }
+zero-mm = { path = "crates/zero-mm" }
+zero-tui = { path = "crates/zero-tui" }
+zero-daemon-app = { path = "crates/zero-daemon-app" }
+zero-daemon = { path = "crates/zero-daemon" }
+zero-doctor = { path = "crates/zero-doctor" }
+zero-cli = { path = "crates/zero-cli" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+blake3 = "1"
+rusqlite = { version = "0.43", features = ["bundled"] }
+base64 = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "blocking", "rustls-tls"] }
+tempfile = "3"

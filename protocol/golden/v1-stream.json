@@ -1,0 +1,55 @@
+[
+  {
+    "correlation": "corr-attach",
+    "generation": null,
+    "kind": "attach",
+    "payload": {
+      "client": "line-mode",
+      "from": {
+        "generation": 2,
+        "sequence": 17
+      }
+    },
+    "sequence": null,
+    "session": "sess-1",
+    "v": 1
+  },
+  {
+    "correlation": "corr-snapshot",
+    "generation": 2,
+    "kind": "snapshot",
+    "payload": {
+      "cells": "…",
+      "chunk": 0,
+      "total": 1
+    },
+    "sequence": 17,
+    "session": "sess-1",
+    "v": 1
+  },
+  {
+    "correlation": "corr-approval",
+    "generation": null,
+    "kind": "approval",
+    "payload": {
+      "action": "fs.write",
+      "approval": "ap-1",
+      "hash": "abc"
+    },
+    "sequence": null,
+    "session": null,
+    "v": 1
+  },
+  {
+    "correlation": "corr-action",
+    "generation": null,
+    "kind": "action",
+    "payload": {
+      "id": "mode.set",
+      "surface": "tui"
+    },
+    "sequence": null,
+    "session": null,
+    "v": 1
+  }
+]

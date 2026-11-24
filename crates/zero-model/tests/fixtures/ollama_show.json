@@ -1,0 +1,5 @@
+{
+  "model": "llama3.1",
+  "capabilities": ["completion", "tools"],
+  "details": {"family": "llama", "parameter_size": "8B"}
+}
