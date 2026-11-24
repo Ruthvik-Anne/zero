@@ -10,14 +10,14 @@ resolution table in `zero_types::paths`. The test
 | Windows | config | `C:\Users\example\AppData\Roaming\Zero\config` |
 | Windows | cache | `C:\Users\example\AppData\Local\Zero\cache` |
 | Windows | state | `C:\Users\example\AppData\Local\Zero\state` |
-| macOS | data | `/Users/example\Library\Application Support\Zero\data` |
-| macOS | config | `/Users/example\Library\Application Support\Zero\config` |
-| macOS | cache | `/Users/example\Library\Caches\Zero` |
-| macOS | state | `/Users/example\Library\Application Support\Zero\state` |
-| Linux | data | `/home/example\.local\share\zero` |
-| Linux | config | `/home/example\.config\zero` |
-| Linux | cache | `/home/example\.cache\zero` |
-| Linux | state | `/home/example\.local\state\zero` |
+| macOS | data | `/Users/example/Library/Application Support/Zero/data` |
+| macOS | config | `/Users/example/Library/Application Support/Zero/config` |
+| macOS | cache | `/Users/example/Library/Caches/Zero` |
+| macOS | state | `/Users/example/Library/Application Support/Zero/state` |
+| Linux | data | `/home/example/.local/share/zero` |
+| Linux | config | `/home/example/.config/zero` |
+| Linux | cache | `/home/example/.cache/zero` |
+| Linux | state | `/home/example/.local/state/zero` |
 
 Linux honours `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and
 `XDG_STATE_HOME`. Windows uses `LOCALAPPDATA` for data, cache, and state,

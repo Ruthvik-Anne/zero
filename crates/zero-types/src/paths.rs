@@ -88,7 +88,19 @@ pub const fn current_platform() -> Platform {
 }
 
 /// The single resolution function for all four kinds on all platforms.
+///
+/// Paths are built with the target platform's separator explicitly, never with
+/// `PathBuf::join`, so the table renders identically on every host and the
+/// generated documentation is stable.
 pub fn resolve(platform: Platform, kind: PathKind, env: &Env) -> PathBuf {
+    fn join(base: &str, parts: &[&str], separator: char) -> PathBuf {
+        let mut out = base.trim_end_matches(['\\', '/']).to_string();
+        for part in parts {
+            out.push(separator);
+            out.push_str(part);
+        }
+        PathBuf::from(out)
+    }
     match platform {
         Platform::Windows => {
             let base = match kind {
@@ -97,36 +109,34 @@ pub fn resolve(platform: Platform, kind: PathKind, env: &Env) -> PathBuf {
             }
             .or_else(|| env.home.clone())
             .unwrap_or_else(|| r"C:\Users\example".into());
-            let base = PathBuf::from(base);
-            match kind {
-                PathKind::Data => base.join("Zero").join("data"),
-                PathKind::Config => base.join("Zero").join("config"),
-                PathKind::Cache => base.join("Zero").join("cache"),
-                PathKind::State => base.join("Zero").join("state"),
-            }
+            let leaf = match kind {
+                PathKind::Data => "data",
+                PathKind::Config => "config",
+                PathKind::Cache => "cache",
+                PathKind::State => "state",
+            };
+            join(&base, &["Zero", leaf], '\\')
         }
         Platform::MacOs => {
             let home = env.home.clone().unwrap_or_else(|| "/Users/example".into());
-            let home = PathBuf::from(home);
             match kind {
-                PathKind::Data => home.join("Library").join("Application Support").join("Zero").join("data"),
-                PathKind::Config => home.join("Library").join("Application Support").join("Zero").join("config"),
-                PathKind::Cache => home.join("Library").join("Caches").join("Zero"),
-                PathKind::State => home.join("Library").join("Application Support").join("Zero").join("state"),
+                PathKind::Data => join(&home, &["Library", "Application Support", "Zero", "data"], '/'),
+                PathKind::Config => join(&home, &["Library", "Application Support", "Zero", "config"], '/'),
+                PathKind::Cache => join(&home, &["Library", "Caches", "Zero"], '/'),
+                PathKind::State => join(&home, &["Library", "Application Support", "Zero", "state"], '/'),
             }
         }
         Platform::Linux => {
             let home = env.home.clone().unwrap_or_else(|| "/home/example".into());
-            let home = PathBuf::from(home);
-            let pick = |explicit: &Option<String>, fallback: PathBuf| match explicit {
-                Some(v) if !v.is_empty() => PathBuf::from(v).join("zero"),
-                _ => fallback,
+            let pick = |explicit: &Option<String>, fallback: &[&str]| match explicit {
+                Some(v) if !v.is_empty() => join(v, &["zero"], '/'),
+                _ => join(&home, fallback, '/'),
             };
             match kind {
-                PathKind::Data => pick(&env.xdg_data_home, home.join(".local").join("share").join("zero")),
-                PathKind::Config => pick(&env.xdg_config_home, home.join(".config").join("zero")),
-                PathKind::Cache => pick(&env.xdg_cache_home, home.join(".cache").join("zero")),
-                PathKind::State => pick(&env.xdg_state_home, home.join(".local").join("state").join("zero")),
+                PathKind::Data => pick(&env.xdg_data_home, &[".local", "share", "zero"]),
+                PathKind::Config => pick(&env.xdg_config_home, &[".config", "zero"]),
+                PathKind::Cache => pick(&env.xdg_cache_home, &[".cache", "zero"]),
+                PathKind::State => pick(&env.xdg_state_home, &[".local", "state", "zero"]),
             }
         }
     }
