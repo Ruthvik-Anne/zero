@@ -22,8 +22,8 @@ $ powershell -NoProfile -File .\ci-local.ps1
 local CI: OK
 ```
 
-`cargo test --workspace`: **86 passed, 0 failed** across unit, integration, and
-durability tests.
+`cargo test --workspace`: **86 passed, 0 failed** at the M0 gate (the workspace
+now totals 148 after M1; see [`m1-evidence.md`](m1-evidence.md)).
 
 | Crate | Tests |
 |---|---|
@@ -149,12 +149,33 @@ a 120x40 render (500 iterations x 5 samples after a warm-up); attach measures a
 50,000-record scan (median of 3). The warm-up keeps Windows' first-launch disk
 and scanner cost out of the measurement.
 
-## The one open item
+## Hosted matrix (T-TST-01)
 
-`T-TST-01` asks for all six targets green on a clean cache in CI. The workflow is
-committed and the local script is green, including cross-checks of the portable
-crates on the five non-host targets. The host target is `x86_64-pc-windows-gnu`;
-the bundled SQLite C build needs a native or cross C toolchain for the other
-targets, which this machine does not have. A hosted run of
-`.github/workflows/ci.yml` is therefore the outstanding evidence. It is marked
-`doing`, not `done`.
+First hosted run: [45484833543](https://github.com/Ruthvik-Anne/zero/actions/runs/45484833543).
+It exposed two real portability defects, which are fixed:
+
+1. `paths::resolve` used `PathBuf::join`, so Windows paths rendered with the
+   host separator (`C:\...\AppData\Local/Zero/data`) on Linux. `resolve` now
+   builds with the target platform's separator explicitly; the table renders
+   identically on every host.
+2. The matrix used retired runner images (`macos-13`, `macos-14`; macOS 14 was
+   retired on 2026-11-02). The labels are now `macos-15-intel` and `macos-15`.
+
+Green run: [45490519929](https://github.com/Ruthvik-Anne/zero/actions/runs/45490519929)
+on `ci/m0-m1-verification`, all eight jobs successful:
+
+| Job | Result | Duration |
+|---|---|---|
+| `x86_64-unknown-linux-gnu` | success (benchmark gate included) | 1m27s |
+| `aarch64-unknown-linux-gnu` | success | 1m9s |
+| `x86_64-apple-darwin` | success | 2m39s |
+| `aarch64-apple-darwin` | success | 2m16s |
+| `x86_64-pc-windows-msvc` | success | 2m23s |
+| `aarch64-pc-windows-msvc` | success | 2m24s |
+| `protocol readers (Rust + TypeScript)` | success | 20s |
+| `traceability and docs` | success | 25s |
+
+Every target ran `cargo build --workspace --all-targets --locked`, `clippy -D
+warnings`, `cargo test --workspace --locked`, the docs/traceability gate, and the
+architecture gate. The benchmark gate runs on the reference x86_64 Linux target
+because the baselines are recorded on one machine.

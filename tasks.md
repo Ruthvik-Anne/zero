@@ -92,7 +92,7 @@ recorded in `docs/m0-evidence.md`.
 | T-FND-11 | done | `cargo test -p zero-cli`: unknown verb prints `` `resume` `` and exits non-zero; version, help, doctor, completion, service tests. |
 | T-FND-12 | done | `limits::tests::runaway_*_returns_a_typed_error` for memory, disk, file size, process count, CPU; `telemetry::tests` (nothing sent). |
 | T-FND-13 | done | `net::tests::offline_reports_every_network_feature_as_unavailable` and the offline file-work smoke test. |
-| T-TST-01 | doing | `.github/workflows/ci.yml` defines build, lint, test, docs, and bench on six targets; `ci-local.ps1` is green on the host and cross-checks the portable crates on the other five. The hosted six-runner run is the only evidence still missing. |
+| T-TST-01 | done | Hosted run [45490519929](https://github.com/Ruthvik-Anne/zero/actions/runs/45490519929) on `ci/m0-m1-verification`: all 8 jobs green — the six targets `x86_64-unknown-linux-gnu` (1m27s), `aarch64-unknown-linux-gnu` (1m9s), `x86_64-apple-darwin` (2m39s), `aarch64-apple-darwin` (2m16s), `x86_64-pc-windows-msvc` (2m23s), `aarch64-pc-windows-msvc` (2m24s), plus `protocol readers` (20s) and `traceability and docs` (25s). Each target ran build, clippy `-D warnings`, tests, docs and architecture gates; the benchmark gate ran on `x86_64-unknown-linux-gnu`. |
 | T-TST-02 | done | `cargo test -p zero-tui`: smoke frame read back, wide cells, erase, unknown sequences recorded. |
 | T-TST-03 | done | `sim::tests`: identical traces per seed, 200-interleaving explorer with the lock invariant. |
 | T-TST-04 | done | `cargo run -p xtask -- bench --record` then `--check`; `bench/baselines.json`; CI runs `bench --check`. Observed: startup 197.68 ms, frame 2594.18 µs, attach 419.77 ms (with a warm-up before sampling). |
