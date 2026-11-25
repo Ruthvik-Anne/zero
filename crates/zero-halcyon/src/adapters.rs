@@ -391,21 +391,20 @@ fn default_pathext() -> Vec<String> {
 /// On Windows the `PATHEXT` filter has already restricted the name, so file
 /// existence is the test. On Unix the execute bit is required, so a readable
 /// data file named like the tool is ignored rather than offered as a tool.
+#[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
     let Ok(metadata) = fs::metadata(path) else {
         return false;
     };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o111 == 0 {
-            return false;
-        }
-    }
-    true
+    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
 }
 
 /// Locate an adapter without running it.

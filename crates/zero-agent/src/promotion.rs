@@ -207,7 +207,14 @@ impl ImmutableCore {
                             )));
                         }
                     }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                        ) =>
+                    {
+                        break
+                    }
                     Err(error) => return Err(error.into()),
                 }
             }
