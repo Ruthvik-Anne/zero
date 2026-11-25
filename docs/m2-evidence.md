@@ -37,6 +37,14 @@ $ cargo test -p zero-policy --test sandbox_windows
 windows_job_object_prototype_confines_a_child ... ok
 ```
 
+### Hosted matrix
+
+Run [45532483220](https://github.com/Ruthvik-Anne/zero/actions/runs/45532483220)
+on `ci/m0-m1-verification` (`e396fe0e`): all eight jobs successful, including
+both macOS targets (which run the trash, Python guard, Makefile shim, and audit
+suites), both Linux targets (Landlock prototype and Makefile shim), and both
+Windows targets (PowerShell shim, job object, Python guard).
+
 ## Highlights
 
 - The matrix is 75 cells checked against golden rows; plan denies writes,

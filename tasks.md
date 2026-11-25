@@ -254,7 +254,8 @@ fixtures run the real adapters over loopback HTTP instead.
 
 Run on 2026-11-25 from the repository root, plus the Linux-only tests in WSL
 Ubuntu (`CARGO_TARGET_DIR=/tmp/zero-target cargo test -p zero-policy -p zero-fs`).
-Detailed output is in `docs/m2-evidence.md`.
+Hosted matrix run [45532483220](https://github.com/Ruthvik-Anne/zero/actions/runs/45532483220)
+is green on all eight jobs. Detailed output is in `docs/m2-evidence.md`.
 
 | Task | Status | Evidence |
 |---|---|---|
