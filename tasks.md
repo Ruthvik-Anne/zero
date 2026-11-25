@@ -709,7 +709,7 @@ hosted runs
 
 M6 is in progress. Search fusion (T-WEB-01) and the independent doctor binary
 (T-DOC-01) are done; the remaining web, MCP, doctor, monitor, and
-security-review tasks are open. Evidence: `docs/m6-evidence.md`; hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571), [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012), and [45570302744](https://github.com/Ruthvik-Anne/zero/actions/runs/45570302744) are green on all ten jobs.
+security-review tasks are open. Evidence: `docs/m6-evidence.md`; hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571), [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012), [45570302744](https://github.com/Ruthvik-Anne/zero/actions/runs/45570302744), and [45575132889](https://github.com/Ruthvik-Anne/zero/actions/runs/45575132889) are green on all ten jobs.
 
 | Task group | Status | Evidence |
 |---|---|---|
