@@ -136,9 +136,58 @@ child, proving scrubbing and framing without an external runtime.
 Commands: `cargo test -p zero-mcp` (43 tests), `cargo clippy -p zero-mcp
 --all-targets -- -D warnings`.
 
+## MRTR and elicitation — T-MCP-03 (done)
+
+`zero-mcp` now implements multi-round-trip requests and elicitation (MCP-03,
+MCP-07, MCP-08). `tools_call_outcome` returns `Complete`, `InputRequired`, or
+`Other`; `retry_with_inputs` re-sends the same tool call once with
+`inputResponses` and the exact opaque `requestState` under a new JSON-RPC id,
+and a second `input_required` is returned rather than looped. No stream is held
+open between attempts, a mixed complete/input-required result is a protocol
+error, and the older revision always yields `Complete`. Form-mode elicitation
+refuses credential-like fields (password, passphrase, token, API key/secret,
+private key, cookie, session, OTP, PIN/passcode, seed phrase, mnemonic,
+recovery code, CVV, `format: password`, `writeOnly`) with `zero.pol.denied`
+before any response is built. URL mode is returned as a host `HostAction`; the
+client never opens, follows, or submits it, and acceptance requires matching
+host approval.
+
+| Test area | Evidence |
+|---|---|
+| MRTR | 8 `tests/mrtr.rs` cases: retry shape, one-retry limit, second input_required, mixed result, malformed shapes, revision behavior. |
+| Credential refusal | Form password/token fields fail with `zero.pol.denied` and no wire retry. |
+| URL mode | Host action names the exact URL; acceptance without approval is refused. |
+
+Commands: `cargo test -p zero-mcp` (54 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`.
+
+## Doctor checks — T-DOC-02 (done)
+
+The doctor core now runs 13 named checks over an injectable `DoctorContext`:
+versions, config, keys, workers, kernel, auth, network, mesh, ports, disk,
+locks, journals, and MCP (DOC-02, DOC-03). Checks never contact the daemon or
+the network: absent snapshots warn instead of inventing a pass, and key bytes,
+tokens, and config values never appear in a detail. The binary keeps the same
+report shape and exit code; `daemon` stays `not_contacted`.
+
+| Check | Evidence |
+|---|---|
+| Shape and count | `report_lists_every_check` asserts the exact `CHECK_NAMES` list, so a check cannot silently disappear. |
+| Each check | A pass and a failure fixture per check (warn where meaningful), in `crates/zero-doctor` unit tests. |
+| Redaction | Details contain paths and counts, never key material or secret values. |
+| Independence | `tests/independent.rs` still runs the binary with dead daemon paths and sees 13 checks. |
+
+Commands: `cargo test -p zero-doctor` (53 tests), `cargo clippy -p zero-doctor
+--all-targets -- -D warnings`.
+
+Known limits, documented in `docs/doctor.md`: config validation is structural
+(no TOML parser dependency), key permissions are checked on Unix only, disk/
+ports/kernel/auth use injected snapshots, and mesh/worker/MCP checks validate
+shape rather than performing live handshakes.
+
 ## Still open in M6
 
-T-WEB-04..11, T-MCP-03..11, T-DOC-02..06, T-MON-01..04, and T-SR-01..08.
+T-WEB-04..11, T-MCP-04..11, T-DOC-03..06, T-MON-01..04, and T-SR-01..08.
 
 Hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
 on `fd1f322d`, [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012)

@@ -30,8 +30,14 @@ fn runs_with_the_daemon_dead_and_says_it_was_not_contacted() {
     assert_eq!(out.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("daemon: not contacted"), "stdout: {stdout}");
-    assert!(stdout.contains(env!("CARGO_PKG_VERSION")), "stdout: {stdout}");
-    assert!(!socket.exists(), "the doctor must not create a daemon socket");
+    assert!(
+        stdout.contains(env!("CARGO_PKG_VERSION")),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !socket.exists(),
+        "the doctor must not create a daemon socket"
+    );
 }
 
 #[test]
@@ -45,15 +51,26 @@ fn json_report_is_independent_and_never_contacted_the_daemon() {
     assert_eq!(report["independent"], true);
     assert_eq!(report["daemon"], "not_contacted");
     assert_eq!(report["version"], env!("CARGO_PKG_VERSION"));
-    assert!(report["checks"].as_array().unwrap().is_empty());
+    // T-DOC-02 fills the check list; independence still means every result came
+    // from an injected snapshot and the daemon was never contacted.
+    let checks = report["checks"].as_array().unwrap();
+    assert_eq!(checks.len(), 13);
+    assert_eq!(checks[0]["name"], "versions");
+    assert_eq!(checks[12]["name"], "mcp");
 }
 
 #[test]
 fn version_flag_prints_the_version_without_a_daemon() {
     let dir = tempfile::tempdir().unwrap();
     let (mut cmd, _socket) = doctor(dir.path());
-    let out = cmd.arg("--version").output().expect("run zero-doctor --version");
+    let out = cmd
+        .arg("--version")
+        .output()
+        .expect("run zero-doctor --version");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains(env!("CARGO_PKG_VERSION")), "stdout: {stdout}");
+    assert!(
+        stdout.contains(env!("CARGO_PKG_VERSION")),
+        "stdout: {stdout}"
+    );
 }
