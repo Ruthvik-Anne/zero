@@ -35,6 +35,9 @@ Layers, what each proves, and the command that runs it.
 | Keychain | Native round trip (Credential Manager / Secret Service) and fallback | `cargo test -p zero-secrets keychain::` |
 | Secrets | Vault AAD/tamper, scopes, placeholders, transport, audit, `.env`, leakage | `cargo test -p zero-secrets vault::` |
 | Secret flows | Host prompts, file/git scan, headless queue, sign-in gate | `cargo test -p zero-secrets flows::` |
+| Sign-in | PKCE, loopback callback, device polling, refresh, token storage, terms gate | `cargo test -p zero-secrets signin::` |
+| Web fusion | Parallel adapters, RRF, URL/title dedupe, engine failure isolation | `cargo test -p zero-web` |
+| Doctor | Independent binary, report shape, daemon-dead run | `cargo test -p zero-doctor` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |

@@ -598,12 +598,11 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
   with the terms gate. **Refs:** SEC-11, PRV-09, PRV-10, CRT-05. **Done:** tokens land in
   the store; an undocumented flow is disabled with the reason.
 
-## M5 progress
+## M5 closure
 
-The project, credential, and secrets slices are implemented. Two secrets tasks
-remain explicitly partial: T-SEC-05 (host model done, surface widgets not
-wired) and T-SEC-11 (documented-flow gate done, live OAuth/device flow not
-implemented). Evidence: `docs/m5-evidence.md`; hosted runs
+Every M5 task group is done: projects (T-PRJ-01..06), credentials
+(T-CRT-01..06), and secrets (T-SEC-01..11). Evidence: `docs/m5-evidence.md`;
+hosted runs
 [45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438)
 (projects), [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580)
 (credentials), [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780)
@@ -616,8 +615,8 @@ implemented). Evidence: `docs/m5-evidence.md`; hosted runs
 | T-CRT-01 | done | `cargo test -p zero-secrets keychain::`: native round trip through Windows Credential Manager and Linux Secret Service, with `ZERO_REQUIRE_KEYCHAIN=1` in the dedicated `keychain` CI jobs; encrypted fallback when the OS store is absent. |
 | T-CRT-02..06 | done | `cargo test -p zero-secrets`: encrypted fallback, accounts, scrubbed env/refresh lock, import/trash, machine-bound unattended unlock. |
 | T-SEC-01..04, 06..10 | done | `cargo test -p zero-secrets vault::` and `flows::`: vault AAD/tamper, scopes/bindings/expiry, placeholders/transport, audit, `.env`, file+history scan with rotation offer, leakage sinks, headless queue. |
-| T-SEC-05 | doing | Host-issued masked prompt model passes; TUI/desktop/web/android widgets are not wired to it. |
-| T-SEC-11 | doing | Documented/undocumented sign-in gate passes; live OpenCode Console OAuth and ChatGPT device flow are missing. |
+| T-SEC-05 | done | `secret_prompts_are_host_issued_and_masked`: host-issued masked model; `the_secret_prompt_renders_on_every_surface_and_only_the_host_can_open_it` plus `the_secret_modal_is_masked_and_host_only`: TUI modal and desktop/web/Android controller payload, forged prompts refused. |
+| T-SEC-11 | done | `the_opencode_device_flow_resolves_the_url_and_polls`, `chatgpt_callback_is_validated_and_the_code_is_exchanged`, `a_forged_callback_state_is_refused`: OpenCode Console device flow and ChatGPT loopback PKCE; `a_flow_cannot_start_when_its_terms_do_not_allow_it`: terms gate before any request; tokens in the encrypted store. |
 
 ## M6 — Web, MCP, doctor, monitors, security review
 
@@ -706,6 +705,17 @@ implemented). Evidence: `docs/m5-evidence.md`; hosted runs
 - **T-DOC-06 Doctor agent API.** `diagnose`, `plan`, and `apply` tools with a required unresolved-failure report. **Refs:** DOC-06, DOC-08. **Done:** an agent cannot finish a turn hiding an unresolved failure.
 - **T-MON-04 Monitor restart policy.** Restart after teleport or resume only with confirmation. **Refs:** MON-04, MON-12, MON-11. **Done:** a monitor does not silently restart.
 
+## M6 progress
+
+M6 is in progress. Search fusion (T-WEB-01) and the independent doctor binary
+(T-DOC-01) are done; the remaining web, MCP, doctor, monitor, and
+security-review tasks are open. Evidence: `docs/m6-evidence.md`.
+
+| Task group | Status | Evidence |
+|---|---|---|
+| T-WEB-01 | done | `cargo test -p zero-web`: parallel adapters, RRF k=60, URL/title dedupe, per-engine failure isolation, health skip. |
+| T-DOC-01 | done | `cargo test -p zero-doctor`: plugin-free core and binary run with the daemon dead; JSON and version paths. |
+| T-WEB-02..11, T-MCP-01..11, T-DOC-02..06, T-MON-01..04, T-SR-01..08 | todo | Not implemented yet. |
 ## M7 — Halcyon, model pool, usage, auto-resume
 
 - **T-HAL-01 Discovery and trust.** Nearest-file rule, symlink rejection, and
