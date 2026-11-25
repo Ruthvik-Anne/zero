@@ -233,6 +233,59 @@ Known limits, documented in `docs/doctor.md`: config validation is structural
 ports/kernel/auth use injected snapshots, and mesh/worker/MCP checks validate
 shape rather than performing live handshakes.
 
+## Monitor engine — T-MON-02 (done)
+
+`zero-agent` now has a monitor engine (MON-06, MON-13, MON-14). It spawns an
+executable + argv (never a shell by default), merges and scrubs the child
+environment (`KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`CREDENTIAL`, agent sockets
+exempt), streams stdout on reader threads into a bounded queue, sends stderr
+only to a `LogSink` (never an event), and coalesces bursts by a monotonic
+window, line count, byte count, or process exit. Bursts split rather than drop;
+per-line overflow truncates with a marker; per-drain and queued-line caps drop
+oldest with counters; `stop` kills/reaps and discards the final buffer (no
+events after stop); natural exit flushes exactly once; muting drops events
+without killing; an idle monitor emits nothing.
+
+| Test area | Evidence |
+|---|---|
+| Burst (Done) | 5 unit + 10 self-spawn integration tests; 100 stdout lines + stderr produce far fewer events, all lines in order exactly once. |
+| Streams | stderr only in the log sink; env secret absent inside the child; mute/unmute; stop kills; idle silence. |
+| Caps | Per-line truncation marker, bounded queues with counted drops, per-drain cap, leftover retention. |
+
+Commands: `cargo test -p zero-agent monitor` (15 tests), `cargo clippy -p
+zero-agent --all-targets -- -D warnings`. Windows kills only the direct child;
+no pty; stderr redaction is the sink's job.
+
+## MCP code mode — T-MCP-12 (done)
+
+`zero-mcp` now exposes MCP tools as a typed code API (MCP-20). From a
+`ToolCatalog` it generates TypeScript interfaces/accessors and Python
+`TypedDict`/function stubs for the supported JSON Schema subset, quoting or
+bracketing invalid identifiers, prefixing/suffixing Python keywords and leading
+digits, rejecting identifier collisions with both tool names, stripping control
+characters from descriptions, and truncating whole entries at a byte cap. Two
+server shapes are available: a single `code` tool whose description embeds the
+declarations and an example, or `search` + `execute` for large catalogs. The
+`CodeModeBridge` resolves sanitized accessors back to tools, enforces argument
+size/depth, applies the existing risk matrix (read allow, write ask, destructive
+ask/deny, unknown ask) with a host approval oracle, checks the replay guard,
+caps responses, and records only tool names/decisions. `execute` caps program
+size, bridge calls, and the final value, aborts on the first Ask/Deny even if an
+executor swallows the error, and returns only the final value.
+
+| Test area | Evidence |
+|---|---|
+| Generation | 20 code-mode tests: required/optional, enums, arrays, nesting, invalid identifiers, keyword/collision, control characters, truncation. |
+| Done criterion | A scripted program makes two reads and one approved write, filters intermediate data, and returns only `{"total":5,"ok":true}`; the host saw exactly 3 calls. |
+| Policy | Write Ask aborts without approval; destructive Deny under Restricted; approval proceeds; executor error swallowing cannot bypass the bridge refusal. |
+| Caps/secrecy | Source/result/call/arg limits; replay refusal; declarations and errors contain no secrets. |
+
+Commands: `cargo test -p zero-mcp` (224 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings` (`-j 1` under disk pressure). Unsupported schemas
+(`$ref`, unions, tuples, >6 levels) fall back to `unknown`/`Any` with a comment;
+Python assumes 3.11+; running model code in zero-kernel/IPython or an OS sandbox
+remains a documented follow-up.
+
 ## MCP conformance — T-MCP-11 (done)
 
 `zero-mcp` now ships a conformance fixture format and replay runner (MCP-11,
@@ -413,6 +466,32 @@ Commands: `cargo test -p zero-mcp` (92 tests), `cargo clippy -p zero-mcp
 --all-targets -- -D warnings`. Durable cursors, push streaming, and the webhook
 HTTP server are documented as deferred.
 
+## Headless browser — T-WEB-05 (done)
+
+`zero-web` now has a local headless-browser fallback (WEB-05, WEB-09).
+`find_system_browser` checks the standard Chrome/Chromium/Edge paths per
+platform with no PATH shell-out. `Installer` takes a versioned manifest and an
+injectable `Downloader`, computes SHA-256 over the real downloaded file, refuses
+a missing/mismatched checksum **before** extraction, installs via the archive
+safety planner into a staging directory with an `install.json` record, and
+never executes an installer or shell. Profiles are per-session
+`--user-data-dir` directories under a confined root, empty on first use and
+removed on close, so sessions never share cookies/cache. `HeadlessBrowser` runs
+the browser headless with `--dump-dom`, a hard timeout and kill, output cap,
+bounded stderr tail, and egress checks for http(s); `file:`/`data:` require an
+explicit local allowance.
+
+| Test area | Evidence |
+|---|---|
+| Done criterion | A real installed Chrome rendered a `file://` page whose DOM contained `rendered-by-js`; the test skips honestly when no browser exists. |
+| Install | 14 headless tests: good/bad/missing checksum, zip-slip refusal, idempotent reinstall, no execution before checksum. |
+| Profiles | Distinct per-session dirs, no shared files, close removes; root escape refused (Unix mode test). |
+| Runtime | Launch args, timeout kill, output caps, env scrub, local-URL policy; `.cmd` launch on Windows documented. |
+
+Commands: `cargo test -p zero-web` (235 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`. `status` is `None` under `--dump-dom`
+(reserved for the CDP transport); subresource pinning remains CDP work.
+
 ## Browser automation — T-WEB-08 (done)
 
 `zero-web` now drives a DevTools-protocol session through an injectable
@@ -561,6 +640,59 @@ marker.
 
 Commands: `cargo test -p zero-web` (89 tests + 2 doc tests), `cargo clippy
 -p zero-web --all-targets -- -D warnings`.
+
+## Review fixture suite — T-SR-07 (done)
+
+`zero-review` now has three end-to-end fixture runs (SR-07, SR-11, SR-12):
+vulnerable, clean, and partial repositories built at runtime, driven through
+seed → hunt → critic → independent validation → report. The vulnerable repo
+confirms exactly three findings (high/high/medium, none above demonstrated
+impact) with fingerprints; the clean repo confirms zero and refutes the units
+(no false positive); the partial repo runs 2 of 3 units, blocks one, marks the
+run `partial: true`, and puts both unreviewed units in NEEDS-VALIDATION and the
+coverage gaps. Golden projections keep only stable fields (ids, titles,
+severities, counts, partial flag, gap unit ids), update via
+`UPDATE_REVIEW_GOLDEN=1`. A carried confirmation is fingerprint-stable until a
+byte edit, then moves `confirmed → deferred` and appears in NEEDS-VALIDATION
+instead of REPORT.
+
+| Test area | Evidence |
+|---|---|
+| Three golden runs | `tests/fixture_suite.rs` (4 tests) + three small JSON snapshots. |
+| Clean run | Zero confirmed, units refuted, no coverage gap. |
+| Partial run | Budget/blocked units and vendor exclusions reported, never silently covered. |
+| Re-verification | Fingerprint edit defers a carried confirmation and clears its baseline. |
+
+Commands: `cargo test -p zero-review` (85 lib + 4 fixture tests), `cargo clippy
+-p zero-review --all-targets -- -D warnings`. The golden projection cannot see
+changes that leave every projected field identical; unit ids are content-derived.
+
+## Independent validation — T-SR-04 (done)
+
+`zero-review` now has an independent validation phase (SR-04, SR-05, SR-07).
+`Verifier` labels must be unique and differ from the hunter/critic/system actors;
+`ValidationWave` requires a configurable quorum (default 2 of 3) with zero
+rejections and zero needs-evidence before confirming, otherwise the unit is
+deferred. `EvidenceVerifier` re-reads the target read-only, checks every ref is
+inside the unit paths and line-bounded, and rejects a candidate whose cited
+lines do not contain the expected sink marker — the false-positive path. Every
+confirmed unit gets a content fingerprint (canonical refs + file length + first
+64 KiB); `check_fingerprints` defers a changed unit instead of carrying its
+confirmation (SR-11), and a confirmed unit with no baseline is deferred
+fail-closed. Severity is kept only for confirmed findings, capped at
+demonstrated impact, and reduced with a recorded reason otherwise.
+
+| Test area | Evidence |
+|---|---|
+| True positive | Two verifiers confirm a cited sink; unit Confirmed, severity kept. |
+| Done criterion | False positive (sink absent or file changed) is rejected/refuted with no finding. |
+| Quorum | Disagreement defers, below-quorum does not confirm, same-label verifier refused. |
+| Fingerprint | Stable after no change; a byte edit invalidates a carried confirmation to Deferred. |
+| Severity | Above-impact reduced with reason; unconfirmed forced to info. |
+
+Commands: `cargo test -p zero-review` (85 tests), `cargo clippy -p zero-review
+--all-targets -- -D warnings`. Edits beyond the 64 KiB fingerprint window are
+caught only by length; documented.
 
 ## Hunting waves — T-SR-03 (done)
 
