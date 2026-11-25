@@ -94,9 +94,13 @@ jobs:
           ZERO_REQUIRE_KEYCHAIN: '1'
         run: |
           dbus-run-session -- bash -euo pipefail -c '
+            export XDG_DATA_HOME="$(mktemp -d)"
             export XDG_RUNTIME_DIR="$(mktemp -d)"
-            chmod 700 "$XDG_RUNTIME_DIR"
-            eval "$(printf "zero-ci-pass\n" | gnome-keyring-daemon --daemonize --login --components=secrets)"
+            control="$(mktemp -d)"
+            chmod 700 "$XDG_RUNTIME_DIR" "$control"
+            # --unlock creates and unlocks the login keyring on a fresh home;
+            # --login would only stash the password and need a later --start.
+            eval "$(printf "zero-ci-pass\n" | gnome-keyring-daemon --daemonize --unlock --components=secrets --control-directory="$control")"
             sleep 2
             printf "canary" | secret-tool store --label=zero-ci service zero-ci account canary
             test "$(secret-tool lookup service zero-ci account canary)" = "canary"
