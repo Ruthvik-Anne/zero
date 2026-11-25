@@ -59,3 +59,6 @@ on `ci/m0-m1-verification` (`49ef2a6e`): all eight jobs successful, including th
 fixtures on every platform. A CI-only gap was caught here: six new error codes
 were not yet in `docs/errors.md`; the generated page is now committed and the
 `error::tests::documented_codes_match_the_enum_exactly` gate passes.
+
+Run [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
+on `0e4fcf46` covers the tasks/todos slice: all eight jobs successful as well.
