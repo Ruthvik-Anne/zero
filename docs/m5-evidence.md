@@ -13,6 +13,6 @@ Only the project group is closed so far.
 | T-PRJ-05 | `legacy_layouts_migrate_once_and_are_logged`: `.pi` key migration, archive, log, idempotent second open. |
 | T-PRJ-06 | `mesh_bindings_share_one_identity_at_different_paths`: replicated identity, independent local paths. |
 
-## Still open in M5
+Hosted run [45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438) on `f176c8f1`: all eight jobs successful.\n\n## Still open in M5
 
 T-CRT-01..06, T-SEC-01..11.
