@@ -606,7 +606,7 @@ M5 is in progress; only the project group is closed. Evidence:
 | Task group | Status | Evidence |
 |---|---|---|
 | T-PRJ-01..T-PRJ-06 | done | `cargo test -p zero-agent project::`: key/identity, creation/gitignore, moves/copies, replaced key, layout migration, mesh bindings. |
-| T-CRT-02..06 | done | `cargo test -p zero-secrets`: encrypted fallback, accounts, scrubbed env/refresh lock, import/trash, machine unlock. |\n| T-CRT-01 | doing | `Keychain` trait exists; real Windows/macOS/libsecret adapters pending. |\n| T-SEC-01..11 | todo | Not implemented yet. |
+| T-CRT-02..06 | done | `cargo test -p zero-secrets`: encrypted fallback, accounts, scrubbed env/refresh lock, import/trash, machine unlock. |\n| T-CRT-01 | doing | `Keychain` trait exists; real Windows/macOS/libsecret adapters pending. |\n| T-SEC-01..04, 06, 07, 09 | done | `cargo test -p zero-secrets vault::`: vault AAD/tamper, scopes/bindings/expiry, placeholders/transport, audit/env, leakage sinks. |\n| T-SEC-05, 08, 10, 11 | todo/doing | Host prompt (05), history scan (08, rotate done), headless secret queue (10), sign-in terms (11). |
 
 ## M6 — Web, MCP, doctor, monitors, security review
 
