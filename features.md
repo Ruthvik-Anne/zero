@@ -3387,6 +3387,10 @@ IDs never change; a withdrawn requirement is marked withdrawn, not deleted.
 - **MCP-18 Trust.** MUST keep project servers inert until the folder is trusted.
 - **MCP-19 Conformance.** MUST pass conformance fixtures for `2025-11-25` and
   `2026-07-28`.
+- **MCP-20 Code mode.** MUST expose MCP tools as a typed code API and execute
+  model-written code in the host sandbox, returning only the final result, with
+  per-call policy and approval, name sanitization, and generated TypeScript and
+  Python stubs.
 
 ### 10.20 Trust and threat model (`TRU`)
 
