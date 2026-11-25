@@ -1,0 +1,36 @@
+{
+  "ledger_schema_version": 1,
+  "findings_schema_version": 1,
+  "units": 3,
+  "findings": 1,
+  "status_counts": {
+    "assigned": 0,
+    "blocked": 1,
+    "confirmed": 1,
+    "deferred": 0,
+    "out_of_scope": 0,
+    "pending": 1,
+    "refuted": 0,
+    "reviewed": 0
+  },
+  "confirmed_findings": [
+    {
+      "id": "FND-P1",
+      "unit_id": "sr-process-command-injection-2618a70f",
+      "title": "user input selects the executable that is spawned",
+      "severity": "high"
+    }
+  ],
+  "rejected_candidates": 0,
+  "deferred_units": 0,
+  "blocked_units": 1,
+  "partial": true,
+  "coverage_gap_unit_ids": [
+    "sr-credentials-credential-exposure-a35b57bd",
+    "sr-filesystem-path-traversal-ca22dc99"
+  ],
+  "needs_validation_unit_ids": [
+    "sr-credentials-credential-exposure-a35b57bd",
+    "sr-filesystem-path-traversal-ca22dc99"
+  ]
+}

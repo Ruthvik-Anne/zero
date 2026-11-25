@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "table_version": 1,
+  "checked_on": "2026-11-25",
+  "sources": [
+    {
+      "id": "openai-gpt-6.2-sol-tracker",
+      "url": "https://llmmodels.org/models/gpt-6-2-sol",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "openai-gpt-6-luna-tracker",
+      "url": "https://llmmodels.org/models/gpt-6-luna",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "anthropic-opus-5-5",
+      "url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "anthropic-sonnet-5-5",
+      "url": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "google-gemini-4-argon",
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-argon",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "openai-gpt-oss-120b",
+      "url": "https://developers.openai.com/api/docs/models/gpt-oss-120b",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "qwen3.5-9b",
+      "url": "https://huggingface.co/Qwen/Qwen3.5-9B",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "openai-pricing",
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "anthropic-pricing",
+      "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "anthropic-prompt-caching",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "google-pricing",
+      "url": "https://cloud.google.com/model-garden/pricing",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "ollama-gpt-oss-120b",
+      "url": "https://ollama.com/library/gpt-oss:120b",
+      "checked_on": "2026-11-25"
+    },
+    {
+      "id": "ollama-qwen3.5",
+      "url": "https://ollama.com/library/qwen3.5",
+      "checked_on": "2026-11-25"
+    }
+  ],
+  "models": [
+    {
+      "provider": "openai",
+      "family": "gpt",
+      "model": "gpt-6.2-sol",
+      "version": "6.2",
+      "context_tokens": 1050000,
+      "output_tokens": 128000,
+      "cost": {
+        "input_micros_per_mtok": 2000000,
+        "output_micros_per_mtok": 10000000,
+        "cache_read_micros_per_mtok": 100000,
+        "cache_write_micros_per_mtok": 2500000
+      },
+      "rate": {
+        "rpm": 5000,
+        "tpm": 1000000
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": false
+      },
+      "grades": {
+        "model": "gpt-6.2-sol",
+        "grades": {
+          "coding": 5,
+          "reasoning": 5,
+          "instruction_following": 5,
+          "tool_use": 5,
+          "vision": 4,
+          "long_context": 5,
+          "latency": 3
+        }
+      },
+      "source_ref": 0
+    },
+    {
+      "provider": "openai",
+      "family": "gpt",
+      "model": "gpt-6-luna",
+      "version": "6",
+      "context_tokens": 1050000,
+      "output_tokens": 128000,
+      "cost": {
+        "input_micros_per_mtok": 50000,
+        "output_micros_per_mtok": 250000,
+        "cache_read_micros_per_mtok": 5000,
+        "cache_write_micros_per_mtok": 62500
+      },
+      "rate": {
+        "rpm": 5000,
+        "tpm": 2000000
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": false
+      },
+      "grades": {
+        "model": "gpt-6-luna",
+        "grades": {
+          "coding": 4,
+          "reasoning": 4,
+          "instruction_following": 4,
+          "tool_use": 4,
+          "vision": 4,
+          "long_context": 5,
+          "latency": 5
+        }
+      },
+      "source_ref": 1
+    },
+    {
+      "provider": "anthropic",
+      "family": "claude",
+      "model": "claude-opus-5-5",
+      "version": "5.5",
+      "context_tokens": 1000000,
+      "output_tokens": 128000,
+      "cost": {
+        "input_micros_per_mtok": 4000000,
+        "output_micros_per_mtok": 20000000,
+        "cache_read_micros_per_mtok": 200000,
+        "cache_write_micros_per_mtok": 5000000
+      },
+      "rate": {
+        "rpm": null,
+        "tpm": null
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": false
+      },
+      "grades": {
+        "model": "claude-opus-5-5",
+        "grades": {
+          "coding": 5,
+          "reasoning": 5,
+          "instruction_following": 5,
+          "tool_use": 5,
+          "vision": 5,
+          "long_context": 5,
+          "latency": 3
+        }
+      },
+      "source_ref": 2
+    },
+    {
+      "provider": "anthropic",
+      "family": "claude",
+      "model": "claude-sonnet-5-5",
+      "version": "5.5",
+      "context_tokens": 1000000,
+      "output_tokens": 128000,
+      "cost": {
+        "input_micros_per_mtok": 2000000,
+        "output_micros_per_mtok": 10000000,
+        "cache_read_micros_per_mtok": 100000,
+        "cache_write_micros_per_mtok": 2500000
+      },
+      "rate": {
+        "rpm": null,
+        "tpm": null
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": false
+      },
+      "grades": {
+        "model": "claude-sonnet-5-5",
+        "grades": {
+          "coding": 5,
+          "reasoning": 4,
+          "instruction_following": 5,
+          "tool_use": 5,
+          "vision": 4,
+          "long_context": 5,
+          "latency": 4
+        }
+      },
+      "source_ref": 3
+    },
+    {
+      "provider": "google",
+      "family": "gemini",
+      "model": "gemini-4-argon",
+      "version": "4",
+      "context_tokens": 1048576,
+      "output_tokens": 1048576,
+      "cost": {
+        "input_micros_per_mtok": 2000000,
+        "output_micros_per_mtok": 10000000,
+        "cache_read_micros_per_mtok": 100000
+      },
+      "rate": {
+        "rpm": null,
+        "tpm": null
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": false
+      },
+      "grades": {
+        "model": "gemini-4-argon",
+        "grades": {
+          "coding": 5,
+          "reasoning": 5,
+          "instruction_following": 5,
+          "tool_use": 5,
+          "vision": 5,
+          "long_context": 5,
+          "latency": 4
+        }
+      },
+      "source_ref": 4
+    },
+    {
+      "provider": "ollama",
+      "family": "gpt-oss",
+      "model": "gpt-oss:120b",
+      "version": "120b",
+      "context_tokens": 131072,
+      "output_tokens": 131072,
+      "cost": {
+        "input_micros_per_mtok": 0,
+        "output_micros_per_mtok": 0,
+        "cache_read_micros_per_mtok": 0,
+        "cache_write_micros_per_mtok": 0
+      },
+      "rate": {
+        "rpm": null,
+        "tpm": null
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": true
+      },
+      "grades": {
+        "model": "gpt-oss:120b",
+        "grades": {
+          "coding": 4,
+          "reasoning": 4,
+          "instruction_following": 4,
+          "tool_use": 4,
+          "vision": 0,
+          "long_context": 3,
+          "latency": 4
+        }
+      },
+      "source_ref": 5
+    },
+    {
+      "provider": "ollama",
+      "family": "qwen",
+      "model": "qwen3.5:9b",
+      "version": "3.5",
+      "context_tokens": 262144,
+      "output_tokens": 262144,
+      "cost": {
+        "input_micros_per_mtok": 0,
+        "output_micros_per_mtok": 0,
+        "cache_read_micros_per_mtok": 0,
+        "cache_write_micros_per_mtok": 0
+      },
+      "rate": {
+        "rpm": null,
+        "tpm": null
+      },
+      "availability": {
+        "ga": true,
+        "preview": false,
+        "deprecated": false,
+        "local_only": true
+      },
+      "grades": {
+        "model": "qwen3.5:9b",
+        "grades": {
+          "coding": 3,
+          "reasoning": 3,
+          "instruction_following": 4,
+          "tool_use": 4,
+          "vision": 4,
+          "long_context": 4,
+          "latency": 4
+        }
+      },
+      "source_ref": 6
+    }
+  ]
+}

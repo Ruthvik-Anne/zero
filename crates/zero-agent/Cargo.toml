@@ -13,6 +13,7 @@ zero-fs = { workspace = true }
 zero-tasks = { workspace = true }
 zero-sched = { workspace = true }
 zero-model = { workspace = true }
+zero-review = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

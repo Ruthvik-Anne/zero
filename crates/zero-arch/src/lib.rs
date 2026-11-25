@@ -3,6 +3,7 @@
 pub mod deps;
 pub mod layers;
 pub mod manifest;
+pub mod parity;
 pub mod traceability;
 
 pub use deps::{check_graph, check_workspace, find_cycles, GraphReport, Violation};

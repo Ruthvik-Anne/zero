@@ -64,6 +64,11 @@ thiserror = "2"
 blake3 = "1"
 rusqlite = { version = "0.43", features = ["bundled"] }
 base64 = "0.22"
+# Halcyon mode signatures (HAL-03). Pinned to the maintained 2.2 line: MSRV
+# 1.81 and edition 2021 match this workspace, and it reuses the existing
+# `sha2` 0.10 stack. 3.0 exists but pulls a parallel sha2 0.11 / signature 3 /
+# curve25519-dalek 5 stack for the same primitive.
+ed25519-dalek = "2.2"
 keyring = "4.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "blocking", "rustls-tls"] }
@@ -76,5 +81,20 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 getrandom = "0.2"
 sha2 = "0.10"
+# T-TEL-03 end-to-end transfer. Pinned to the RustCrypto lines that share this
+# workspace's existing digest 0.10, aead 0.5, and curve25519-dalek 4 stacks
+# (sha2 0.10, aes-gcm 0.10, ed25519-dalek 2.2). The 2026 majors
+# (x25519-dalek 3, chacha20poly1305 0.11, hkdf 0.13) need digest 0.11, aead 0.6,
+# and curve25519-dalek 5, a second copy of the same primitives. `static_secrets`
+# gives a seedable ephemeral key; `alloc` gives Vec ciphertext, and `getrandom`
+# is off because nonces are derived rather than sampled.
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+hkdf = "0.12"
 url = "2"
 zeroize = "1"
+zip = { version = "9.7.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# PDF text extraction only: pure Rust, MSRV 1.88, no C bindings. Default
+# features (`rayon`, `chrono-clock`) are off because the reader extracts pages
+# sequentially and never needs timestamps.
+lopdf = { version = "0.47", default-features = false }

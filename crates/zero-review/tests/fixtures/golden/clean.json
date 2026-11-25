@@ -1,0 +1,27 @@
+{
+  "ledger_schema_version": 1,
+  "findings_schema_version": 1,
+  "units": 3,
+  "findings": 0,
+  "status_counts": {
+    "assigned": 0,
+    "blocked": 0,
+    "confirmed": 0,
+    "deferred": 0,
+    "out_of_scope": 0,
+    "pending": 0,
+    "refuted": 3,
+    "reviewed": 0
+  },
+  "confirmed_findings": [],
+  "rejected_candidates": 0,
+  "deferred_units": 0,
+  "blocked_units": 0,
+  "partial": false,
+  "coverage_gap_unit_ids": [],
+  "needs_validation_unit_ids": [
+    "sr-credentials-credential-exposure-216c1671",
+    "sr-filesystem-path-traversal-c8f58051",
+    "sr-process-command-injection-c4f9b874"
+  ]
+}

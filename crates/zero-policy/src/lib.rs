@@ -9,6 +9,7 @@ pub mod delete;
 pub mod dispatch;
 pub mod eval;
 pub mod headless;
+pub mod mobile_approval;
 pub mod mode;
 pub mod regulator;
 pub mod sandbox;
@@ -23,5 +24,11 @@ pub use mode::{default_verdict, ActionClass, Mode, Verdict, MATRIX};
 pub use transitions::{end_headless, load as load_mode, persist as persist_mode, transition, ModeState, TransitionContext};
 pub use dispatch::{execute_host_request, CallPhase, DispatchBatch, FileOp, HostRequest, Permit, PolicyEngine};
 pub use headless::{run_headless, HeadlessReport, ItemState, QueueKind, QueuedItem, UserQueue, Work};
+pub use mobile_approval::{
+    approve, approve_by, challenge, secure_display_for, ActionDigest, ApprovalChallenge,
+    ApprovalStore as MobileApprovalStore, LockScreenView, MobileAction, MobileApproval,
+    MobileDecision, PromptSurface, Risk, SecretReveal, SecureDisplay, DEFAULT_CONSUMED_CAPACITY,
+    FLAG_SECURE, MAX_ID_CHARS,
+};
 pub use regulator::{auto_review, AiDecision, AiRegulator, AiVerdict, AutoOutcome, CodeRegulator, RegulatorContext, RegulatorInput};
 pub use trust::{load_project_features, ProjectFeatures, TrustEntry, TrustStore};

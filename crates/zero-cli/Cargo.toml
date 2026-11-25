@@ -14,8 +14,17 @@ zero-store = { workspace = true }
 zero-agent = { workspace = true }
 zero-model = { workspace = true }
 zero-policy = { workspace = true }
+# Uninstall moves user data and config to the OS trash through the shared
+# trash service (T-INST-07, DEL-06/DEL-07) instead of deleting it.
+zero-fs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Release packaging (T-INST-01, INST-02, INST-11): SHA-256 artifact digests,
+# Ed25519 manifest signatures with the key embedded in the installer, and the
+# base64 projection used by the signed manifest file. All workspace deps.
+base64 = { workspace = true }
+ed25519-dalek = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

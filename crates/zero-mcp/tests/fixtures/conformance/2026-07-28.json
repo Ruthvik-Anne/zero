@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "revision": "2026-07-28",
+  "name": "conformance-2026-07-28",
+  "exchanges": [
+    {
+      "name": "initialize negotiates 2026-07-28",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2026-07-28",
+          "capabilities": {},
+          "clientInfo": { "name": "zero" }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "protocolVersion": "2026-07-28",
+          "resultType": "complete",
+          "capabilities": { "tools": { "listChanged": true } },
+          "serverInfo": {
+            "name": "fixture-2026",
+            "version": "2.0.0",
+            "title": "Fixture 2026"
+          },
+          "instructions": "Fixture server for the stateless core."
+        }
+      },
+      "expected": {
+        "negotiated_revision": "2026-07-28",
+        "result_type": "complete"
+      }
+    },
+    {
+      "name": "tools/list parses annotations and cache hints",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "resultType": "complete",
+          "ttlMs": 60000,
+          "cacheScope": "session",
+          "tools": [
+            {
+              "name": "echo",
+              "title": "Echo",
+              "description": "Return the supplied text.",
+              "inputSchema": {
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"],
+                "additionalProperties": false
+              },
+              "outputSchema": {
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"]
+              },
+              "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+              }
+            },
+            {
+              "name": "save",
+              "description": "Write a file.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string" },
+                  "content": { "type": "string" }
+                },
+                "required": ["path", "content"]
+              },
+              "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "tool_names": ["echo", "save"],
+        "tool_catalog_hash": "ff0c4452a4be5385",
+        "read_only_tools": ["echo"],
+        "result_type": "complete"
+      }
+    },
+    {
+      "name": "tools/call returns resultType complete",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "echo",
+          "arguments": { "text": "hello" }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "resultType": "complete",
+          "content": [{ "type": "text", "text": "hello from 2026-07-28" }],
+          "structuredContent": { "text": "hello from 2026-07-28" },
+          "isError": false
+        }
+      },
+      "expected": {
+        "result_type": "complete",
+        "content": [{ "type": "text", "text": "hello from 2026-07-28" }],
+        "structured_content": { "text": "hello from 2026-07-28" }
+      }
+    },
+    {
+      "name": "tools/call asks for input",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+          "name": "plan_trip",
+          "arguments": { "destination": "Paris" }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "resultType": "input_required",
+          "inputRequests": {
+            "city": {
+              "method": "elicitation/create",
+              "params": {
+                "mode": "form",
+                "message": "Which city?",
+                "requestedSchema": {
+                  "type": "object",
+                  "properties": { "city": { "type": "string" } },
+                  "required": ["city"]
+                }
+              }
+            }
+          },
+          "requestState": "opaque-state-1"
+        }
+      },
+      "expected": {
+        "result_type": "input_required",
+        "input_request_count": 1
+      }
+    },
+    {
+      "name": "tools/call retries once with inputResponses",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+          "name": "plan_trip",
+          "arguments": { "destination": "Paris" },
+          "inputResponses": {
+            "city": { "action": "accept", "content": { "city": "Paris" } }
+          },
+          "requestState": "opaque-state-1"
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": {
+          "resultType": "complete",
+          "content": [{ "type": "text", "text": "Trip planned to Paris" }],
+          "structuredContent": { "city": "Paris" }
+        }
+      },
+      "expected": {
+        "result_type": "complete",
+        "content": [{ "type": "text", "text": "Trip planned to Paris" }],
+        "structured_content": { "city": "Paris" }
+      }
+    },
+    {
+      "name": "tools/call returns a task handle",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+          "name": "index_repository",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "result": {
+          "resultType": "task",
+          "taskId": "task-secret-1",
+          "status": "working",
+          "ttlMs": 60000,
+          "pollIntervalMs": 1000,
+          "createdAt": "2026-07-28T10:00:00Z",
+          "lastUpdatedAt": "2026-07-28T10:00:00Z"
+        }
+      },
+      "expected": {
+        "result_type": "task",
+        "task_state": "working"
+      }
+    },
+    {
+      "name": "prompts/list parses a prompt catalogue",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "prompts/list",
+        "params": {}
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": {
+          "resultType": "complete",
+          "prompts": [
+            {
+              "name": "review",
+              "description": "Review a target.",
+              "arguments": [{ "name": "target", "required": true }]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "prompt_names": ["review"]
+      }
+    },
+    {
+      "name": "JSON-RPC error is surfaced with its wire code",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+          "name": "explode",
+          "arguments": {}
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "error": { "code": -32603, "message": "Internal error" }
+      },
+      "expected": {
+        "error_code": -32603
+      }
+    }
+  ]
+}

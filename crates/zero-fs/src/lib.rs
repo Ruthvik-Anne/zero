@@ -20,5 +20,8 @@ pub use overlay::{Conflict, MergeReport, Overlay};
 pub use manager::{atomic_write, current_version, Change, ChangeKind, Encoding, FileManager, Handle, Newline, Version, Watcher};
 pub use overwrite_journal::{OverwriteJournal, Snapshot};
 pub use purge::{confirm_from_ui, HumanConfirmation, PurgePlan, PurgeReport, PurgeService};
-pub use retention::{Retention, RetentionPolicy, RetentionReport};
+pub use retention::{
+    sweep, RetentionClass, RetentionError, RetentionPlan, RetentionPolicy, RetentionReason,
+    RetentionReport, TrashedItem,
+};
 pub use trash::{TrashOutcome, TrashService};

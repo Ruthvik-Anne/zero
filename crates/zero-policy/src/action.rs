@@ -113,7 +113,7 @@ impl Action {
     }
 }
 
-fn canonical_json(value: &serde_json::Value) -> String {
+pub(crate) fn canonical_json(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().collect();

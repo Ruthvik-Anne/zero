@@ -19,6 +19,7 @@ use serde_json::{json, Map, Value};
 use zero_types::error::{ErrorCode, Result, ZeroError};
 
 use crate::jsonrpc::protocol_error;
+use crate::tasks::Task;
 
 /// The only input request method implemented by this client.
 pub const METHOD_ELICITATION_CREATE: &str = "elicitation/create";
@@ -133,6 +134,9 @@ pub enum ToolCallOutcome {
         /// Opaque `requestState` to echo verbatim on the retry.
         state: Option<Value>,
     },
+    /// The server returned a task handle (`resultType: "task"`). Poll it with
+    /// the task methods; this is only produced on `2026-07-28`.
+    Task(Task),
     /// A `resultType` this client does not know, passed through unchanged.
     Other(String),
 }

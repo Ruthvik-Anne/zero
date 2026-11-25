@@ -21,6 +21,7 @@ use crate::jsonrpc::{expect_object, expect_result, protocol_error, Request, Requ
 use crate::mrtr::{parse_input_requests, InputRequest, InputResponses, ToolCallOutcome};
 use crate::revision::McpRevision;
 use crate::schema::{hash_bytes, hash_start, schema_hash, SchemaLimits};
+use crate::tasks::Task;
 
 /// `initialize` method name.
 pub const METHOD_INITIALIZE: &str = "initialize";
@@ -91,6 +92,44 @@ impl ResultType {
     }
 }
 
+/// Optional behaviour hints from a tool's `annotations` object.
+///
+/// These are untrusted server data and hints, not guarantees. A missing hint is
+/// `None`, which is deliberately different from an explicit `false`: T-MCP-08
+/// treats a tool whose read-only intent was never stated as unknown and asks
+/// the host by default.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolAnnotations {
+    /// `readOnlyHint`: the tool does not modify its environment.
+    #[serde(
+        default,
+        rename = "readOnlyHint",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub read_only_hint: Option<bool>,
+    /// `destructiveHint`: the tool may perform destructive updates.
+    #[serde(
+        default,
+        rename = "destructiveHint",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub destructive_hint: Option<bool>,
+    /// `idempotentHint`: repeated calls with the same arguments are harmless.
+    #[serde(
+        default,
+        rename = "idempotentHint",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub idempotent_hint: Option<bool>,
+    /// `openWorldHint`: the tool may interact with an open world of entities.
+    #[serde(
+        default,
+        rename = "openWorldHint",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub open_world_hint: Option<bool>,
+}
+
 /// One tool advertised by `tools/list`.
 ///
 /// Unknown tool fields are ignored. Descriptions, titles, and annotations are
@@ -115,6 +154,9 @@ pub struct Tool {
         skip_serializing_if = "Option::is_none"
     )]
     pub output_schema: Option<Value>,
+    /// Optional behaviour hints; untrusted server data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
 }
 
 impl Tool {
@@ -356,6 +398,12 @@ impl<T: Transport> Client<T> {
     pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.clock = clock;
         self
+    }
+
+    /// Current time from the injected clock, used for TTL budgets in
+    /// [`crate::tasks`].
+    pub(crate) fn clock_now(&self) -> Timestamp {
+        self.clock.now()
     }
 
     /// Replace the bounds applied to tool schemas.
@@ -639,8 +687,8 @@ impl<T: Transport> Client<T> {
     /// retry fails so a caller cannot accidentally retry more than once.
     ///
     /// Accepting a URL-mode request requires an [`InputResponses`] built with
-    /// the [`HostAction`] from the outcome; the client never opens, follows, or
-    /// submits a URL on its own.
+    /// the [`HostAction`](crate::mrtr::HostAction) from the outcome; the client
+    /// never opens, follows, or submits a URL on its own.
     pub fn retry_with_inputs(&mut self, responses: InputResponses) -> Result<ToolCallOutcome> {
         let pending = self.pending_input.as_ref().ok_or_else(|| {
             ZeroError::new(
@@ -730,11 +778,18 @@ impl<T: Transport> Client<T> {
                 }
                 Ok(ToolCallOutcome::InputRequired { requests, state })
             }
+            ResultType::Other(value) if value == "task" => Ok(ToolCallOutcome::Task(
+                Task::from_create_result(Value::Object(object))?,
+            )),
             ResultType::Other(value) => Ok(ToolCallOutcome::Other(value)),
         }
     }
 
-    fn exchange(&mut self, method: &str, params: Option<Value>) -> Result<Value> {
+    /// Send one request through the transport and validate its envelope.
+    ///
+    /// Exposed to sibling modules so the task methods in [`crate::tasks`] use
+    /// the same sequential ids and envelope checks as the core client.
+    pub(crate) fn exchange(&mut self, method: &str, params: Option<Value>) -> Result<Value> {
         self.next_id = self.next_id.saturating_add(1);
         let id = RequestId::Number(self.next_id);
         let request = Request::new(id.clone(), method, params);

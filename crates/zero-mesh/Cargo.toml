@@ -11,6 +11,24 @@ zero-secrets = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+base64 = { workspace = true }
+# T-MESH-01 device identity (MESH-08): Ed25519 device keys, owner-root signed
+# join tokens, approvals, revocations, and rotations; the device id is the
+# blake3 hash of the public key.
+ed25519-dalek = { workspace = true }
+blake3 = { workspace = true }
+getrandom = { workspace = true }
+# T-TEL-03 E2E transfer: X25519 key agreement, HKDF-SHA256, and
+# ChaCha20-Poly1305 per-chunk AEAD; `zeroize` clears the derived key.
+x25519-dalek = { workspace = true }
+chacha20poly1305 = { workspace = true }
+hkdf = { workspace = true }
+sha2 = { workspace = true }
+zeroize = { workspace = true }
+# T-TEL-07 vault ciphertext: Argon2id key derivation and AES-256-GCM for the
+# passphrase-bound vault envelope that travels through the sealed transfer.
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

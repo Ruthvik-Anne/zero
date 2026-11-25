@@ -15,6 +15,35 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+pub mod agent_api;
+pub mod faults;
+pub mod forensics;
+pub mod playbook;
+pub mod repair;
+
+pub use agent_api::{
+    apply as agent_apply, check_code, diagnose, finish_turn, finish_turn_with, plan, AgentDoctor,
+    AgentError, GateOptions, PlanOutcome, RefusedCheck, TurnReport, TurnSummary, UnresolvedFailure,
+    MAX_SUMMARY_CHARS, PLAN_ID,
+};
+pub use forensics::{
+    build_bundle, read_bundle, redact_text, Artifact, BundleFile, BundleInputs, BundleLimits,
+    BundleManifest, BundleReport, ForensicsError, SkipReason, SkippedFile, Timeline, TimelineEvent,
+    TimelineStats, TruncationFlags, BUNDLE_SCHEMA_VERSION, DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_TOTAL_BYTES, HASH_ALGORITHM, MANIFEST_FILE, MAX_TIMELINE_EVENTS, NETWORK_NONE,
+    REDACTED, TIMELINE_FILE,
+};
+pub use playbook::{all, playbook, triage, Playbook};
+pub use faults::{
+    all as faults_all, assert_all_codes_exercised, diagnose_faults, fault_for, inject,
+    run_all as run_faults, Fault, FaultFailure, FaultFixture, FaultReport, FaultSuiteError,
+};
+pub use repair::{
+    apply, dry_run, rollback, AppliedAction, PreviewChange, PreviewEffect, RepairAction,
+    RepairActionKind, RepairError, RepairPlan, RepairPolicy, RepairPreview, RepairReport,
+    SnapshotRef, MAX_CONTENTS_BYTES, MAX_PLAN_ACTIONS,
+};
+
 /// The crate version, shared by the binary banner and the report.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

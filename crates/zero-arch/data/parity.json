@@ -1,0 +1,1176 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "p1-core-model-01",
+      "state": "Partial",
+      "reason": "zero-kernel implements the Jupyter transport, HMAC, host gate, restart, and limits, but the agent still exposes a native tool catalogue; the one model-facing `ipython` composition is not wired. See docs/kernel.md and docs/tools.md.",
+      "refs": [
+        "KRN-01",
+        "KRN-05",
+        "T-KRN-01",
+        "T-TOOL-01"
+      ]
+    },
+    {
+      "id": "p1-core-model-02",
+      "state": "Deferred",
+      "reason": "No `/refine`, durable supplemental-prompt/memory store, or snapshot rollback for harness updates. zero-agent::self_improve is the narrower evaluate/promote loop, not the Continual Harness.",
+      "refs": [
+        "SI-01",
+        "T-SI-01"
+      ]
+    },
+    {
+      "id": "p1-core-model-03",
+      "state": "Partial",
+      "reason": "Roles, policy inheritance, and resume/teleport child records exist, but there is no `rlm()` spawn that returns a handle and no agent_message result delivery.",
+      "refs": [
+        "MDL-04",
+        "T-MDL-04",
+        "T-POL-03"
+      ]
+    },
+    {
+      "id": "p1-core-model-04",
+      "state": "Partial",
+      "reason": "Teleport snapshots and auto-resume carry child records, but there is no live `list_subagents`/`delete_subagent` API scoped to a parent.",
+      "refs": [
+        "T-TEL-07",
+        "T-AR-02"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-01",
+      "state": "Partial",
+      "reason": "Resident workers and a supervisor exist (T-SES-08), but `zero attach` is not one of the four CLI verbs yet; reattach is covered by resume/line mode.",
+      "refs": [
+        "SES-08",
+        "T-SES-08",
+        "T-SES-07"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-02",
+      "state": "Partial",
+      "reason": "The supervisor owns routing, health, adoption, restart, and coordinated shutdown; the separate catalog subprocess for saved-session scans is not implemented.",
+      "refs": [
+        "SES-08",
+        "T-SES-08"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-03",
+      "state": "Implemented",
+      "reason": "Workers and kernels run as separate child processes with the client's OS permissions; the test-only sandbox is an explicit recovery/spike mechanism, not a security boundary. See docs/trust.md.",
+      "refs": [
+        "TRU-03",
+        "T-SES-08",
+        "T-KRN-01"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-04",
+      "state": "Implemented",
+      "reason": "The supervisor retries at 250 ms, 1 s, and 5 s, marks a root failed after the retry budget, and adopts live workers. See docs/architecture.md and T-SES-08.",
+      "refs": [
+        "SES-08",
+        "T-SES-08"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-05",
+      "state": "Implemented",
+      "reason": "A process-safe lease lives next to the canonical JSONL path, and two concurrent creators converge on one owner (T-SES-06, docs/sessions.md).",
+      "refs": [
+        "SES-06",
+        "T-SES-06"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-06",
+      "state": "Implemented",
+      "reason": "The command journal records before dispatch, reports an unfinished begin as uncertain, and replays one effect per key (T-SES-09, T-ACT-06).",
+      "refs": [
+        "SES-09",
+        "T-SES-09",
+        "T-ACT-06"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-07",
+      "state": "Partial",
+      "reason": "Generation/sequence cursors, chunked attach snapshots, and a sidecar offset index exist; there is no file-backed transcript cache above 4 MiB. See docs/sessions.md.",
+      "refs": [
+        "SES-07",
+        "T-SES-07"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-08",
+      "state": "Deferred",
+      "reason": "No per-attachment event queue or backpressure: the supervisor has no client event stream yet, so a blocked client cannot be isolated.",
+      "refs": [
+        "SES-07"
+      ]
+    },
+    {
+      "id": "p1-agent-runtime-09",
+      "state": "Deferred",
+      "reason": "No two-phase prepare/validate/commit path for updates across workers; `zero update` swaps files atomically but does not coordinate a live daemon tree.",
+      "refs": [
+        "T-INST-04"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-01",
+      "state": "Partial",
+      "reason": "HeartbeatBook distinguishes user/agent kinds and supports register, pause, resume, and due coalescing; the `/heartbeat` command, clear, and `--follow-up` delivery are not wired to a surface.",
+      "refs": [
+        "AUT-02",
+        "T-AUT-02"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-02",
+      "state": "Partial",
+      "reason": "The heartbeat book already separates user-owned and agent-created beats, but there is no `rlm_heartbeat.create/list/update` tool.",
+      "refs": [
+        "AUT-02",
+        "T-AUT-02"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-03",
+      "state": "Partial",
+      "reason": "Cron parsing, claimed ticks, missed-tick coalescing, and per-session persistence are implemented; `zero schedule add` is not a CLI verb and no schedule action is registered.",
+      "refs": [
+        "AUT-03",
+        "T-AUT-03"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-04",
+      "state": "Implemented",
+      "reason": "Goals persist as session state across compaction with token, time, step, and continuation accounting (T-AUT-01, docs/autonomy.md).",
+      "refs": [
+        "AUT-01",
+        "T-AUT-01"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-05",
+      "state": "Partial",
+      "reason": "Bounded continuations stop on turn/token/time limits and report; configured quality gates and the unchanged-workspace no-rerun rule are not implemented (T-AUT-04 covers limits and cancellation only).",
+      "refs": [
+        "AUT-04",
+        "T-AUT-04"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-06",
+      "state": "Deferred",
+      "reason": "No `agent_message.list_agents/send`, delivery receipts, size/rate limits, or family broadcast. The local MessageQueue covers steer/follow-up for one session only.",
+      "refs": [
+        "MON-01",
+        "T-MON-01"
+      ]
+    },
+    {
+      "id": "p1-long-running-and-background-work-07",
+      "state": "Implemented",
+      "reason": "Compaction keeps the visible tail, kernel state, and retained status records, and is not treated as completion (T-SES-03, docs/sessions.md).",
+      "refs": [
+        "SES-03",
+        "T-SES-03"
+      ]
+    },
+    {
+      "id": "p1-sessions-and-context-01",
+      "state": "Partial",
+      "reason": "Named, resumed, forked, and tree-structured sessions are tested; a distinct clone operation is absent.",
+      "refs": [
+        "SES-02",
+        "T-SES-02",
+        "T-SES-13"
+      ]
+    },
+    {
+      "id": "p1-sessions-and-context-02",
+      "state": "Implemented",
+      "reason": "The branch summary has the six sections and cumulative file tracking, and is used on resume (T-SES-04, T-SES-02).",
+      "refs": [
+        "SES-04",
+        "T-SES-04"
+      ]
+    },
+    {
+      "id": "p1-sessions-and-context-03",
+      "state": "Implemented",
+      "reason": "Cut-point rules, `session_before_compact`/`session_before_tree` hooks, and retained recent state are tested (T-SES-03).",
+      "refs": [
+        "SES-03",
+        "T-SES-03"
+      ]
+    },
+    {
+      "id": "p1-sessions-and-context-04",
+      "state": "Implemented",
+      "reason": "JSONL records and artifacts round-trip with all 13 documented entry kinds, including model/thinking/service-tier, compaction, branch summary, custom, child usage, label, info, state, status, and git state (T-SES-01).",
+      "refs": [
+        "SES-01",
+        "T-SES-01"
+      ]
+    },
+    {
+      "id": "p1-sessions-and-context-05",
+      "state": "Implemented",
+      "reason": "AGENTS.md wins over CLAUDE.md, nearest wins, and the cap is character-safe (T-SES-05, docs/context-files.md).",
+      "refs": [
+        "SES-05",
+        "T-SES-05"
+      ]
+    },
+    {
+      "id": "p1-providers-and-models-01",
+      "state": "Partial",
+      "reason": "OAuth device/PKCE flows and an encrypted token store exist for OpenCode Console and ChatGPT; there are no Codex, Claude Pro/Max, or Copilot subscription adapters.",
+      "refs": [
+        "SEC-11",
+        "T-SEC-11"
+      ]
+    },
+    {
+      "id": "p1-providers-and-models-02",
+      "state": "Partial",
+      "reason": "A production OpenAI-compatible adapter plus Ollama covers many endpoints by base URL; the long named-provider list is catalogue data, not tested adapters.",
+      "refs": [
+        "PRV-01",
+        "PRV-02",
+        "T-PRV-01",
+        "T-PRV-02"
+      ]
+    },
+    {
+      "id": "p1-providers-and-models-03",
+      "state": "Deferred",
+      "reason": "No Azure OpenAI, Bedrock, or Vertex adapters; an OpenAI-compatible endpoint can be configured manually where the vendor exposes one.",
+      "refs": []
+    },
+    {
+      "id": "p1-providers-and-models-04",
+      "state": "Partial",
+      "reason": "The provider trait, base URL/key, streaming thinking deltas, and canonical transcript translation exist; custom headers, per-model override maps, an Anthropic-messages adapter, and full compatibility shims do not.",
+      "refs": [
+        "PRV-01",
+        "T-PRV-01",
+        "T-MDL-05"
+      ]
+    },
+    {
+      "id": "p1-providers-and-models-05",
+      "state": "Partial",
+      "reason": "A seeded model pool with dated source references and a freshness gate exists; there is no models.dev generator or per-provider override pipeline.",
+      "refs": [
+        "MDL-01",
+        "T-MDL-01",
+        "T-MDL-08"
+      ]
+    },
+    {
+      "id": "p1-providers-and-models-06",
+      "state": "Implemented",
+      "reason": "Classification, cheapest-above-floor routing, retry/backoff, and the usage ledger are implemented and tested (T-MDL-02, T-MDL-03, T-USG-01).",
+      "refs": [
+        "MDL-02",
+        "MDL-03",
+        "T-MDL-02",
+        "T-MDL-03",
+        "T-USG-01"
+      ]
+    },
+    {
+      "id": "p1-providers-and-models-07",
+      "state": "Partial",
+      "reason": "Fallback and service-tier records exist; model cycling and a `/models` flow do not, and the `zero login` verb is still a typed not-built stub.",
+      "refs": [
+        "MDL-03",
+        "T-MDL-03",
+        "T-SEC-11"
+      ]
+    },
+    {
+      "id": "p1-customization-01",
+      "state": "Deferred",
+      "reason": "No SKILL.md loader or Python-backed skill installation. Monitor definitions can name a skill trigger, but no skill executor exists.",
+      "refs": []
+    },
+    {
+      "id": "p1-customization-02",
+      "state": "Deferred",
+      "reason": "The action registry supports namespaced extension actions only; there is no extension lifecycle, renderer/widget/editor API, or session-navigation extension surface.",
+      "refs": [
+        "ACT-12",
+        "T-ACT-12"
+      ]
+    },
+    {
+      "id": "p1-customization-03",
+      "state": "Partial",
+      "reason": "The MCP client covers stdio/HTTP, OAuth, tasks, apps, and conformance; shipped skill packages and the documented `McpIntegration` enable-by-login API are absent.",
+      "refs": [
+        "MCP-01",
+        "T-MCP-01",
+        "T-MCP-07",
+        "T-MCP-10"
+      ]
+    },
+    {
+      "id": "p1-customization-04",
+      "state": "Deferred",
+      "reason": "No npm/git/local package installer, convention directories, dependency resolution, filtering, or enable/disable.",
+      "refs": []
+    },
+    {
+      "id": "p1-customization-05",
+      "state": "Partial",
+      "reason": "The 29-token theme model, 256-color palette, and accessibility checks exist; HTML export and custom-theme loading do not (docs/themes.md).",
+      "refs": [
+        "TUI-09",
+        "T-TUI-09"
+      ]
+    },
+    {
+      "id": "p1-customization-06",
+      "state": "Implemented",
+      "reason": "Every action is rebindable with per-surface defaults and conflict detection; no hardcoded key checks (T-ACT-04, docs/actions.md).",
+      "refs": [
+        "ACT-04",
+        "T-ACT-04"
+      ]
+    },
+    {
+      "id": "p1-customization-07",
+      "state": "Deferred",
+      "reason": "No project/user prompt-template store, argument binding, or loading rules.",
+      "refs": []
+    },
+    {
+      "id": "p1-interfaces-01",
+      "state": "Partial",
+      "reason": "The cell grid, streaming Markdown, virtual transcript, input, identity selection, themes, images, host modals, and status bar exist; the subagent tray and a full editor/completion surface do not.",
+      "refs": [
+        "TUI-01",
+        "T-TUI-05",
+        "T-TUI-06",
+        "T-TUI-14"
+      ]
+    },
+    {
+      "id": "p1-interfaces-02",
+      "state": "Partial",
+      "reason": "A terminal-free line client drives turns from a JSON script and prints streamed entries; production print, JSON, RPC, and ACP modes are absent.",
+      "refs": [
+        "T-SES-12"
+      ]
+    },
+    {
+      "id": "p1-interfaces-03",
+      "state": "Deferred",
+      "reason": "No JS/TS SDK, `AgentSession`/`ResourceLoader` API, or in-process run mode.",
+      "refs": []
+    },
+    {
+      "id": "p1-interfaces-04",
+      "state": "OutOfScope",
+      "reason": "Deliberately replaced by the four product verbs plus machine-level lifecycle (features.md Part 8, CLI surface); the old broad verb list becomes actions, and most replacement actions are not registered yet.",
+      "refs": [
+        "T-FND-11",
+        "PAR-02"
+      ]
+    },
+    {
+      "id": "p1-interfaces-05",
+      "state": "Partial",
+      "reason": "Install docs cover OS prerequisites and WSL notes; there are no shell aliases or terminal-specific setup pages for tmux, Termux, Kitty, iTerm2, Ghostty, WezTerm, VS Code, or Windows Terminal.",
+      "refs": [
+        "T-DOCS-01"
+      ]
+    },
+    {
+      "id": "p1-safety-and-observability-01",
+      "state": "Implemented",
+      "reason": "Five modes including plan, auto, and manual resolve through one policy matrix (T-POL-01, docs/policy.md).",
+      "refs": [
+        "POL-01",
+        "T-POL-01"
+      ]
+    },
+    {
+      "id": "p1-safety-and-observability-02",
+      "state": "Partial",
+      "reason": "Overwrite snapshots and undo exist, but there is no git-backed workspace rollback and session checkpoints are not a named operation.",
+      "refs": [
+        "DEL-06",
+        "T-DEL-06"
+      ]
+    },
+    {
+      "id": "p1-safety-and-observability-03",
+      "state": "Partial",
+      "reason": "A hash-chained append-only audit log detects edits and deletions; there is no loop auditor watching agent behaviour.",
+      "refs": [
+        "TRU-02",
+        "T-TRU-02"
+      ]
+    },
+    {
+      "id": "p1-safety-and-observability-04",
+      "state": "Implemented",
+      "reason": "Usage, cost, token budgets, and child/subagent attribution are implemented with roll-up and export (T-USG-01, T-USG-02, docs/usage.md).",
+      "refs": [
+        "USG-01",
+        "USG-02",
+        "T-USG-01",
+        "T-USG-02"
+      ]
+    },
+    {
+      "id": "p1-safety-and-observability-05",
+      "state": "Implemented",
+      "reason": "docs/trust.md states the kernel is a durable control environment, not a sandbox, and untrusted repositories are inert until trusted; the sandbox spike is recorded in decisions/0001-sandbox.md.",
+      "refs": [
+        "TRU-01",
+        "TRU-03",
+        "T-TRU-01",
+        "T-TRU-03"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-01",
+      "state": "Partial",
+      "reason": "This audit assigns one state and reason per item; the original retain-and-polish/required/capability-gated/not-applicable labels are not preserved as data.",
+      "refs": [
+        "PAR-01",
+        "T-PAR-03"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-02",
+      "state": "Partial",
+      "reason": "Identity selection and stale-generation rejection are implemented; there is no evidence for cached rows during loading, per-provider failure isolation, or the three distinct empty states.",
+      "refs": [
+        "TUI-07",
+        "T-TUI-07",
+        "T-ACT-03"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-03",
+      "state": "Partial",
+      "reason": "Selection is identity-based and a stale async refresh is rejected wholesale; preserving typed input across a refresh is not tested.",
+      "refs": [
+        "TUI-07",
+        "T-TUI-07"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-04",
+      "state": "Partial",
+      "reason": "One central evaluator mints every permit for native tool dispatch and kernel effects; extension, MCP, and subagent dispatch paths are not wired yet.",
+      "refs": [
+        "POL-02",
+        "POL-03",
+        "T-POL-02",
+        "T-POL-03",
+        "T-POL-04"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-05",
+      "state": "Implemented",
+      "reason": "Keys go through the action registry with per-surface defaults, and render/input loops are tested non-blocking (T-ACT-04, T-TUI-15).",
+      "refs": [
+        "ACT-04",
+        "T-ACT-04",
+        "T-TUI-15"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-06",
+      "state": "Partial",
+      "reason": "Bounded autonomy, untrusted-content envelopes, and compaction-safe state exist; instruction precedence, evidence-before-completion, and approach-change-after-failure are not encoded as one weaker-model contract.",
+      "refs": [
+        "AUT-04",
+        "T-AUT-04",
+        "T-SES-03"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-07",
+      "state": "Implemented",
+      "reason": "plan.md M0-M10 and tasks.md carry per-task Done criteria with docs/m*-evidence.md; each milestone is verified independently.",
+      "refs": [
+        "PAR-02",
+        "T-PAR-02"
+      ]
+    },
+    {
+      "id": "p2-claude-code-parity-research-and-plan-08",
+      "state": "Deferred",
+      "reason": "No feature-flag gate: Vim mode, suggestions, voice input, per-shell backgrounding, status scripts, agent teams, worktree orchestration, and computer use are absent; the Android remote control is M9 todo.",
+      "refs": [
+        "T-AND-01"
+      ]
+    },
+    {
+      "id": "p2-code-review-rules-cursor-bugbot-md-01",
+      "state": "Deferred",
+      "reason": "No migration-scaffolding lint; zero-review covers security review findings, not this code-review rule.",
+      "refs": []
+    },
+    {
+      "id": "p2-code-review-rules-cursor-bugbot-md-02",
+      "state": "Deferred",
+      "reason": "No lint for options or constants with one legal value at every call site.",
+      "refs": []
+    },
+    {
+      "id": "p2-code-review-rules-cursor-bugbot-md-03",
+      "state": "Deferred",
+      "reason": "No dead-export check for symbols, fields, or methods with zero non-test consumers.",
+      "refs": []
+    },
+    {
+      "id": "p2-code-review-rules-cursor-bugbot-md-04",
+      "state": "Deferred",
+      "reason": "No duplicate-condition or equivalent-predicate lint.",
+      "refs": []
+    },
+    {
+      "id": "p2-code-review-rules-cursor-bugbot-md-05",
+      "state": "Deferred",
+      "reason": "No comment lint; comment style is review-only and not enforced.",
+      "refs": []
+    },
+    {
+      "id": "p2-code-review-rules-cursor-bugbot-md-06",
+      "state": "Partial",
+      "reason": "Tasks require a regression test for their Done criterion, but no rule rejects incidental, duplicate, or label-restating assertions.",
+      "refs": [
+        "TST-11",
+        "T-PAR-01"
+      ]
+    },
+    {
+      "id": "p2-security-policy-old-security-md-01",
+      "state": "Deferred",
+      "reason": "No SECURITY.md or private vulnerability-disclosure policy exists in the rewrite.",
+      "refs": []
+    },
+    {
+      "id": "p2-security-policy-old-security-md-02",
+      "state": "Deferred",
+      "reason": "No vulnerability-report template or required impact/reproduction fields.",
+      "refs": []
+    },
+    {
+      "id": "p2-security-policy-old-security-md-03",
+      "state": "Partial",
+      "reason": "Secret redaction is enforced in logs, doctor artifacts, and telemetry; there is no vulnerability-report template that forbids real keys.",
+      "refs": [
+        "T-FND-07",
+        "T-DOC-05"
+      ]
+    },
+    {
+      "id": "p2-security-policy-old-security-md-04",
+      "state": "Deferred",
+      "reason": "No release support policy stating which branches and versions receive fixes.",
+      "refs": []
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-01",
+      "state": "Implemented",
+      "reason": "Generation/sequence cursors make stale replay explicit and a generation change forces a snapshot (T-SES-07, docs/sessions.md).",
+      "refs": [
+        "SES-07",
+        "T-SES-07"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-02",
+      "state": "Implemented",
+      "reason": "The journal records before dispatch and reports an uncertain begin instead of replaying it (T-SES-09).",
+      "refs": [
+        "SES-09",
+        "T-SES-09"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-03",
+      "state": "Implemented",
+      "reason": "Leases are keyed by canonical log path and stolen at most once (T-SES-06).",
+      "refs": [
+        "SES-06",
+        "T-SES-06"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-04",
+      "state": "Deferred",
+      "reason": "The protocol has event frames, not compact start/delta/end payloads, and there is no worker-to-supervisor delta stream.",
+      "refs": [
+        "FND-10",
+        "T-FND-10"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-05",
+      "state": "Partial",
+      "reason": "Attach snapshot reads and index building are chunked at the store layer; the supervisor does not yet stream opaque snapshot chunks to a client.",
+      "refs": [
+        "SES-07",
+        "T-SES-07"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-06",
+      "state": "Deferred",
+      "reason": "No per-attachment backpressure; there is no attachment event stream to bound.",
+      "refs": [
+        "SES-07"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-07",
+      "state": "Deferred",
+      "reason": "Signed updates verify and swap atomically, but there is no non-destructive prepare/validate aggregate before stopping workers.",
+      "refs": [
+        "T-INST-04"
+      ]
+    },
+    {
+      "id": "p2-daemon-architecture-findings-daemon-md-08",
+      "state": "Partial",
+      "reason": "The bench gate covers startup, frame, attach (618 MiB), session size, and a heap proxy; fanout, serialization count, throughput, RSS, and a 50-worker stress case are absent.",
+      "refs": [
+        "TST-04",
+        "T-TST-04",
+        "T-SES-07"
+      ]
+    },
+    {
+      "id": "p2-rlm-runtime-findings-rlm-md-rlm-runtime-md-01",
+      "state": "Deferred",
+      "reason": "The agent exposes a deferred native tool catalogue (BM25 search/activation), not one model-facing `ipython` tool.",
+      "refs": [
+        "TOOL-01",
+        "T-TOOL-01"
+      ]
+    },
+    {
+      "id": "p2-rlm-runtime-findings-rlm-md-rlm-runtime-md-02",
+      "state": "Deferred",
+      "reason": "No subagent admission/spawn API returning a handle.",
+      "refs": []
+    },
+    {
+      "id": "p2-rlm-runtime-findings-rlm-md-rlm-runtime-md-03",
+      "state": "Partial",
+      "reason": "Authoritative state lives in Rust crates behind the typed host-request gate; the specific TypeScript-host architecture is obsolete in this rewrite.",
+      "refs": [
+        "POL-04",
+        "T-POL-04",
+        "T-KRN-04"
+      ]
+    },
+    {
+      "id": "p2-rlm-runtime-findings-rlm-md-rlm-runtime-md-04",
+      "state": "Partial",
+      "reason": "Teleport and auto-resume carry a child registry, and usage attribution is parent-scoped; there is no live registry that survives a kernel restart.",
+      "refs": [
+        "T-TEL-07",
+        "T-AR-02",
+        "T-USG-01"
+      ]
+    },
+    {
+      "id": "p2-rlm-runtime-findings-rlm-md-rlm-runtime-md-05",
+      "state": "Implemented",
+      "reason": "The trust boundary is explicit: model-generated Python runs with worker permissions and untrusted projects are inert (docs/trust.md, T-TRU-01).",
+      "refs": [
+        "TRU-01",
+        "T-TRU-01",
+        "T-TRU-03"
+      ]
+    },
+    {
+      "id": "p2-model-classification-research-01",
+      "state": "Deferred",
+      "reason": "The model pool seeds per-axis grades but does not compute the 50/40/10 coding/reasoning/instruction rubric.",
+      "refs": [
+        "MDL-01",
+        "T-MDL-01"
+      ]
+    },
+    {
+      "id": "p2-model-classification-research-02",
+      "state": "Deferred",
+      "reason": "No relative percentile binning over a score distribution; tiers are cost bands.",
+      "refs": [
+        "MDL-01"
+      ]
+    },
+    {
+      "id": "p2-model-classification-research-03",
+      "state": "Deferred",
+      "reason": "No coding-exceeds-reasoning demotion rule.",
+      "refs": []
+    },
+    {
+      "id": "p2-model-classification-research-04",
+      "state": "Partial",
+      "reason": "The pool records dated source references, but it does not mark verified third-party harness results separately from provider self-reports.",
+      "refs": [
+        "MDL-01",
+        "T-MDL-01"
+      ]
+    },
+    {
+      "id": "p2-model-classification-research-05",
+      "state": "Partial",
+      "reason": "Dated source URLs live in crates/zero-model/data/models.json; the BenchLM/Terminal-Bench/LMArena/CodingFleet set is not the recorded source set.",
+      "refs": [
+        "MDL-01",
+        "T-MDL-01"
+      ]
+    },
+    {
+      "id": "p2-model-classification-research-06",
+      "state": "Partial",
+      "reason": "Pool entries carry model, provider, parameters, limits, cost, availability, grades, and a derived tier; the SS/Apex five-tier research table is not reproduced.",
+      "refs": [
+        "MDL-01",
+        "T-MDL-01"
+      ]
+    },
+    {
+      "id": "p2-model-classification-research-07",
+      "state": "Implemented",
+      "reason": "The router selects the cheapest model above the required capability floor and refuses downgrades for security/destructive work (T-MDL-02, docs/routing.md).",
+      "refs": [
+        "MDL-02",
+        "T-MDL-02",
+        "T-MDL-03"
+      ]
+    },
+    {
+      "id": "p2-measurement-tooling-as-research-01",
+      "state": "Partial",
+      "reason": "The usage ledger and metrics cover cost, tokens, and context totals; there is no transcript analyser for edit/read tool use or context growth.",
+      "refs": [
+        "USG-01",
+        "T-USG-01",
+        "T-OBS-01"
+      ]
+    },
+    {
+      "id": "p2-measurement-tooling-as-research-02",
+      "state": "Partial",
+      "reason": "The bench gate measures startup, frame, attach, session size, and a heap proxy (T-TST-04); there is no CPU profiler for the coding agent.",
+      "refs": [
+        "TST-04",
+        "T-TST-04"
+      ]
+    },
+    {
+      "id": "p2-measurement-tooling-as-research-03",
+      "state": "Deferred",
+      "reason": "No installer render test at multiple terminal sizes; the installer scripts themselves are T-INST-02/03 todo.",
+      "refs": [
+        "T-INST-02"
+      ]
+    },
+    {
+      "id": "p2-measurement-tooling-as-research-04",
+      "state": "Deferred",
+      "reason": "No browser-bundle smoke check; the web UI is server-rendered and has no bundled client to smoke-test.",
+      "refs": [
+        "T-WEBUI-01"
+      ]
+    },
+    {
+      "id": "p8-interfaces-01",
+      "state": "Partial",
+      "reason": "The TUI and the loopback web UI/desktop shell exist; a Docker image is T-INST-02/03 todo.",
+      "refs": [
+        "T-WEBUI-01",
+        "T-DSK-01",
+        "T-INST-02"
+      ]
+    },
+    {
+      "id": "p8-interfaces-02",
+      "state": "Partial",
+      "reason": "The loopback web UI uses a one-time token, but there is no `pair`-style link that drives a local session from a browser.",
+      "refs": [
+        "T-WEBUI-01"
+      ]
+    },
+    {
+      "id": "p8-interfaces-03",
+      "state": "Partial",
+      "reason": "Mesh and teleport crates are implemented and tested; the Android remote-control app is T-AND-01..05 todo.",
+      "refs": [
+        "T-MESH-01",
+        "T-TEL-01",
+        "T-AND-01"
+      ]
+    },
+    {
+      "id": "p8-providers-and-auth-01",
+      "state": "Partial",
+      "reason": "OAuth/PKCE and device flows plus the encrypted store exist, but adapters are OpenAI-compatible and Ollama only, and `/connect` is not a registered action.",
+      "refs": [
+        "T-SEC-11",
+        "T-PRV-02"
+      ]
+    },
+    {
+      "id": "p8-providers-and-auth-02",
+      "state": "Implemented",
+      "reason": "The Ollama adapter detects tool support and runs an offline session; an OpenAI-compatible base URL covers LM Studio (T-PRV-03).",
+      "refs": [
+        "PRV-03",
+        "T-PRV-03"
+      ]
+    },
+    {
+      "id": "p8-providers-and-auth-03",
+      "state": "Partial",
+      "reason": "OpenCode Console device authorization and token storage are implemented; the Go provider/plan is not modelled.",
+      "refs": [
+        "SEC-11",
+        "T-SEC-11"
+      ]
+    },
+    {
+      "id": "p8-providers-and-auth-04",
+      "state": "Partial",
+      "reason": "Streaming thinking deltas and service-tier records exist; per-model variants and a reasoning-effort setting do not.",
+      "refs": [
+        "PRV-01",
+        "T-PRV-01"
+      ]
+    },
+    {
+      "id": "p8-providers-and-auth-05",
+      "state": "Partial",
+      "reason": "`login` and `logout` verbs exist; `auth list` and the auth action group are absent.",
+      "refs": [
+        "T-FND-11",
+        "T-SEC-11"
+      ]
+    },
+    {
+      "id": "p8-agents-and-modes-01",
+      "state": "Partial",
+      "reason": "The policy has plan/auto/manual modes, but there are no named `build`/`plan` agents and no composer switch.",
+      "refs": [
+        "POL-01",
+        "T-POL-01"
+      ]
+    },
+    {
+      "id": "p8-agents-and-modes-02",
+      "state": "Deferred",
+      "reason": "No general-purpose subagent or mention invocation.",
+      "refs": []
+    },
+    {
+      "id": "p8-agents-and-modes-03",
+      "state": "Deferred",
+      "reason": "Roles exist for model assignment, but there is no user-defined agent with its own prompt, tools, and permissions.",
+      "refs": [
+        "MDL-04"
+      ]
+    },
+    {
+      "id": "p8-agents-and-modes-04",
+      "state": "Partial",
+      "reason": "Policy has actors and a subagent cannot exceed its parent, but there are no per-agent rule sets.",
+      "refs": [
+        "POL-02",
+        "T-POL-02",
+        "T-POL-03"
+      ]
+    },
+    {
+      "id": "p8-configuration-01",
+      "state": "Partial",
+      "reason": "Six-layer precedence with trusted-project gating and env/CLI layers exists; project config is TOML rather than JSON/JSONC and there is no typed file loader.",
+      "refs": [
+        "FND-04",
+        "T-FND-04"
+      ]
+    },
+    {
+      "id": "p8-configuration-02",
+      "state": "Partial",
+      "reason": "Themes, keybindings, and status settings exist; terminal title and notifications do not.",
+      "refs": [
+        "TUI-09",
+        "T-TUI-09",
+        "T-ACT-04"
+      ]
+    },
+    {
+      "id": "p8-configuration-03",
+      "state": "Deferred",
+      "reason": "Config resolves arbitrary keys; there are no typed model/provider/agent/MCP/plugin/command/permission sections.",
+      "refs": [
+        "FND-04",
+        "T-FND-04"
+      ]
+    },
+    {
+      "id": "p8-extensibility-01",
+      "state": "Partial",
+      "reason": "The MCP client and namespaced action extensions exist; plugin lifecycle hooks, custom tool/command registration, and a skills loader do not.",
+      "refs": [
+        "MCP-01",
+        "T-MCP-01",
+        "T-ACT-12"
+      ]
+    },
+    {
+      "id": "p8-extensibility-02",
+      "state": "Deferred",
+      "reason": "No LSP client, formatter integration, or diagnostics collection.",
+      "refs": []
+    },
+    {
+      "id": "p8-extensibility-03",
+      "state": "Implemented",
+      "reason": "zero-web implements native search/fetch/browser tools, and MCP is a separate client for configured user servers (docs/web.md, docs/mcp.md).",
+      "refs": [
+        "T-WEB-01",
+        "T-MCP-01"
+      ]
+    },
+    {
+      "id": "p8-sessions-01",
+      "state": "Partial",
+      "reason": "List, resume, fork/tree, export/import, and usage statistics exist; rename, revert, and share do not.",
+      "refs": [
+        "T-SES-02",
+        "T-SES-10",
+        "T-USG-01"
+      ]
+    },
+    {
+      "id": "p8-sessions-02",
+      "state": "Implemented",
+      "reason": "Auto-compaction retains the visible tail and kernel state, and branch summaries have the documented six sections (T-SES-03, T-SES-04).",
+      "refs": [
+        "T-SES-03",
+        "T-SES-04"
+      ]
+    },
+    {
+      "id": "p8-sessions-03",
+      "state": "Partial",
+      "reason": "A durable queue with steer/follow-up exists; multi-session tabs do not.",
+      "refs": [
+        "MON-01",
+        "T-MON-01"
+      ]
+    },
+    {
+      "id": "p8-sessions-04",
+      "state": "Partial",
+      "reason": "Managed overwrites take a snapshot and support undo; there is no git-backed rollback.",
+      "refs": [
+        "DEL-06",
+        "T-DEL-06"
+      ]
+    },
+    {
+      "id": "p8-sessions-05",
+      "state": "Deferred",
+      "reason": "No share links or local share/pair flow; the loopback web UI is not a share mechanism.",
+      "refs": [
+        "T-WEBUI-01"
+      ]
+    },
+    {
+      "id": "p8-permissions-01",
+      "state": "Partial",
+      "reason": "The mode-by-action-class matrix and approvals exist; there are no per-tool allow/ask/deny rules with user/project scopes.",
+      "refs": [
+        "POL-01",
+        "T-POL-01",
+        "T-POL-05"
+      ]
+    },
+    {
+      "id": "p8-permissions-02",
+      "state": "Partial",
+      "reason": "A central policy evaluator mints permits for native tools and kernel effects; extension, MCP, and subagent calls are not wired.",
+      "refs": [
+        "POL-03",
+        "T-POL-03",
+        "T-POL-04"
+      ]
+    },
+    {
+      "id": "p8-permissions-03",
+      "state": "Implemented",
+      "reason": "Host-owned approval modals bind the exact action hash, expire, and keep a durable decision record (T-POL-05, T-TUI-13).",
+      "refs": [
+        "POL-05",
+        "T-POL-05",
+        "T-TUI-13"
+      ]
+    },
+    {
+      "id": "p8-programmatic-access-01",
+      "state": "Deferred",
+      "reason": "No `serve` HTTP API or OpenAPI description; the web UI is loopback-only.",
+      "refs": [
+        "T-WEBUI-01"
+      ]
+    },
+    {
+      "id": "p8-programmatic-access-02",
+      "state": "Deferred",
+      "reason": "No JS/TS or Python SDK and no ACP stdio server.",
+      "refs": []
+    },
+    {
+      "id": "p8-programmatic-access-03",
+      "state": "Partial",
+      "reason": "`doctor --json` and the line-mode client exist; there is no one-shot headless run mode.",
+      "refs": [
+        "T-DOC-01",
+        "T-SES-12"
+      ]
+    },
+    {
+      "id": "p8-programmatic-access-04",
+      "state": "Deferred",
+      "reason": "No VS Code, JetBrains, or Zed/ACP integration.",
+      "refs": []
+    },
+    {
+      "id": "p8-cli-surface-to-match-01",
+      "state": "Implemented",
+      "reason": "The CLI is exactly `resume`, `login`, `logout`, and `doctor`; an unknown verb prints the closest action name and exits non-zero (T-FND-11).",
+      "refs": [
+        "FND-11",
+        "T-FND-11"
+      ]
+    },
+    {
+      "id": "p8-cli-surface-to-match-02",
+      "state": "Partial",
+      "reason": "All machine-level verbs exist and service/update/uninstall are tested; platform installers are T-INST-02/03 todo.",
+      "refs": [
+        "T-FND-11",
+        "T-INST-04",
+        "T-INST-05",
+        "T-INST-07"
+      ]
+    },
+    {
+      "id": "p8-cli-surface-to-match-03",
+      "state": "Partial",
+      "reason": "The action registry, policy, and idempotency exist, but most listed verbs are not registered actions reachable from every surface, SDK, ACP, or MCP server mode.",
+      "refs": [
+        "ACT-01",
+        "T-ACT-01",
+        "T-ACT-05"
+      ]
+    },
+    {
+      "id": "p8-cli-surface-to-match-04",
+      "state": "Implemented",
+      "reason": "The CI matrix builds Windows (x64/ARM64), macOS (x64/ARM64), and Linux (x64/ARM64), and WSL is covered by the Linux tests (T-TST-01).",
+      "refs": [
+        "TST-01",
+        "T-TST-01",
+        "T-INST-01"
+      ]
+    },
+    {
+      "id": "p8-other-parity-items-01",
+      "state": "Partial",
+      "reason": "Image/file attachments, typed blocks, and `@` references exist; path autocomplete does not.",
+      "refs": [
+        "MM-01",
+        "T-MM-01"
+      ]
+    },
+    {
+      "id": "p8-other-parity-items-02",
+      "state": "Partial",
+      "reason": "Provider streaming honours cancellation and queue steering defers to a tool boundary, but no interrupt/cancel action is registered on a surface.",
+      "refs": [
+        "MON-01",
+        "T-MON-01",
+        "T-SES-11"
+      ]
+    },
+    {
+      "id": "p8-other-parity-items-03",
+      "state": "Implemented",
+      "reason": "Signed/hash-verified updates and `update --check` are implemented (T-INST-04).",
+      "refs": [
+        "INST-04",
+        "T-INST-04"
+      ]
+    },
+    {
+      "id": "p8-other-parity-items-04",
+      "state": "Implemented",
+      "reason": "Every theme token is overridable and every action is rebindable (T-TUI-09, T-ACT-04).",
+      "refs": [
+        "TUI-09",
+        "T-TUI-09",
+        "T-ACT-04"
+      ]
+    },
+    {
+      "id": "p8-other-parity-items-05",
+      "state": "Deferred",
+      "reason": "No localisation layer or message catalogue; user-facing strings are English literals.",
+      "refs": []
+    },
+    {
+      "id": "p8-other-parity-items-06",
+      "state": "Implemented",
+      "reason": "Usage, cost, and token statistics with attribution and export are implemented (T-USG-01, T-USG-02).",
+      "refs": [
+        "USG-01",
+        "USG-02",
+        "T-USG-01",
+        "T-USG-02"
+      ]
+    },
+    {
+      "id": "p8-other-parity-items-07",
+      "state": "Deferred",
+      "reason": "No GitHub issue or pull-request integration.",
+      "refs": []
+    },
+    {
+      "id": "p8-other-parity-items-08",
+      "state": "Deferred",
+      "reason": "No Dockerfile or container deployment; packaging is T-INST-02/03 todo.",
+      "refs": [
+        "T-INST-02"
+      ]
+    }
+  ]
+}

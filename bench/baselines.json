@@ -2,5 +2,7 @@
   "startup_ms": 296.5239,
   "frame_us": 3891.2754000000004,
   "attach_ms": 629.6492999999999,
+  "memory_mb": 16.39,
+  "session_bytes_1k": 184890.0,
   "tolerance": 4.0
 }

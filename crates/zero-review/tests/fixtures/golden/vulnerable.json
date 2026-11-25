@@ -1,0 +1,42 @@
+{
+  "ledger_schema_version": 1,
+  "findings_schema_version": 1,
+  "units": 3,
+  "findings": 3,
+  "status_counts": {
+    "assigned": 0,
+    "blocked": 0,
+    "confirmed": 3,
+    "deferred": 0,
+    "out_of_scope": 0,
+    "pending": 0,
+    "refuted": 0,
+    "reviewed": 0
+  },
+  "confirmed_findings": [
+    {
+      "id": "FND-V1",
+      "unit_id": "sr-process-command-injection-2618a70f",
+      "title": "user input selects the executable that is spawned",
+      "severity": "high"
+    },
+    {
+      "id": "FND-V2",
+      "unit_id": "sr-filesystem-path-traversal-ca22dc99",
+      "title": "user path escapes the review root and is read",
+      "severity": "high"
+    },
+    {
+      "id": "FND-V3",
+      "unit_id": "sr-credentials-credential-exposure-247b343d",
+      "title": "a live API key is hardcoded in the source",
+      "severity": "medium"
+    }
+  ],
+  "rejected_candidates": 0,
+  "deferred_units": 0,
+  "blocked_units": 0,
+  "partial": false,
+  "coverage_gap_unit_ids": [],
+  "needs_validation_unit_ids": []
+}

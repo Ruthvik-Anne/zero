@@ -68,6 +68,7 @@ pub const LAYERS: &[Layer] = &[
             "zero-tasks",
             "zero-sched",
             "zero-model",
+            "zero-review",
         ],
     },
     Layer {
@@ -93,6 +94,7 @@ pub const LAYERS: &[Layer] = &[
             "zero-tui",
             "zero-actions",
             "zero-policy",
+            "zero-fs",
         ],
     },
 ];

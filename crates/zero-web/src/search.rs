@@ -728,10 +728,8 @@ mod tests {
 
     #[test]
     fn short_generic_titles_do_not_collapse_across_hosts() {
-        let first = FixtureEngine::new(
-            "first",
-            vec![hit("Home", "https://one.example/", "", None)],
-        );
+        let first =
+            FixtureEngine::new("first", vec![hit("Home", "https://one.example/", "", None)]);
         let second = FixtureEngine::new(
             "second",
             vec![hit("Home", "https://two.example/", "", None)],

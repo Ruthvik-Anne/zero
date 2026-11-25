@@ -233,6 +233,82 @@ Known limits, documented in `docs/doctor.md`: config validation is structural
 ports/kernel/auth use injected snapshots, and mesh/worker/MCP checks validate
 shape rather than performing live handshakes.
 
+## Zero integration — T-SR-08 (done)
+
+`zero-agent` now publishes an audit run and seeds the task panel (SR-08, SR-15,
+SR-16). `start_audit` validates the ledger and findings before creating
+anything, picks a numeric `run-N` under `.zero/audits/` (bounded scan, no
+traversal/symlink escape), writes the canonical `coverage-ledger.json`,
+`findings.json`, and the three reports via the review report derivation, and
+verifies consistency before publishing. Each ledger unit becomes a zero-tasks
+task grouped by the run id; titles carry run/unit/fingerprint/refs/surface
+metadata because the Task type has no metadata column, and seeding is idempotent
+per `(run, unit)`. A second audit gets a new run and does not rewrite the prior
+panel. A project profile that lowers the evidence bar or phases is refused
+(`zero.pol.denied`); a stronger profile is ignored in favour of the caller.
+The module contains no network calls.
+
+| Test area | Evidence |
+|---|---|
+| Done criterion | `run-1` has all five files, exactly 3 tasks, and panel rows carry run/unit/fingerprint/refs. |
+| Idempotency | Same run returns the same task ids; a later audit is `run-2` with 6 tasks and no duplicate `(run, unit)`. |
+| Safety | Invalid inputs refused before directory creation; root/symlink/junction escapes refused; numeric-only run numbering. |
+| SR-16 | Project profile cannot lower profile/phases/evidence; caller remains authoritative. |
+
+Commands: `cargo test -p zero-agent audit` (11 tests), `cargo clippy -p
+zero-agent --all-targets -- -D warnings`, `check-arch` OK. Metadata is encoded
+in task titles (Task has no metadata column); a title-truncating consumer loses
+the tail.
+
+## Monitor restart policy — T-MON-04 (done)
+
+`zero-agent` now journals monitor state and restarts only on explicit
+confirmation (MON-04, MON-12, MON-11). The JSON journal is atomic and bounded;
+records carry kind/name/status, `was_running`, `stopped_by_user`, start/stop
+times, and session id, and reject non-monitor kinds. The planner skips by
+default: a candidate must have been running, not been stopped by the user, not
+be Failed, and have a per-monitor confirmation that matches the cause, is not
+in the future, is newer than the stop/start boundary, and is within the age
+bound. Teleport follows the same rule; `Failed` never auto-restarts. `apply`
+starts only confirmed decisions, releases a retained name, refuses a live
+double-start, journals the restart with the old session id, and reports failures
+once without retrying.
+
+| Test area | Evidence |
+|---|---|
+| Done criterion | Running monitor + no confirmation -> Skip; one fresh confirmation restarts exactly one of two monitors. |
+| Confirmations | Stale, wrong-monitor, wrong-cause, future, and pre-boundary confirmations skipped with reasons. |
+| Journal | 18 restart tests: round-trip, corrupt/schema errors, non-monitor kind, bounded records. |
+| Apply | Only confirmed starts; failed start reported once; user stop never restarts. |
+
+Commands: `cargo test -p zero-agent monitor` (50 tests), `cargo clippy -p
+zero-agent --all-targets -- -D warnings`.
+
+## Declarative monitors — T-MON-03 (done)
+
+`zero-agent` now loads declarative monitor manifests (MON-03, MON-07..MON-10):
+definitions carry name, command/args, description, a `when` trigger (manual,
+session start, or a named skill), and a source (script, log tail, directory
+watch, CI poll, WebSocket). The manifest loader is size/count bounded, rejects
+duplicate names and malformed fields, and ignores unknown fields. Policy is a
+pre-spawn capability check: command basename must be allowlisted (empty denies
+all), shell only when allowed, CI/WebSocket URLs require network and refuse
+loopback/private/metadata IP literals and obvious local names, local paths must
+be inside allowed roots, and a declared output cap above policy is refused.
+`start_for` starts only matching, currently-stopped definitions, is idempotent,
+reports per-definition policy failures instead of failing the trigger, and
+`stop_all` stops the session's monitors.
+
+| Test area | Evidence |
+|---|---|
+| Done criterion | `skill_invoked_plugin_monitor_starts_only_for_that_skill`: `skill:deploy` starts on DEPLOY, not on `review`, re-trigger is idempotent, stop_all stops. |
+| Manifest | 17 definition tests: parsing, duplicates, unknown fields, triggers, sources. |
+| Policy | Unlisted command, shell, private/metadata URL, outside-root path, output cap all refused. |
+
+Commands: `cargo test -p zero-agent monitor` (32 tests), `cargo clippy -p
+zero-agent --all-targets -- -D warnings`. Policy is not an OS sandbox, no DNS
+resolution, and sources are declarations passed to the plugin, not engines.
+
 ## Monitor engine — T-MON-02 (done)
 
 `zero-agent` now has a monitor engine (MON-06, MON-13, MON-14). It spawns an
@@ -640,6 +716,32 @@ marker.
 
 Commands: `cargo test -p zero-web` (89 tests + 2 doc tests), `cargo clippy
 -p zero-web --all-targets -- -D warnings`.
+
+## Sandbox execution — T-SR-05 (done)
+
+`zero-review` now has the sandbox gate, policy, and promotion rules for running
+target code (SR-05, SR-09, SR-10). `detect()` reports a real platform mechanism
+(Windows job object here; `bwrap`/`unshare` on Linux, `sandbox-exec` on macOS)
+and `Sandbox::new` refuses with `Unsupported` when none exists, so target code
+is never run unconfined. `SandboxPolicy` defaults to an empty env allowlist, no
+network, and a read-only target; `execute` refuses `..`/absolute escapes,
+network arguments, secret-looking env names, and writes outside scratch, and
+returns a `SandboxReport` listing every blocked attempt instead of ignoring it.
+`Scratch` is per agent; `promote` is a trusted-parent operation with canonical
+containment, symlink/reparse-point and symlink-parent rejection, size checks,
+and `create_new` no-overwrite.
+
+| Test area | Evidence |
+|---|---|
+| Availability | Unavailable -> `Unsupported` with zero runner calls; probe normalization. |
+| Escapes | 13 sandbox tests: env secret, cwd/absolute/`..`, network, output/time caps, clean scratch run. |
+| Promotion | Success plus path/oversize/overwrite/symlink/junction refusals; agent scratch isolation. |
+
+Commands: `cargo test -p zero-review` (98 lib + 4 fixture tests), `cargo clippy
+-p zero-review --all-targets -- -D warnings`. This slice supplies the gate,
+policy, report, and runner seam; OS-level read-only mounts, network namespaces,
+job-object limit assignment, and atomic promotion against a concurrent writer
+remain platform-specific work.
 
 ## Review fixture suite — T-SR-07 (done)
 

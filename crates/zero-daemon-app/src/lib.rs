@@ -8,6 +8,49 @@ use zero_tui::modal::HostChrome;
 use zero_tui::theme::Theme;
 use zero_types::error::{ErrorCode, Result, ZeroError};
 
+pub mod android_pairing;
+pub mod android_session;
+pub mod desktop_shell;
+pub mod share;
+pub mod shared_ui;
+pub mod webui;
+
+pub use android_pairing::{
+    pair, pair_with_config, paired_preview, public_preview, require_biometric, start_pairing,
+    BiometricGate, PairedDevice, PairingConfig, PairingOffer, PairingOfferView, PairingRequest,
+    DEFAULT_PAIRING_TTL_MS, MAX_CODE_INPUT_CHARS, MAX_DEVICE_ID_CHARS, MAX_DEVICE_NAME_CHARS,
+    MAX_OFFER_ID_CHARS, MAX_PAIRING_TTL_MS, MAX_SECRET_INPUT_CHARS, PAIRING_TRANSPORT,
+    QR_PAYLOAD_PREFIX,
+};
+pub use android_session::{
+    AndroidSessionController, DeliveryAck, DeliveryMode, FileDiff, MeshSessionClient, PromptAck,
+    QueuedItemView, SessionSummary, SteerAck, TranscriptEntry, TranscriptPage, MAX_DIFF_FILES,
+    MAX_DIFF_PATH_CHARS, MAX_DIFF_PATCH_BYTES, MAX_ID_CHARS, MAX_PROMPT_CHARS, MAX_QUEUED_TEXT_CHARS,
+    MAX_QUEUE_ITEMS, MAX_ROLE_CHARS, MAX_SESSIONS, MAX_SESSION_NAME_CHARS, MAX_STATE_CHARS,
+    MAX_STEER_CHARS, MAX_TRANSCRIPT_ENTRIES, MAX_TRANSCRIPT_ENTRY_CHARS, SESSION_TRANSPORT,
+};
+pub use desktop_shell::{
+    action_registry, webview_for_platform, DesktopShell, EngineSource, ShellConfig, ShellPlan,
+    WebviewKind, MAX_WINDOW_TITLE_CHARS,
+};
+pub use shared_ui::{
+    compare_frames, compare_surfaces, AndroidFrame, ApprovalView, Comparison, ModeView,
+    PaletteEntry, PaletteState, SharedUiState, StatusView, SurfaceFrame, TuiFrame, UiJsonView,
+    UiSurface, MAX_PALETTE_ENTRIES, MAX_PALETTE_QUERY_CHARS, MAX_PALETTE_RESULTS,
+    TUI_MODAL_WIDTH,
+};
+pub use share::{
+    refuse_vpn_change, share, share_sheet, DeliveryReceipt, Route, ShareAttachment, ShareFailure,
+    ShareIntent, ShareKind, SharePayload, ShareReport, ShareRouter, ShareSheetEntry, ShareSink,
+    ShareTarget, VpnState, MAX_SHEET_ENTRIES, MAX_SHEET_LABEL_CHARS, MAX_SHARE_FILE_BYTES,
+    MAX_SHARE_IMAGE_BYTES, MAX_SHARE_NAME_CHARS, MAX_SHARE_SOURCE_APP_CHARS,
+    MAX_SHARE_TEXT_BYTES, MAX_SHARE_URL_CHARS, SHARE_TRANSPORT, VPN_POLICY,
+};
+pub use webui::{
+    parse_bind, validate_bind, LocalWebUi, OneTimeToken, TokenState, WebUiConfig, WebUiOutcome,
+    DEFAULT_TOKEN_TTL_MS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Surface {

@@ -10,6 +10,15 @@ zero-store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+base64 = { workspace = true }
+# Halcyon key tooling (HAL-03, HAL-04): Ed25519 signing and verification,
+# blake3-derived key ids, and Argon2id + AES-256-GCM sealing for a private key
+# at rest.
+ed25519-dalek = { workspace = true }
+blake3 = { workspace = true }
+argon2 = { workspace = true }
+aes-gcm = { workspace = true }
+getrandom = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

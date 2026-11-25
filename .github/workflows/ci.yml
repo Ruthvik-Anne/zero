@@ -113,6 +113,243 @@ jobs:
         run: |
           cargo test -p zero-secrets keychain:: -- --nocapture --test-threads=1
 
+  # T-INST-03: the Unix installer on Linux and macOS. No Rust build: the job
+  # installs a synthetic executable, so it costs seconds.
+  installer-unix:
+    name: installer (unix) / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: install, refuse, and uninstall without a TTY
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/zero-installer"
+          prefix="$root/prefix"
+          home="$root/home"
+          rm -rf "$root"
+          mkdir -p "$home"
+
+          sha_of() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" | cut -d ' ' -f 1
+            else
+              shasum -a 256 "$1" | cut -d ' ' -f 1
+            fi
+          }
+
+          printf '#!/bin/sh\necho zero-fixture-one\n' > "$root/one"
+          printf '#!/bin/sh\necho zero-fixture-two\n' > "$root/two"
+          chmod 755 "$root/one" "$root/two"
+          sha_one="$(sha_of "$root/one")"
+          sha_two="$(sha_of "$root/two")"
+          bad_sha="$(printf '%064d' 0)"
+
+          test "$(sh installer/unix.sh --help | grep -c -- '--sha256')" -ge 1
+
+          # Every invocation reads stdin from /dev/null: a prompt would hang the
+          # job, and the installer must not read stdin at all.
+          sh installer/unix.sh --prefix "$prefix" --file "$root/one" --sha256 "$sha_one" </dev/null
+          test -x "$prefix/bin/zero"
+          test "$("$prefix/bin/zero")" = "zero-fixture-one"
+
+          # A second run with the same digest is idempotent.
+          rerun="$(sh installer/unix.sh --prefix "$prefix" --file "$root/one" --sha256 "$sha_one" </dev/null)"
+          printf '%s\n' "$rerun" | grep -qi 'already installed'
+
+          # --update-path appends once; --no-path prints no guidance.
+          HOME="$home" SHELL=/bin/sh sh installer/unix.sh --prefix "$prefix" --file "$root/one" --sha256 "$sha_one" --update-path </dev/null
+          HOME="$home" SHELL=/bin/sh sh installer/unix.sh --prefix "$prefix" --file "$root/one" --sha256 "$sha_one" --update-path </dev/null
+          test "$(grep -Fc "$prefix/bin" "$home/.profile")" -eq 1
+          no_path="$(sh installer/unix.sh --prefix "$prefix" --file "$root/one" --sha256 "$sha_one" --no-path </dev/null)"
+          if printf '%s\n' "$no_path" | grep -q 'PATH: add this line'; then
+            echo '--no-path printed PATH guidance' >&2
+            exit 1
+          fi
+
+          # A wrong checksum is refused before anything is written.
+          if sh installer/unix.sh --prefix "$prefix" --file "$root/two" --sha256 "$bad_sha" </dev/null >"$root/bad.log" 2>&1; then
+            echo 'a wrong checksum was accepted' >&2
+            exit 1
+          fi
+          grep -qi 'checksum mismatch' "$root/bad.log"
+          test "$("$prefix/bin/zero")" = "zero-fixture-one"
+
+          # A different binary is a conflict without --force.
+          if sh installer/unix.sh --prefix "$prefix" --file "$root/two" --sha256 "$sha_two" </dev/null >"$root/conflict.log" 2>&1; then
+            echo 'a conflicting binary was replaced without --force' >&2
+            exit 1
+          fi
+          grep -qi 'already exists' "$root/conflict.log"
+          sh installer/unix.sh --prefix "$prefix" --file "$root/two" --sha256 "$sha_two" --force </dev/null
+          test "$("$prefix/bin/zero")" = "zero-fixture-two"
+
+          # A live lock refuses a concurrent install.
+          mkdir -p "$prefix/.zero-install.lock"
+          printf '%s\n' "$$" > "$prefix/.zero-install.lock/pid"
+          if sh installer/unix.sh --prefix "$prefix" --file "$root/one" --sha256 "$sha_one" --force </dev/null >"$root/lock.log" 2>&1; then
+            echo 'a concurrent install was accepted' >&2
+            exit 1
+          fi
+          grep -qi 'another install' "$root/lock.log"
+          rm -f "$prefix/.zero-install.lock/pid"
+          rmdir "$prefix/.zero-install.lock"
+
+          # No prompt text ever appears in a no-TTY run.
+          if grep -Eqi 'press (enter|any key)|\[y/N\]' "$root"/*.log; then
+            echo 'the installer prompted without a TTY' >&2
+            exit 1
+          fi
+
+          # Uninstall removes the binary and the lock only; data is kept.
+          mkdir -p "$prefix/data"
+          printf 'keep\n' > "$prefix/data/keep.txt"
+          sh installer/unix.sh --prefix "$prefix" --uninstall </dev/null
+          test ! -e "$prefix/bin/zero"
+          test ! -e "$prefix/.zero-install.lock"
+          test -f "$prefix/data/keep.txt"
+          again="$(sh installer/unix.sh --prefix "$prefix" --uninstall </dev/null)"
+          printf '%s\n' "$again" | grep -qi 'not installed'
+
+  # T-INST-02: the Windows installer on a clean windows-latest runner. No Rust
+  # build: it installs a synthetic executable, so it costs seconds.
+  installer-windows:
+    name: installer (windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: install, refuse, and uninstall without a TTY
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'zero-installer-windows'
+          $prefix = Join-Path $env:RUNNER_TEMP 'zero-prefix'
+          Remove-Item -Recurse -Force $root, $prefix -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $script = Join-Path $PWD 'installer/windows.ps1'
+
+          function Get-Sha([string]$Path) {
+              (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          function Invoke-Installer([string[]]$Arguments) {
+              $previous = $ErrorActionPreference
+              $ErrorActionPreference = 'Continue'
+              $output = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script @Arguments 2>&1
+              $code = $LASTEXITCODE
+              $ErrorActionPreference = $previous
+              [pscustomobject]@{ Code = $code; Output = ($output | Out-String) }
+          }
+          function Assert([bool]$Condition, [string]$Message) {
+              if (-not $Condition) { throw "installer (windows): $Message" }
+          }
+
+          # Two real executables with different bytes: cmd.exe runs the
+          # installed copy, hostname.exe proves -Force replaced it.
+          $one = Join-Path $root 'one.exe'
+          $two = Join-Path $root 'two.exe'
+          Copy-Item -LiteralPath $env:ComSpec -Destination $one
+          Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\hostname.exe') -Destination $two
+          $shaOne = Get-Sha $one
+          $shaTwo = Get-Sha $two
+          $badSha = '0' * 64
+          $installed = Join-Path $prefix 'zero.exe'
+          $lock = Join-Path $prefix '.zero-install.lock'
+
+          $help = Invoke-Installer @('-Help')
+          Assert ($help.Code -eq 0) 'the help run failed'
+          Assert ($help.Output -match '-Sha256') 'the help text does not list -Sha256'
+
+          $result = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-NoPath')
+          Assert ($result.Code -eq 0) "install failed: $($result.Output)"
+          Assert (Test-Path -LiteralPath $installed) 'the binary was not installed'
+          $output = (& $installed /c echo zero-fixture-one) -join "`n"
+          Assert ($output -match 'zero-fixture-one') "the installed binary did not run: $output"
+
+          $rerun = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-NoPath')
+          Assert ($rerun.Code -eq 0) 'the idempotent rerun failed'
+          Assert ($rerun.Output -match 'already installed') 'the rerun was not reported as already installed'
+          Assert ((Get-Sha $installed) -eq $shaOne) 'the idempotent rerun changed the binary'
+
+          $wrong = Invoke-Installer @('-Prefix', $prefix, '-File', $two, '-Sha256', $badSha, '-NoPath')
+          Assert ($wrong.Code -eq 3) "a wrong checksum was not refused with exit 3 (got $($wrong.Code))"
+          Assert ($wrong.Output -match 'checksum mismatch') 'the checksum refusal did not say checksum mismatch'
+          Assert ((Get-Sha $installed) -eq $shaOne) 'the checksum refusal changed the binary'
+
+          $conflict = Invoke-Installer @('-Prefix', $prefix, '-File', $two, '-Sha256', $shaTwo, '-NoPath')
+          Assert ($conflict.Code -eq 3) "a conflict was not refused with exit 3 (got $($conflict.Code))"
+          Assert ($conflict.Output -match 'already exists') 'the conflict refusal did not say already exists'
+          $forced = Invoke-Installer @('-Prefix', $prefix, '-File', $two, '-Sha256', $shaTwo, '-NoPath', '-Force')
+          Assert ($forced.Code -eq 0) "-Force did not replace the binary: $($forced.Output)"
+          Assert ((Get-Sha $installed) -eq $shaTwo) '-Force left the old bytes'
+
+          Set-Content -LiteralPath $lock -Value "$PID" -NoNewline
+          $locked = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-NoPath', '-Force')
+          Assert ($locked.Code -eq 3) "a live lock was not refused (got $($locked.Code))"
+          Assert ($locked.Output -match 'another install') 'the lock refusal did not name the concurrent install'
+          Remove-Item -LiteralPath $lock -Force
+
+          Set-Content -LiteralPath $lock -Value '0' -NoNewline
+          $stale = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-NoPath', '-Force')
+          Assert ($stale.Code -eq 0) "a stale lock was not recovered: $($stale.Output)"
+          Assert ($stale.Output -match 'stale install lock') 'the stale lock was not reported'
+          Assert (-not (Test-Path -LiteralPath $lock)) 'the lock survived a successful install'
+
+          # The user PATH is changed only with -UpdatePath, exactly once, and
+          # never the machine PATH. Restore it so the runner is unchanged.
+          $userPathBefore = [Environment]::GetEnvironmentVariable('Path', 'User')
+          $machinePathBefore = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+          $userPathText = if ($null -eq $userPathBefore) { '' } else { [string]$userPathBefore }
+          $beforeEntryCount = @($userPathText.Split(';') | Where-Object { $_.Trim().TrimEnd('\') -ieq $prefix.TrimEnd('\') }).Count
+          Assert ($beforeEntryCount -eq 0) 'the temporary prefix was already in the user PATH'
+          $extra = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-NoPath')
+          Assert ($extra.Code -eq 0) 'the -NoPath rerun failed'
+          Assert ($userPathBefore -eq [Environment]::GetEnvironmentVariable('Path', 'User')) '-NoPath changed the user PATH'
+          try {
+              $updated = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-UpdatePath')
+              Assert ($updated.Code -eq 0) "the -UpdatePath run failed: $($updated.Output)"
+              $after = [string][Environment]::GetEnvironmentVariable('Path', 'User')
+              $entryCount = @($after.Split(';') | Where-Object { $_.Trim().TrimEnd('\') -ieq $prefix.TrimEnd('\') }).Count
+              Assert ($entryCount -eq 1) "-UpdatePath added $entryCount entries instead of one"
+              $again = Invoke-Installer @('-Prefix', $prefix, '-File', $one, '-Sha256', $shaOne, '-UpdatePath')
+              Assert ($again.Code -eq 0) "the second -UpdatePath run failed: $($again.Output)"
+              $afterAgain = [string][Environment]::GetEnvironmentVariable('Path', 'User')
+              $entryCount = @($afterAgain.Split(';') | Where-Object { $_.Trim().TrimEnd('\') -ieq $prefix.TrimEnd('\') }).Count
+              Assert ($entryCount -eq 1) "-UpdatePath was not idempotent ($entryCount entries)"
+          } finally {
+              if ($null -ne $userPathBefore) {
+                  [Environment]::SetEnvironmentVariable('Path', $userPathBefore, 'User')
+              } else {
+                  [Environment]::SetEnvironmentVariable('Path', $null, 'User')
+              }
+          }
+          Assert ($machinePathBefore -eq [Environment]::GetEnvironmentVariable('Path', 'Machine')) 'the installer changed the machine PATH'
+
+          $badPrefix = Invoke-Installer @('-Prefix', 'relative\zero', '-File', $one, '-Sha256', $shaOne, '-NoPath')
+          Assert ($badPrefix.Code -eq 2) "a relative prefix was not refused with exit 2 (got $($badPrefix.Code))"
+          $programFiles = Invoke-Installer @('-Prefix', (Join-Path $env:ProgramFiles 'ZeroInstallerE2E'), '-File', $one, '-Sha256', $shaOne, '-NoPath')
+          Assert ($programFiles.Code -eq 3) "a Program Files prefix was not refused with exit 3 (got $($programFiles.Code))"
+
+          $whatIf = Invoke-Installer @('-Prefix', $prefix, '-File', $two, '-Sha256', $shaTwo, '-WhatIf')
+          Assert ($whatIf.Code -eq 0) "the -WhatIf run failed: $($whatIf.Output)"
+          Assert ((Get-Sha $installed) -eq $shaOne) '-WhatIf changed the binary'
+
+          New-Item -ItemType Directory -Path (Join-Path $prefix 'data') -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $prefix 'data\keep.txt') -Value 'keep'
+          $removed = Invoke-Installer @('-Prefix', $prefix, '-Uninstall')
+          Assert ($removed.Code -eq 0) "uninstall failed: $($removed.Output)"
+          Assert (-not (Test-Path -LiteralPath $installed)) 'uninstall left the binary'
+          Assert (-not (Test-Path -LiteralPath $lock)) 'uninstall left the lock'
+          Assert (Test-Path -LiteralPath (Join-Path $prefix 'data\keep.txt')) 'uninstall removed user data'
+          $removedAgain = Invoke-Installer @('-Prefix', $prefix, '-Uninstall')
+          Assert ($removedAgain.Code -eq 0) 'a second uninstall failed'
+          Assert ($removedAgain.Output -match 'not installed') 'a second uninstall did not report not installed'
+
   protocol-readers:
     name: protocol readers (Rust + TypeScript)
     runs-on: ubuntu-latest
@@ -138,6 +375,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: check docs
         run: cargo run -p xtask --locked -- check-docs
+      - name: parity audit is complete
+        run: cargo run -p xtask --locked -- check-parity
       - name: actions registry lint
         run: cargo run -p zero-actions --locked --bin actions-lint
       - name: docs index is current
