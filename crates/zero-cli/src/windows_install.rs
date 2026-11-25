@@ -274,6 +274,7 @@ mod tests {
     fn shipped_script() -> String {
         let path = script_path();
         std::fs::read_to_string(&path)
+            .map(|text| text.replace("\r\n", "\n"))
             .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
     }
 

@@ -28,6 +28,19 @@ use zero_fs::{TrashOutcome, TrashService};
 use zero_types::error::{ErrorCode, Result, ZeroError};
 
 /// How much of the installation an uninstall removes.
+/// The trash operation an uninstall needs. Implemented by the real
+/// [`TrashService`]; tests inject a deterministic trash.
+pub trait TrashSink {
+    /// Move one path to the trash. A refusal leaves the original in place.
+    fn trash(&self, path: &Path) -> Result<TrashOutcome>;
+}
+
+impl TrashSink for TrashService {
+    fn trash(&self, path: &Path) -> Result<TrashOutcome> {
+        TrashService::trash(self, path)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UninstallScope {
     /// Remove the binaries, the service, and the PATH entry. Keep config and
@@ -295,7 +308,7 @@ pub fn uninstall(
     plan: &UninstallPlan,
     confirmation: &Confirmation,
     now_ms: u64,
-    trash: &TrashService,
+    trash: &dyn TrashSink,
     services: &dyn ServiceManager,
     path_env: &mut Vec<String>,
 ) -> Result<UninstallReport> {
@@ -581,15 +594,6 @@ mod tests {
     use crate::service::{ServiceError, ServiceErrorKind, ServiceStatus};
     use std::cell::{Cell, RefCell};
     use tempfile::TempDir;
-    use zero_types::paths::Platform;
-
-    fn platform() -> Platform {
-        if cfg!(windows) {
-            Platform::Windows
-        } else {
-            Platform::Linux
-        }
-    }
 
     fn exe_name() -> &'static str {
         if cfg!(windows) {
@@ -698,16 +702,44 @@ mod tests {
             self._dir.path()
         }
 
-        fn trash_service(&self) -> TrashService {
-            // The protected roots are deliberately different from the roots
-            // being uninstalled: the caller decides which paths an uninstall
-            // may trash. The real roots would be refused by the default guard.
-            TrashService::new(zero_types::protected::ProtectedPaths::new(
-                self.home().join("protected-home"),
-                self.home().join("protected-data"),
-                self.home().join("protected-config"),
-                platform(),
-            ))
+        fn trash(&self) -> RecordingTrash {
+            RecordingTrash::new(self.home().join("test-trash"))
+        }
+    }
+
+    struct RecordingTrash {
+        root: PathBuf,
+        refuse: Option<PathBuf>,
+    }
+
+    impl RecordingTrash {
+        fn new(root: PathBuf) -> Self {
+            Self { root, refuse: None }
+        }
+
+        fn refusing(root: PathBuf, refuse: PathBuf) -> Self {
+            Self { root, refuse: Some(refuse) }
+        }
+    }
+
+    impl TrashSink for RecordingTrash {
+        fn trash(&self, path: &Path) -> Result<TrashOutcome> {
+            if self.refuse.as_deref() == Some(path) {
+                return Ok(TrashOutcome::Refused {
+                    path: path.to_path_buf(),
+                    reason: "test refusal".into(),
+                    kind: "Test".into(),
+                });
+            }
+            std::fs::create_dir_all(&self.root)?;
+            let name = path.file_name().ok_or_else(|| {
+                zero_types::error::ZeroError::new(
+                    zero_types::error::ErrorCode::InvalidInput,
+                    "test path has no file name",
+                )
+            })?;
+            std::fs::rename(path, self.root.join(name))?;
+            Ok(TrashOutcome::Trashed { path: path.to_path_buf() })
         }
     }
 
@@ -733,7 +765,7 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::new(fixture.bin.join(exe_name()));
-        let trash = fixture.trash_service();
+        let trash = fixture.trash();
         let mut path_env = path_env_for(&fixture);
 
         let mut blank = confirmation.clone();
@@ -791,7 +823,7 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::new(fixture.bin.join(exe_name()));
-        let trash = fixture.trash_service();
+        let trash = fixture.trash();
         let mut path_env = path_env_for(&fixture);
         let entry = plan.path_entry.clone().unwrap();
 
@@ -840,7 +872,7 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::new(fixture.bin.join(exe_name()));
-        let trash = fixture.trash_service();
+        let trash = fixture.trash();
         let mut path_env = path_env_for(&fixture);
 
         let report =
@@ -866,7 +898,7 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::new(fixture.bin.join(exe_name()));
-        let trash = fixture.trash_service();
+        let trash = fixture.trash();
         let mut path_env = path_env_for(&fixture);
 
         let report =
@@ -895,7 +927,7 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::new(fixture.bin.join(exe_name()));
-        let trash = fixture.trash_service();
+        let trash = fixture.trash();
         let entry = plan.path_entry.clone().unwrap();
         let prefix = format!("{entry}-old");
         let suffix = format!("old-{entry}");
@@ -920,7 +952,7 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::failing_uninstall(fixture.bin.join(exe_name()));
-        let trash = fixture.trash_service();
+        let trash = fixture.trash();
         let mut path_env = path_env_for(&fixture);
 
         let report =
@@ -957,14 +989,11 @@ mod tests {
         );
         let confirmation = request_confirmation(&plan, 1_000).unwrap();
         let manager = RecordingManager::new(fixture.bin.join(exe_name()));
-        // Refuse the config root: the guard classifies the whole config tree
-        // as protected. Data is trashed first, then config fails.
-        let trash = TrashService::new(zero_types::protected::ProtectedPaths::new(
-            fixture.home().join("protected-home"),
-            fixture.home().join("protected-data"),
+        // Refuse the config root after data has been trashed.
+        let trash = RecordingTrash::refusing(
+            fixture.home().join("test-trash"),
             fixture.config.clone(),
-            platform(),
-        ));
+        );
         let mut path_env = path_env_for(&fixture);
 
         let report =
