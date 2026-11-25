@@ -30,7 +30,11 @@ pub const LAYERS: &[Layer] = &[
         may_depend_on: &["zero-types", "zero-store", "zero-policy"],
     },
     Layer { name: "zero-sched", level: 2, may_depend_on: &["zero-types", "zero-store"] },
-    Layer { name: "zero-secrets", level: 2, may_depend_on: &["zero-types", "zero-store"] },
+    Layer {
+        name: "zero-secrets",
+        level: 3,
+        may_depend_on: &["zero-types", "zero-store", "zero-fs"],
+    },
     Layer { name: "zero-model", level: 2, may_depend_on: &["zero-types", "zero-store"] },
     Layer { name: "zero-web", level: 2, may_depend_on: &["zero-types", "zero-store"] },
     Layer { name: "zero-mcp", level: 2, may_depend_on: &["zero-types", "zero-store"] },
@@ -39,7 +43,7 @@ pub const LAYERS: &[Layer] = &[
     Layer { name: "zero-mm", level: 2, may_depend_on: &["zero-types", "zero-store"] },
     Layer {
         name: "zero-mesh",
-        level: 3,
+        level: 4,
         may_depend_on: &["zero-types", "zero-store", "zero-secrets"],
     },
     Layer {

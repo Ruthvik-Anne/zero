@@ -30,6 +30,7 @@ Supporting pages in this directory:
 | [`kernel.md`](kernel.md) | Jupyter messaging/HMAC, channels, host gate, restart/rehydrate, limits, preload. |
 | [`autonomy.md`](autonomy.md) | Goals, heartbeats, cron schedules, limits, cancellation cascade. |
 | [`projects.md`](projects.md) | Project key/identity, root detection, moves/copies, migration, mesh bindings. |
+| [`credentials.md`](credentials.md) | Encrypted credential fallback, accounts, scrubbed children, refresh lock, import. |
 | [`policy.md`](policy.md) | Modes, the matrix, evaluator order, permits, approvals, regulators, transitions. |
 | [`deletion-safety.md`](deletion-safety.md) | Command guards, shims, the Python hook, trash, journal, purge, retention, and stated limits. |
 | [`trust.md`](trust.md) | Trust boundaries, workspace trust, protected files, audit integrity. |

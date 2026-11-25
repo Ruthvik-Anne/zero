@@ -606,7 +606,7 @@ M5 is in progress; only the project group is closed. Evidence:
 | Task group | Status | Evidence |
 |---|---|---|
 | T-PRJ-01..T-PRJ-06 | done | `cargo test -p zero-agent project::`: key/identity, creation/gitignore, moves/copies, replaced key, layout migration, mesh bindings. |
-| T-CRT, T-SEC | todo | Not implemented yet. |
+| T-CRT-02..06 | done | `cargo test -p zero-secrets`: encrypted fallback, accounts, scrubbed env/refresh lock, import/trash, machine unlock. |\n| T-CRT-01 | doing | `Keychain` trait exists; real Windows/macOS/libsecret adapters pending. |\n| T-SEC-01..11 | todo | Not implemented yet. |
 
 ## M6 — Web, MCP, doctor, monitors, security review
 
