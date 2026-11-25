@@ -38,3 +38,10 @@ cargo test -p zero-fs             44 passed
 cargo clippy --workspace --all-targets -- -D warnings   clean
 cargo run -p xtask -- check-docs  OK
 ```
+
+Hosted matrix run [45538950771](https://github.com/Ruthvik-Anne/zero/actions/runs/45538950771)
+on `ci/m0-m1-verification` (`49ef2a6e`): all eight jobs successful, including the
+1 GiB range-edit test on Linux, macOS, and Windows, and the trash/atomic-write
+fixtures on every platform. A CI-only gap was caught here: six new error codes
+were not yet in `docs/errors.md`; the generated page is now committed and the
+`error::tests::documented_codes_match_the_enum_exactly` gate passes.

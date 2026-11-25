@@ -508,7 +508,9 @@ recorded frames.
 ## M4 progress
 
 M4 is in progress; only the file manager and edit tool groups are closed. The
-full list and remaining tasks stay below. Evidence: `docs/m4-evidence.md`.
+full list and remaining tasks stay below. Evidence: `docs/m4-evidence.md`;
+hosted run [45538950771](https://github.com/Ruthvik-Anne/zero/actions/runs/45538950771)
+is green on all eight jobs.
 
 | Task group | Status | Evidence |
 |---|---|---|
