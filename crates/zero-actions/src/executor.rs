@@ -162,14 +162,22 @@ impl Executor {
         // `!` runs through the same deletion guard as the shell tool.
         if record.id == "shell.prefix" {
             let command = invocation.arguments.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            let mut blocked = check(command, Shell::Posix);
-            #[cfg(windows)]
-            {
-                let powershell = check(command, Shell::PowerShell);
-                if !powershell.allowed {
-                    blocked = powershell;
+            let blocked = {
+                let posix = check(command, Shell::Posix);
+                #[cfg(windows)]
+                {
+                    let powershell = check(command, Shell::PowerShell);
+                    if powershell.allowed {
+                        posix
+                    } else {
+                        powershell
+                    }
                 }
-            }
+                #[cfg(not(windows))]
+                {
+                    posix
+                }
+            };
             if !blocked.allowed {
                 let reason = blocked
                     .findings
