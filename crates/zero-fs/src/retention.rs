@@ -193,6 +193,10 @@ mod tests {
         let report = retention.run(10_000, &trash_for(dir.path())).unwrap();
         assert!(outside.exists());
         assert!(report.trashed.is_empty());
-        assert!(report.skipped.iter().any(|(p, reason)| p == &link && reason.contains("symlink")));
+        // macOS may canonicalise /var to /private/var; compare the leaf name.
+        assert!(report
+            .skipped
+            .iter()
+            .any(|(p, reason)| p.file_name().map(|n| n == "escape").unwrap_or(false) && reason.contains("symlink")));
     }
 }
