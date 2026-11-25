@@ -115,3 +115,8 @@ the kill/restart durable-queue test on every platform.
 
 Run [45546934655](https://github.com/Ruthvik-Anne/zero/actions/runs/45546934655)
 on `33df1b0d` covers the tool catalogue slice: all eight jobs successful.
+
+Run [45549561333](https://github.com/Ruthvik-Anne/zero/actions/runs/45549561333)
+on `e01f03a5` covers the kernel slice: all eight jobs successful, with
+`ipykernel`/`pyzmq` installed so the real round-trip, restart, limit, and
+`%%bash` tests run on every target.
