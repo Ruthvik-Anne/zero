@@ -2,14 +2,20 @@
 //!
 //! Implements the keyless search adapter contract, reciprocal-rank fusion
 //! (WEB-01, WEB-02), result filters (WEB-03), date provenance (WEB-04), the
-//! SQLite FTS5 search cache (WEB-06), and per-engine resilience policy
-//! (WEB-05). Fetch and crawling are later tasks; no live network adapters ship
-//! here yet.
+//! SQLite FTS5 search cache (WEB-06), per-engine resilience policy (WEB-05),
+//! and the SSRF/egress gate (WEB-16, WEB-17). Fetch and crawling are later
+//! tasks; no live network adapters ship here yet.
 
 pub mod cache;
+pub mod egress;
 pub mod filter;
 pub mod resilience;
 pub mod search;
+
+pub use egress::{
+    classify_address, AddressClass, EgressGuard, EgressScheme, NetworkPolicy, PinnedDestination,
+    PinnedRequest, Resolver, SystemResolver, DEFAULT_MAX_REDIRECTS,
+};
 
 pub use cache::{IndexHit, SearchCache, TtlPolicy, DEFAULT_TTL_MS};
 pub use filter::{

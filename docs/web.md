@@ -1,10 +1,11 @@
 # Web search and fusion
 
 `zero-web` currently ships the keyless search contract, the fusion step, result
-filters, date provenance, the SQLite FTS5 cache, and per-engine resilience
-policy (T-WEB-01 through T-WEB-03; WEB-01 through WEB-06). Fetch, reader mode,
-crawling, and browser automation are later tasks. No live engine adapter is
-bundled yet; each adapter is a small implementation of the trait below.
+filters, date provenance, the SQLite FTS5 cache, per-engine resilience policy,
+and the SSRF/egress gate (T-WEB-01 through T-WEB-03 and T-WEB-09; WEB-01 through
+WEB-06, WEB-16, and WEB-17). Fetch, reader mode, crawling, and browser
+automation are later tasks. No live engine adapter is bundled yet; each adapter
+is a small implementation of the trait below.
 
 ## Adapter contract
 
@@ -317,9 +318,109 @@ primary list and the reserve.
   is not shared across threads; a later daemon task may add a connection pool if
   concurrent crawl and search writers are needed.
 
+## SSRF and egress
+
+`EgressGuard` (WEB-16, WEB-17) is the gate every outbound web request passes
+through. The fetch layer (T-WEB-04) will call `check_request`, then connect only
+to the pinned addresses it returns; no other web code may open a socket.
+
+### Network policy
+
+The caller maps its operating mode to one policy; the guard never infers it.
+
+| Policy | Public HTTP(S) | Loopback, RFC 1918, ULA, CGNAT | Link-local, metadata, multicast, unspecified, broadcast, reserved | Non-HTTP(S) |
+|---|---|---|---|---|
+| `Offline` | deny | deny | deny | deny |
+| `Restricted` | allow | deny | deny | deny |
+| `Full` | allow | allow | deny | deny |
+
+`Restricted` is the normal default for unattended web work. `Full` is an
+explicit opt-in for local development targets; it still refuses cloud metadata,
+link-local, multicast, unspecified, broadcast, and reserved addresses, and every
+non-HTTP(S) scheme. `Offline` refuses every URL, redirect, and request; local
+files and the search cache keep working because they never consult the guard.
+
+### Pinned addresses
+
+`check_url` parses the URL, refuses userinfo, and resolves the host once. Every
+answer is classified; a single forbidden address rejects the whole request, so a
+DNS answer that mixes a public and a private address cannot win a race against
+the connect logic. The surviving list is deduplicated and returned in
+`PinnedDestination::addresses`. The fetch layer connects to those exact
+addresses and must not resolve the host again (preventing DNS rebinding), while
+sending the original host for the `Host` header and TLS SNI.
+
+Address classes:
+
+| Class | Ranges |
+|---|---|
+| `Public` | everything not listed below |
+| `Loopback` | `127.0.0.0/8`, `::1`, IPv4-mapped forms |
+| `Private` | `10/8`, `172.16/12`, `192.168/16`, `100.64/10` (CGNAT), `fc00::/7` |
+| `LinkLocal` | `169.254/16`, `fe80::/10` |
+| `Metadata` | the endpoints below |
+| `Multicast` | `224/4`, `ff00::/8` |
+| `Unspecified` | `0.0.0.0`, `::` |
+| `Broadcast` | `255.255.255.255` |
+| `Reserved` | `0/8`, `192.0.0/24`, `192.88.99/24`, TEST-NETs, `198.18/15`, `240/4`, IPv6 outside `2000::/3`, `2001:db8::/32`, `3fff::/20`, Teredo, ORCHID, 6to4, NAT64, `100::/64` |
+
+Cloud metadata addresses and names are refused in every policy:
+
+- IPv4: `169.254.169.254`, `169.254.170.2`, `100.100.100.200`,
+  `168.63.129.16`, `192.0.0.192`;
+- IPv6: `fd00:ec2::254`;
+- hostnames: `metadata.google.internal`, `metadata.goog`,
+  `metadata.azure.internal`, `instance-data`, `metadata`.
+
+IPv4-mapped and IPv4-compatible IPv6 forms are unwrapped before classification,
+so `::ffff:127.0.0.1` is loopback and `::ffff:169.254.169.254` is metadata.
+
+### Redirects
+
+`check_redirect` re-runs the full check on every hop: scheme, userinfo, host,
+resolution, and every resolved address. A relative `Location` resolves against
+the current URL. The default budget is five hops (`DEFAULT_MAX_REDIRECTS`,
+configurable with `with_max_redirects`); exceeding it is a policy denial. An
+HTTPS-to-HTTP downgrade is refused, an HTTP-to-HTTPS upgrade is allowed, and a
+non-HTTP(S) target (`file`, `javascript`, `data`, `ftp`, ...) is refused by the
+same scheme check as a direct request.
+
+### Secret checks
+
+`with_secrets` registers values that must never leave the device.
+`assert_no_secrets` refuses a haystack containing any non-empty registered or
+per-request secret; `check_request` applies it to the URL, every header value,
+and the body. This is a plain substring check, not secret detection: only values
+the caller registers are caught. Errors name the offending request part and
+never echo the value.
+
+`check_request` also requires the method and header names to be HTTP tokens and
+rejects a header value containing a line break, so a caller cannot smuggle a
+second request.
+
+### Egress test matrix
+
+The egress fixtures use a scripted resolver; no test opens a socket.
+
+| Fixture | Expected |
+|---|---|
+| metadata IPv4, IPv4-mapped, IPv6, hostname | blocked in every policy |
+| loopback v4/v6, `127.1`, mapped loopback | blocked in `Restricted`, allowed in `Full` |
+| RFC 1918, CGNAT, ULA | blocked in `Restricted`, allowed in `Full` |
+| link-local, multicast, unspecified, broadcast, reserved | blocked in `Full` too |
+| `file`, `javascript`, `data`, `ftp`, `ws`, userinfo | refused |
+| public HTTP(S), public IPv6, IP literals | pinned; IP literals skip resolution |
+| resolver failure or empty answer | `Unavailable` |
+| resolver returns public and private | rejected |
+| redirect to private, metadata, or loopback | rejected |
+| HTTPS-to-HTTP redirect | rejected |
+| redirect past the budget | rejected |
+| secret in URL, header value, or body | rejected without echoing it |
+| clean request | returns `PinnedRequest` |
+
 ## Tests
 
-`cargo test -p zero-web` runs 51 scripted tests with no network access and no
+`cargo test -p zero-web` runs 70 scripted tests with no network access and no
 sleeps, plus one doc test:
 
 - 9 search/fusion tests: a three-engine relevance fixture, URL and fuzzy-title
@@ -335,3 +436,7 @@ sleeps, plus one doc test:
   backoff and its cap, rate-limit windows, backoff gating, CAPTCHA benching and
   cooldown expiry, login-marker matching, reserve fallback, panic isolation, and
   fused-order parity with `search`.
+- 19 egress tests: the policy matrix, metadata and loopback fixtures, private
+  and reserved ranges, scheme and userinfo refusals, DNS-rebinding rejection,
+  redirect re-checks and the redirect budget, downgrade refusal, secret checks
+  in URL/header/body, request-token validation, and clean pinning.

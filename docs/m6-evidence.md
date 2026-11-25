@@ -161,6 +161,31 @@ host approval.
 Commands: `cargo test -p zero-mcp` (54 tests), `cargo clippy -p zero-mcp
 --all-targets -- -D warnings`.
 
+## SSRF and egress — T-WEB-09 (done)
+
+`zero-web` now has an egress guard (WEB-16, WEB-17): scheme refusal
+(`http`/`https` only), userinfo rejection, full address classification
+(loopback, RFC 1918, CGNAT, link-local, metadata, multicast, unspecified,
+broadcast, ULA, reserved), DNS-rebinding-safe checking of every resolved
+address, pinned destinations so the fetch layer cannot re-resolve, redirect
+re-checks with a budget and HTTPS→HTTP downgrade refusal, and secret checks over
+URL, header values, and body without echoing the value. `Offline` denies
+everything; `Restricted` allows public HTTP(S) only; `Full` additionally allows
+private and loopback targets but still blocks metadata, link-local, multicast,
+reserved, and non-HTTP(S) schemes. IPv4-mapped, IPv4-compatible, 6to4, Teredo,
+and NAT64 forms are classified through their embedded address or refused.
+
+| Test area | Evidence |
+|---|---|
+| Address matrix | 19 fixtures: metadata (v4/v6/hostname), loopback, private, link-local, ULA, multicast, unspecified, broadcast, reserved. |
+| Pinning and redirects | Any forbidden resolved address rejects; redirect to private/metadata/downgrade refused; budget enforced. |
+| Schemes and secrets | `file`/`javascript`/`data` and userinfo refused; secrets in URL/header/body refused without echoing. |
+| Modes | Offline, Restricted, and Full behavior differ exactly as documented. |
+
+Commands: `cargo test -p zero-web` (70 tests + 1 doc test), `cargo clippy
+-p zero-web --all-targets -- -D warnings`. The fetch layer (T-WEB-04) must call
+`check_request` and connect only to the pinned addresses.
+
 ## Doctor checks — T-DOC-02 (done)
 
 The doctor core now runs 13 named checks over an injectable `DoctorContext`:
@@ -187,7 +212,7 @@ shape rather than performing live handshakes.
 
 ## Still open in M6
 
-T-WEB-04..11, T-MCP-04..11, T-DOC-03..06, T-MON-01..04, and T-SR-01..08.
+T-WEB-04..08, T-WEB-10..11, T-MCP-04..11, T-DOC-03..06, T-MON-01..04, and T-SR-01..08.
 
 Hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
 on `fd1f322d`, [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012)
