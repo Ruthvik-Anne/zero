@@ -4,3 +4,5 @@
 /bench/out
 /protocol/out
 /old/
+__pycache__/
+*.pyc
