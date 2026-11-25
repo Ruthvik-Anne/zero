@@ -1,0 +1,47 @@
+{
+  "revision": "2025-11-25",
+  "initialize": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "tools": { "listChanged": true }
+    },
+    "serverInfo": {
+      "name": "fixture-2025",
+      "version": "1.0.0"
+    }
+  },
+  "tools_list": {
+    "tools": [
+      {
+        "name": "echo",
+        "description": "Return the supplied text.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" }
+          },
+          "required": ["text"],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "add",
+        "description": "Add two integers.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "left": { "type": "integer" },
+            "right": { "type": "integer" }
+          },
+          "required": ["left", "right"]
+        }
+      }
+    ]
+  },
+  "tools_call": {
+    "content": [
+      { "type": "text", "text": "hello from 2025-11-25" }
+    ],
+    "isError": false
+  }
+}

@@ -29,6 +29,29 @@ engine rank as provenance.
 
 Command: `cargo test -p zero-web`.
 
+## Filters and provenance — T-WEB-02 (done)
+
+`filter::apply` narrows a fused response without touching scores or order and
+attaches a `Provenance { published, age_days, source }` to every survivor
+(WEB-03, WEB-04). Filters are ANDed: freshness (Day/Week/Month/Year), include
+and exclude domains (host or subdomain; exclusion wins), categories
+(`docs`/`code`/`news`/`general` by a documented URL rule), and required or
+forbidden substrings over title+snippet. Freshness is fail-closed: an absent or
+unparseable date is dropped when a window is set. Dates accept `YYYY-MM-DD` and
+RFC 3339 with an explicit offset; everything else yields `age_days: None` and
+`source: unknown` rather than a guess.
+
+| Test | Covers |
+|---|---|
+| `filter_matrix_keeps_exactly_the_expected_urls` | 19 table-driven cases: every filter alone and combined, fail-closed dates, exclude-over-include. |
+| `filtering_preserves_scores_and_order` | Fusion fields and order are untouched. |
+| `provenance_records_age_and_date_source` | Age, raw value, and source for parseable, unparseable, and absent dates. |
+| `future_dates_clamp_to_age_zero`, `freshness_windows_are_documented_days` | Clock skew and window constants. |
+| `timestamp_parser_accepts_only_documented_forms` | Accepted formats and 19 rejected forms. |
+| `category_classification_follows_documented_rule`, `canonical_host_normalizes_www_and_ports` | Category and host rules. |
+
+Command: `cargo test -p zero-web` (18 tests).
+
 ## Doctor binary — T-DOC-01 (done)
 
 `zero-doctor` is a separate executable with a plugin-free core. `run_core`
@@ -45,9 +68,31 @@ The binary supports `--json`, `--version`, and `--help`, and exits zero.
 Commands: `cargo test -p zero-doctor`, `cargo clippy -p zero-doctor
 --all-targets -- -D warnings`.
 
+## MCP core client — T-MCP-01 (done)
+
+`zero-mcp` now has a stateless JSON-RPC 2.0 client over an in-memory
+`Transport` seam (MCP-01..05): strict envelope validation, request-id echo,
+typed JSON-RPC error mapping, revision negotiation for `2025-11-25` and
+`2026-07-28`, case-insensitive routing headers, `initialize` / `tools/list` /
+`tools/call`, `resultType` handling, a per-server/revision `tools/list` cache
+with TTL and schema-hash invalidation, and bounded schema validation (64 KiB,
+depth 32, 4096 nodes) with a deterministic schema hash. Two JSON fixtures cover
+both revisions.
+
+| Test area | Evidence |
+|---|---|
+| Envelopes and errors | `cargo test -p zero-mcp` unit tests: malformed envelope, id mismatch, both `result` and `error`, JSON-RPC code mapping. |
+| Revisions and resultType | `2025-11-25` treats every result as complete; `2026-07-28` reads `complete` / `input_required` / unknown passthrough. |
+| Caching | Second `tools/list` does not touch the transport; TTL, `ttlMs == 0`, invalidation, and schema-change refresh. |
+| Schema bounds | Oversize, too-deep, and over-node schemas fail with typed errors; names cannot be empty. |
+| Fixtures | `tests/core_client.rs` (14 integration tests) against `tests/fixtures/2025-11-25.json` and `2026-07-28.json`. |
+
+Commands: `cargo test -p zero-mcp` (27 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`.
+
 ## Still open in M6
 
-T-WEB-02..11, T-MCP-01..11, T-DOC-02..06, T-MON-01..04, and T-SR-01..08.
+T-WEB-03..11, T-MCP-02..11, T-DOC-02..06, T-MON-01..04, and T-SR-01..08.
 
 Hosted run [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
 on `fd1f322d`: all ten jobs successful.

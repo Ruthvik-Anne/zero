@@ -33,7 +33,7 @@ Supporting pages in this directory:
 | [`credentials.md`](credentials.md) | Encrypted credential fallback, accounts, scrubbed children, refresh lock, import. |
 | [`secrets.md`](secrets.md) | Vault AAD format, scopes/bindings, placeholders, transport substitution, audit, `.env`, leakage. |
 | [`web.md`](web.md) | Search adapters, parallel execution, RRF fusion, URL/title dedupe, failure policy. |
-| [`doctor.md`](doctor.md) | Independent doctor binary, report shape, CLI, daemon-dead guarantee. |
+| [`doctor.md`](doctor.md) | Independent doctor binary, report shape, CLI, daemon-dead guarantee. |`n| [`mcp.md`](mcp.md) | JSON-RPC core client, revisions, routing headers, cache, schema bounds. |
 | [`policy.md`](policy.md) | Modes, the matrix, evaluator order, permits, approvals, regulators, transitions. |
 | [`deletion-safety.md`](deletion-safety.md) | Command guards, shims, the Python hook, trash, journal, purge, retention, and stated limits. |
 | [`trust.md`](trust.md) | Trust boundaries, workspace trust, protected files, audit integrity. |
