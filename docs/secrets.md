@@ -17,12 +17,17 @@ returns the value only for header, query, stdin, and env/SDK destinations; the
 chat destination always returns the redacted handle. Values therefore never
 enter the transcript, receipts, files, logs, or the kernel.
 
-## Prompts (SEC-05, partial)
+## Prompts (SEC-05)
 
 `request_secret` is the only constructor and marks the prompt host-issued; the
-agent has no route to it. `render_masked` renders the tag, a masked entry, and
-the reason for TUI, desktop, web, and Android surfaces. The surface widgets are
-not wired to this model yet.
+agent has no route to it. One `SecretPrompt` renders through `view()` as a
+`SecretPromptView` carrying the prompt id, tag, reason, and a masked field of
+bullets (`•`), never a value or any part of one. `zero-daemon-app` renders the
+TUI surface through the host modal (`SecretPromptFrame::Tui`); desktop, web, and
+Android consume the masked controller payload (`SecretPromptFrame::Controller`).
+Only the TUI widget exists in-tree; the other clients consume the host payload.
+A forged or deserialized prompt is refused with `zero.pol.denied`, and agent text
+cannot open the modal.
 
 ## Audit and `.env` (SEC-06, SEC-07)
 
@@ -46,10 +51,25 @@ crash reports for a value and fails naming the leaking sink.
 `request_secret_headless` pushes a `Credential` item onto the durable policy
 queue and returns its id, so independent work continues while the user is asked.
 
-## Sign-in flows (SEC-11, partial)
+## Sign-in flows (SEC-11)
 
-`SignInFlow` records the provider, method, whether the flow is documented for
-third-party clients, and the date it was checked. An undocumented flow is
-disabled with the reason and the date; a documented flow stores tokens only in
-the credential store. The live OpenCode Console OAuth and ChatGPT device flow
-are not implemented.
+Two real flows ship. OpenCode Console uses device authorization against
+`{server}/auth/device/code` and `{server}/auth/device/token` for the
+`opencode-cli` client; `poll_device_token` handles `authorization_pending`,
+`slow_down`, and expiry. ChatGPT uses system-browser OAuth 2.0 with PKCE S256 on
+a `127.0.0.1` loopback callback, the
+`https://auth.openai.com/api/accounts/authorize` and
+`/api/accounts/oauth/token` endpoints, the `dynamic_agent_client` registration
+(the first sign-in receives an issued client id on the callback), the
+`https://api.openai.com/v1` resource, the `chatgpt.tokens.use.direct` scope, and
+`ext_agent_host_id`. A callback with a wrong `state` is refused.
+
+`TermsRegistry` records what each provider documents for third-party clients and
+is consulted before any network request: `DeviceSignIn::begin` checks the device
+method and `ChatGptSignIn::begin` checks OAuth, so an undocumented provider fails
+with `zero.fnd.unavailable` and no request is sent. opencode and chatgpt are
+enabled; claude and github-copilot are disabled with the reason and the check
+date 2026-11-24. Tokens are written to the encrypted credential store by
+`store_tokens`, reloaded by `load_tokens`, and rotated by `refresh`; they never
+enter config. Tests use loopback listeners and scripted transports, so no live
+provider credentials are needed in CI.

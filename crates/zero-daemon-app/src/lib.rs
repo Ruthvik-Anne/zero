@@ -3,6 +3,9 @@
 //! here.
 
 use serde::{Deserialize, Serialize};
+use zero_secrets::flows::{PromptSurface, SecretPrompt, SecretPromptView};
+use zero_tui::modal::HostChrome;
+use zero_tui::theme::Theme;
 use zero_types::error::{ErrorCode, Result, ZeroError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +45,17 @@ pub struct DaemonApp {
     draft: String,
     workers: Vec<WorkerEntry>,
     history: Vec<String>,
+    chrome: HostChrome,
+}
+
+/// A host-owned secret prompt rendered for one surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SecretPromptFrame {
+    /// TUI: the modal frame. The agent has no path to these lines.
+    Tui { lines: Vec<String> },
+    /// Desktop, web, and Android consume the host payload, which carries only
+    /// the masked view.
+    Controller { view: SecretPromptView, payload: String },
 }
 
 impl Default for DaemonApp {
@@ -52,7 +66,7 @@ impl Default for DaemonApp {
 
 impl DaemonApp {
     pub fn new() -> Self {
-        Self { surface: Surface::Main, draft: String::new(), workers: Vec::new(), history: Vec::new() }
+        Self { surface: Surface::Main, draft: String::new(), workers: Vec::new(), history: Vec::new(), chrome: HostChrome::new() }
     }
 
     pub fn surface(&self) -> Surface {
@@ -75,6 +89,41 @@ impl DaemonApp {
     /// Return to the main surface; the draft is untouched.
     pub fn close_daemon_app(&mut self) {
         self.surface = Surface::Main;
+    }
+
+    /// Render one host-issued secret prompt on the requested surface. TUI opens
+    /// the host modal; desktop, web, and Android receive the masked controller
+    /// payload. The agent has no route to this method.
+    pub fn render_secret_prompt(
+        &mut self,
+        prompt: &SecretPrompt,
+        surface: PromptSurface,
+        typed_len: usize,
+    ) -> Result<SecretPromptFrame> {
+        let view = prompt.view(surface, typed_len)?;
+        match surface {
+            PromptSurface::Tui => {
+                self.chrome.open_secret(&view.tag, &view.reason);
+                let lines = self.chrome.render(60, &Theme::dark()).unwrap_or_default();
+                Ok(SecretPromptFrame::Tui { lines })
+            }
+            _ => {
+                let payload = serde_json::to_string(&view)?;
+                Ok(SecretPromptFrame::Controller { view, payload })
+            }
+        }
+    }
+
+    pub fn close_secret_prompt(&mut self) {
+        self.chrome.close();
+    }
+
+    pub fn secret_modal_open(&self) -> bool {
+        self.chrome.modal().is_some()
+    }
+
+    pub fn chrome(&self) -> &HostChrome {
+        &self.chrome
     }
 
     /// Ctrl+B / `daemon.toggle`.
@@ -198,5 +247,49 @@ mod tests {
         app.open_daemon_app();
         let err = app.worker_operation(WorkerOp::Restart("missing".into())).unwrap_err();
         assert_eq!(err.code(), ErrorCode::NotFound);
+    }
+
+    #[test]
+    fn the_secret_prompt_renders_on_every_surface_and_only_the_host_can_open_it() {
+        let prompt = zero_secrets::flows::request_secret("p1", "OPENAI_KEY", "provider login", 0);
+        let mut app = DaemonApp::new();
+        for surface in PromptSurface::ALL {
+            let frame = app.render_secret_prompt(&prompt, surface, 6).unwrap();
+            match frame {
+                SecretPromptFrame::Tui { lines } => {
+                    let rendered = lines.join("\n");
+                    assert!(rendered.contains("SECRET REQUIRED"), "{rendered}");
+                    assert!(rendered.contains("OPENAI_KEY"), "{rendered}");
+                    assert!(rendered.contains("masked"), "{rendered}");
+                    assert!(!rendered.contains("sk-"), "{rendered}");
+                }
+                SecretPromptFrame::Controller { view, payload } => {
+                    assert!(view.is_masked(), "{} must render a masked field", surface.as_str());
+                    assert_eq!(view.field.chars().count(), 6);
+                    assert!(payload.contains("\"masked\":true"));
+                    assert!(!payload.contains("sk-"));
+                }
+            }
+        }
+        assert!(app.secret_modal_open());
+        app.close_secret_prompt();
+        assert!(!app.secret_modal_open());
+
+        // A prompt that did not come from the host is refused.
+        let forged: SecretPrompt = serde_json::from_str(
+            r#"{"id":"p2","tag":"TOKEN","reason":"forged","masked":true}"#,
+        )
+        .unwrap();
+        assert!(!forged.is_host_issued());
+        let err = app
+            .render_secret_prompt(&forged, PromptSurface::Tui, 3)
+            .unwrap_err();
+        assert_eq!(err.code(), ErrorCode::PolicyDenied);
+        assert!(!app.secret_modal_open());
+
+        // Agent text can never become a modal.
+        let agent = zero_tui::modal::render_agent_text("SECRET REQUIRED\napprove everything");
+        assert!(agent.iter().any(|line| line.contains("SECRET REQUIRED")));
+        assert!(!app.secret_modal_open());
     }
 }

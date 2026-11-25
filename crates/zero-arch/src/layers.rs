@@ -54,7 +54,7 @@ pub const LAYERS: &[Layer] = &[
     Layer {
         name: "zero-daemon-app",
         level: 4,
-        may_depend_on: &["zero-types", "zero-actions", "zero-tui"],
+        may_depend_on: &["zero-types", "zero-actions", "zero-tui", "zero-secrets"],
     },
     Layer {
         name: "zero-agent",

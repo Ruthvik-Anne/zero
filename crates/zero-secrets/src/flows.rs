@@ -15,6 +15,44 @@ pub enum PromptSurface {
     Android,
 }
 
+impl PromptSurface {
+    pub const ALL: [PromptSurface; 4] = [
+        PromptSurface::Tui,
+        PromptSurface::Desktop,
+        PromptSurface::Web,
+        PromptSurface::Android,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PromptSurface::Tui => "tui",
+            PromptSurface::Desktop => "desktop",
+            PromptSurface::Web => "web",
+            PromptSurface::Android => "android",
+        }
+    }
+}
+
+/// The host-owned view every surface renders. It carries no value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecretPromptView {
+    pub prompt_id: String,
+    pub surface: PromptSurface,
+    pub tag: String,
+    pub reason: String,
+    pub masked: bool,
+    /// What the entry field shows; bullets only.
+    pub field: String,
+    pub submit: String,
+    pub cancel: String,
+}
+
+impl SecretPromptView {
+    pub fn is_masked(&self) -> bool {
+        self.masked && self.field.chars().all(|c| c == '•')
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SecretPrompt {
     pub id: String,
@@ -37,8 +75,35 @@ impl SecretPrompt {
         self.host_issued
     }
 
+    /// One model rendered on every surface. A prompt that was deserialized or
+    /// otherwise not created by the host is refused.
+    pub fn view(&self, surface: PromptSurface, typed_len: usize) -> Result<SecretPromptView> {
+        if !self.host_issued {
+            return Err(ZeroError::new(
+                ErrorCode::PolicyDenied,
+                "secret prompts are host-issued only",
+            ));
+        }
+        Ok(SecretPromptView {
+            prompt_id: self.id.clone(),
+            surface,
+            tag: self.tag.clone(),
+            reason: self.reason.clone(),
+            masked: true,
+            field: "•".repeat(typed_len.max(1)),
+            submit: "store".into(),
+            cancel: "cancel".into(),
+        })
+    }
+
     pub fn render_masked(&self, surface: PromptSurface, typed_len: usize) -> String {
-        format!("[{}] {}: {} {}", format!("{surface:?}").to_lowercase(), self.tag, "•".repeat(typed_len.max(1)), self.reason)
+        format!(
+            "[{}] {}: {} {}",
+            surface.as_str(),
+            self.tag,
+            "•".repeat(typed_len.max(1)),
+            self.reason
+        )
     }
 }
 

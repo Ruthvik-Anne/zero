@@ -1,9 +1,7 @@
 # M5 evidence
 
-M5 covers projects, credentials, and secrets. The project, credential, and
-secrets slices are implemented; two secrets tasks are explicitly partial (see
-the status column), and the tables below name the exact test for each closed
-task.
+M5 covers projects, credentials, and secrets. Every slice is done; the tables
+below name the exact test for each closed task.
 
 ## Projects — T-PRJ-01..06 (done)
 
@@ -56,19 +54,19 @@ tests, 0 failed).
 | T-SEC-02 | done | `scopes_precedence_binding_drift_and_expiry`: project > session > user, drift refused, expiry. |
 | T-SEC-03 | done | `placeholders_resolve_only_in_transport_and_chat_is_redacted`: parser plus value-free handle. |
 | T-SEC-04 | done | Same test: only header/query/stdin/env destinations receive values; chat is redacted. |
-| T-SEC-05 | doing | `flows::tests::secret_prompts_are_host_issued_and_masked`: one host-issued request model with per-surface masked rendering. The TUI/desktop/web/android widgets are not wired to it yet. |
+| T-SEC-05 | done | `flows::tests::secret_prompts_are_host_issued_and_masked`, `the_secret_prompt_renders_on_every_surface_and_only_the_host_can_open_it` (`zero-daemon-app`), `the_secret_modal_is_masked_and_host_only` (`zero-tui`): one host-issued model, a masked `SecretPromptView`, the TUI modal, and the desktop/web/Android controller payload; forged prompts are refused with `zero.pol.denied` and agent text cannot open the modal. |
 | T-SEC-06 | done | `audit_rows_and_env_rules_carry_no_values`: audit rows carry tags and destinations only. |
 | T-SEC-07 | done | Same test: `.env` must be ignored, `.env.example` is created, and the pre-commit guard refuses value lines. |
 | T-SEC-08 | done | `flows::tests::scanning_finds_keys_in_files_and_git_history_with_a_rotation_offer`: file scan, `git log -p` scan, and one rotation offer per file; `Vault::rotate` re-encrypts. |
 | T-SEC-09 | done | `leakage_suite_covers_every_sink`: transcript, kernel, config, logs, teleport, crash. |
 | T-SEC-10 | done | `flows::tests::the_headless_queue_queues_a_secret_and_work_continues`: a credential request lands in the durable headless queue and other work continues. |
-| T-SEC-11 | doing | `flows::tests::an_undocumented_sign_in_flow_is_disabled_with_the_reason`: documented/undocumented gates, tokens land only in the credential store. Live OpenCode Console OAuth and ChatGPT device flow are not implemented. |
+| T-SEC-11 | done | `signin::tests::pkce_matches_the_rfc7636_vector`, `chatgpt_authorization_url_carries_the_documented_parameters`, `chatgpt_callback_is_validated_and_the_code_is_exchanged`, `a_forged_callback_state_is_refused`, `the_opencode_device_flow_resolves_the_url_and_polls`, `an_expired_device_code_stops_polling`, `refresh_rotates_the_tokens`, `tokens_are_stored_encrypted_and_reload`, `the_terms_registry_disables_undocumented_flows`, `a_flow_cannot_start_when_its_terms_do_not_allow_it`, `the_reqwest_transport_reaches_a_loopback_endpoint`: OpenCode Console device authorization and ChatGPT loopback PKCE; the terms gate runs before any request (`zero.fnd.unavailable`), claude and github-copilot are disabled (checked 2026-11-24), and tokens land only in the encrypted store. |
 
 Hosted run [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780)
 on `7008692b`: all jobs successful.
 
 ## Still open
 
-- T-SEC-05 UI wiring on each surface.
-- T-SEC-11 live OAuth/device flows.
 - TPM/DPAPI unattended key wrapping (T-CRT-06 currently uses a machine-bound key file).
+
+The hosted run for the M5 closure is recorded here after CI.

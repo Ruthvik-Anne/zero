@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "zero-daemon-app"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,7 @@ license.workspace = true
 zero-types = { workspace = true }
 zero-actions = { workspace = true }
 zero-tui = { workspace = true }
+zero-secrets = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
