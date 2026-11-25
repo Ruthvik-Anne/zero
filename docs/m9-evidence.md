@@ -42,5 +42,5 @@ implementation) remains platform application work, documented in
 ## Hosted run
 
 Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227)
-on `1801d291`: **all 12 jobs successful**, including all six Rust targets, both
+on `1801d291`: **all 13 jobs successful**, including all six Rust targets, both
 keychain jobs, both installer jobs, protocol readers, and docs.

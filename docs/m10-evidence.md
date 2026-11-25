@@ -45,6 +45,6 @@ OS-level installer VM matrices beyond the current CI jobs.
 ## Hosted run
 
 Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227)
-on `1801d291`: **all 12 jobs successful**, including `installer (windows)` and
+on `1801d291`: **all 13 jobs successful**, including `installer (windows)` and
 `installer (unix)` on ubuntu and macOS, both keychain jobs, six Rust targets,
 protocol readers, and the docs/traceability job.

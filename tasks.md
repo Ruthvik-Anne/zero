@@ -756,7 +756,7 @@ implemented and verified. Evidence: `docs/m6-evidence.md`; hosted runs [45563857
 | T-MON-03 | done | `cargo test -p zero-agent monitor`: declarative manifest, policy allowlists/source checks, skill-triggered start, idempotent start and stop_all. |
 | T-MON-04 | done | `cargo test -p zero-agent monitor`: journal-based restart policy; resume/teleport skip by default and restart only with fresh per-monitor confirmation. |
 | T-SR-08 | done | `cargo test -p zero-agent audit`: validated run under `.zero/audits/run-N`, five canonical outputs, idempotent unit tasks visible on the panel, SR-16 profile refusal. |
-| - | M6 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
+| - | M6 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 13 jobs green. |
 ## M7 — Halcyon, model pool, usage, auto-resume
 
 - **T-HAL-01 Discovery and trust.** Nearest-file rule, symlink rejection, and
@@ -837,7 +837,7 @@ Evidence: `docs/m7-evidence.md`.
 | T-MDL-07 | done | `cargo test -p zero-model measured`: sample minimums, evidence-threshold switches, deterministic exploration, reconciliation and budget gate. |
 | T-MDL-05 | done | `cargo test -p zero-model translation`: canonical transcript, OpenAI/Anthropic/Gemini mapping with recorded drops, tool ID preservation across escalation. |
 | T-MDL-01 | done | `cargo test -p zero-model pool`: seeded pool with dated source refs, validated limits/costs/grades, local and deprecated entries, to_pool conversion. |
-| - | M7 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
+| - | M7 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 13 jobs green. |
 ## M8 — Mesh, teleport, self-improvement
 
 - **T-MESH-01 Identity.** Device key, approval flow, join tokens, rotation.
@@ -919,7 +919,7 @@ and verified. Evidence: `docs/m8-evidence.md`.
 | T-TEL-07 | done | `cargo test -p zero-mesh`: vault ciphertext envelope with Argon2id+AES-GCM, exactly one unlock, approval binding, transfer opacity. |
 | T-TEL-08 | done | `cargo test -p zero-mesh trip`: interrupted resume, unreachable source refusal, forced takeover fencing, A→B→A return trip. |
 | T-MESH-07 | done | `cargo test -p zero-mesh`: datagram session-stream prototype byte-identical under loss/reorder/duplication; ADR 0002 chooses datagram streams. |
-| - | M8 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
+| - | M8 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 13 jobs green. |
 ## M9 — Desktop, web, Android, multimodal
 
 - **T-DSK-01 Desktop shell.** System webview around the local UI, loopback only.
@@ -983,7 +983,7 @@ verified. Evidence: `docs/m8-evidence.md` (input slice) and
 | T-AND-03 | done | `cargo test -p zero-policy mobile_approval`: digest/nonce/device-bound approvals, replay rejection, locked view hiding, FLAG_SECURE. |
 | T-AND-04 | done | `cargo test -p zero-agent mobile_offline`: persisted offline queue, exactly-once flush after airplane mode, generation/cursor reconnect, redacted notifications. |
 | T-AND-05 | done | `cargo test -p zero-daemon-app share`: share intake/sheet, direct/relay reporting, no VPN change, scripted session delivery. |
-| - | M9 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
+| - | M9 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 13 jobs green. |
 ## M10 — Release hardening
 
 - **T-INST-01 Packaging.** Per-platform artifacts, SBOM, signed manifest.
@@ -1051,7 +1051,7 @@ and parity task is implemented and verified.
 | T-INST-03 | done | `cargo test -p zero-cli unix_install`: POSIX installer validation; WSL end-to-end; CI ubuntu/macOS install job. |
 | T-PAR-03 | done | `xtask check-parity`: 133 Part 1/2/8 items assessed (31 implemented, 61 partial, 40 deferred, 1 out-of-scope, 0 unassessed). |
 | T-INST-02 | done | `cargo test -p zero-cli windows_install`: PowerShell installer validation; local end-to-end 39 assertions; new Windows CI job. |
-| - | M10 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
+| - | M10 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 13 jobs green. |
 ## Coverage checks
 
 - Every requirement ID in `features.md` Part 10 appears in at least one task's

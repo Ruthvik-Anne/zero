@@ -994,4 +994,4 @@ clippy -p zero-doctor --all-targets -- -D warnings`.
 
 M6 is closed: every M6 task group is implemented and verified in the tables above.
 
-Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on 1801d291: all 12 jobs successful.
+Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on 1801d291: all 13 jobs successful.
