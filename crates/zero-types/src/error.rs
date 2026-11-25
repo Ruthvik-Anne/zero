@@ -95,11 +95,25 @@ codes! {
     PolicyDenied => "zero.pol.denied", "Switch mode or get user approval.";
     PolicyAskRequired => "zero.pol.ask", "Approve the action in the host UI.";
     ApprovalExpired => "zero.pol.approval_expired", "Request a fresh approval.";
+    ApprovalResolved => "zero.pol.approval_resolved", "Another client already decided this prompt.";
+    SelfEscalation => "zero.pol.self_escalation", "Only the user can change mode, policy, or protected files.";
+    RegulatorUnavailable => "zero.pol.regulator_unavailable", "The affected class degrades to manual; approve explicitly.";
+    InvalidTransition => "zero.pol.transition_invalid", "End the headless run or choose an allowed transition.";
+    RuleViolation => "zero.pol.rule_violation", "Adjust the action to satisfy the rule named in the message.";
     ProtectedPath => "zero.del.protected", "Choose a path outside the protected set.";
 
+    // Deletion safety
+    DeletionBlocked => "zero.del.blocked", "Use the `trash` tool instead; permanent deletion is human-only.";
+    TrashFailed => "zero.del.trash_failed", "Check the path and permissions; the original was left in place.";
+    SnapshotMissing => "zero.del.snapshot_missing", "The overwrite journal has no snapshot to restore.";
+    PurgeDenied => "zero.del.purge_denied", "Permanent purge requires a human confirmation token.";
+    RetentionScope => "zero.del.retention_scope", "Garbage collection is limited to Zero's own data root.";
+
     // Trust and audit
+    TrustRequired => "zero.tru.trust_required", "Trust the project explicitly before its content is used.";
     Untrusted => "zero.tru.untrusted", "Trust the project explicitly before using its configuration.";
     AuditBroken => "zero.tru.audit_broken", "Run `zero doctor`; the audit chain failed verification.";
+    TamperDetected => "zero.tru.tamper", "The audit chain does not match; treat the record as untrusted.";
 }
 
 impl fmt::Display for ErrorCode {

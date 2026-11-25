@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "zero-store"
 version.workspace = true
 edition.workspace = true

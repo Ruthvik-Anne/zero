@@ -188,6 +188,10 @@ pub fn line_mode(args: &[String]) -> ExitCode {
             system: Some("line-mode test client".into()),
             ..LoopConfig::default()
         },
+        zero_policy::PolicyEngine::new(zero_policy::Policy::new(
+            zero_policy::Mode::Auto,
+            zero_types::protected::ProtectedPaths::for_current(),
+        )),
         Arc::new(SystemClock),
     );
 

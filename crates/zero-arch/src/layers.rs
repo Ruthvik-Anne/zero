@@ -80,6 +80,7 @@ pub const LAYERS: &[Layer] = &[
             "zero-doctor",
             "zero-tui",
             "zero-actions",
+            "zero-policy",
         ],
     },
 ];

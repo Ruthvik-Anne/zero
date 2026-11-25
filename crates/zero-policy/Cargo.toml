@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "zero-policy"
 version.workspace = true
 edition.workspace = true
@@ -10,6 +10,21 @@ zero-store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+blake3 = { workspace = true }
+
+[[bin]]
+name = "zero-guard"
+path = "src/bin/zero-guard.rs"
+
+[[bin]]
+name = "zero-sandbox-probe"
+path = "src/bin/zero-sandbox-probe.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -14,6 +14,7 @@ use zero_model::{
 };
 use zero_store::journal::{ApplyOutcome, CommandJournal};
 use zero_store::session::{Entry, Role, SessionLog, ToolCall as SessionToolCall};
+use zero_policy::{Action, ActionClass, Actor, Permit, PolicyEngine};
 use zero_types::error::{ErrorCode, Result, ZeroError};
 use zero_types::id::Clock;
 
@@ -36,6 +37,8 @@ pub struct TurnRecord {
     pub stop: String,
     pub tool_calls: usize,
     pub retries: u32,
+    #[serde(default)]
+    pub policy_version: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -53,6 +56,10 @@ pub trait Tool {
     fn description(&self) -> &str;
     fn parameters(&self) -> serde_json::Value;
     fn call(&mut self, args: &serde_json::Value) -> Result<String>;
+    /// The policy class this tool dispatches as. Defaults to a read.
+    fn action_class(&self) -> ActionClass {
+        ActionClass::Read
+    }
 }
 
 #[derive(Default)]
@@ -84,11 +91,33 @@ impl ToolRegistry {
             .collect()
     }
 
-    pub fn call(&mut self, name: &str, args: &serde_json::Value) -> Result<String> {
+    fn call_internal(&mut self, name: &str, args: &serde_json::Value) -> Result<String> {
         let tool = self.tools.get_mut(name).ok_or_else(|| {
             ZeroError::new(ErrorCode::NotFound, format!("unknown tool `{name}`"))
         })?;
         tool.call(args)
+    }
+
+    pub fn class_of(&self, name: &str) -> ActionClass {
+        self.tools.get(name).map(|t| t.action_class()).unwrap_or(ActionClass::Read)
+    }
+
+    /// The only public dispatch used by the agent loop. The permit must have been
+    /// minted for exactly this action.
+    pub fn call_with_permit(
+        &mut self,
+        permit: &Permit,
+        action: &Action,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Result<String> {
+        if permit.hash() != action.hash() || permit.class() != action.class {
+            return Err(ZeroError::new(
+                ErrorCode::PolicyDenied,
+                "the permit does not match this action; dispatch refused",
+            ));
+        }
+        self.call_internal(name, args)
     }
 }
 
@@ -217,10 +246,13 @@ pub struct AgentLoop {
     pub queue: Option<MessageQueue>,
     pub cancel: CancelToken,
     pub config: LoopConfig,
+    pub engine: PolicyEngine,
     clock: Arc<dyn Clock>,
 }
 
 impl AgentLoop {
+    // The collaborators are explicit by design; there is no ambient runtime.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         provider: Box<dyn Provider>,
         tools: ToolRegistry,
@@ -228,9 +260,24 @@ impl AgentLoop {
         log: SessionLog,
         queue: Option<MessageQueue>,
         config: LoopConfig,
+        engine: PolicyEngine,
         clock: Arc<dyn Clock>,
     ) -> Self {
-        Self { provider, tools, journal, log, queue, cancel: CancelToken::new(), config, clock }
+        Self { provider, tools, journal, log, queue, cancel: CancelToken::new(), config, engine, clock }
+    }
+
+    /// Change mode, persist it, and return the new policy version.
+    pub fn set_mode(&mut self, mode: zero_policy::Mode) -> Result<u64> {
+        let version = self.engine.policy.set_mode(mode);
+        let state = zero_policy::ModeState {
+            mode,
+            headless_ended: false,
+            version,
+            running_calls: 0,
+        };
+        let now = self.now();
+        zero_policy::persist_mode(&state, &mut self.log, now)?;
+        Ok(version)
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -397,6 +444,7 @@ impl AgentLoop {
                 stop: format!("{:?}", response.stop),
                 tool_calls: response.tool_calls.len(),
                 retries,
+                policy_version: self.engine.policy.version,
             };
             self.log.append(self.now(), Entry::Custom {
                 name: "turn".into(),
@@ -418,13 +466,45 @@ impl AgentLoop {
                     break;
                 }
                 let digest = blake3::hash(call.arguments.to_string().as_bytes()).to_hex().to_string();
+                let now = self.now();
+                let class = self.tools.class_of(&call.name);
+                let mut action = Action::new(class, call.name.clone(), Actor::Agent)
+                    .with_arguments(call.arguments.clone());
+                if let Some(path) = call.arguments.get("path").and_then(|v| v.as_str()) {
+                    action = action.with_target(path);
+                }
+                // The evaluator is the only way to obtain a permit. A denial or an
+                // ask is reported to the model and never dispatched.
+                let permit = match self.engine.authorize(&action, now) {
+                    Ok(permit) => permit,
+                    Err(e) => {
+                        let output = format!("blocked: {} ({})", e.message(), e.code().as_str());
+                        self.log.append(now, Entry::Info {
+                            text: format!("tool call `{}` ({}) was not dispatched: {}", call.id, call.name, e.message()),
+                        })?;
+                        outcome.tool_results.push(ToolResult {
+                            call_id: call.id.clone(),
+                            name: call.name.clone(),
+                            ok: false,
+                            output: output.clone(),
+                        });
+                        self.log.append(now, Entry::Message {
+                            role: Role::Tool,
+                            text: output,
+                            tool_calls: vec![],
+                            tool_call_id: Some(call.id.clone()),
+                        })?;
+                        continue;
+                    }
+                };
                 // Journal is a field; tools is a different field, so the two
                 // mutable borrows are disjoint.
-                let now = self.now();
                 let journal = &mut self.journal;
                 let tools = &mut self.tools;
                 let result = journal.apply_once(&call.id, &call.name, &digest, now, || {
-                    tools.call(&call.name, &call.arguments).map(serde_json::Value::String)
+                    tools
+                        .call_with_permit(&permit, &action, &call.name, &call.arguments)
+                        .map(serde_json::Value::String)
                 });
                 let (ok, output, uncertain) = match result {
                     Ok(ApplyOutcome::Applied(v)) | Ok(ApplyOutcome::Replayed(v)) => {
@@ -515,6 +595,10 @@ mod tests {
             log,
             None,
             LoopConfig { model: "scripted-1".into(), retry_sleep: false, ..LoopConfig::default() },
+            zero_policy::PolicyEngine::new(zero_policy::Policy::new(
+                zero_policy::Mode::Auto,
+                zero_types::protected::ProtectedPaths::for_current(),
+            )),
             Arc::new(FakeClock::at(1_700_000_000_000)),
         )
     }
@@ -635,6 +719,10 @@ mod tests {
             log,
             None,
             LoopConfig { model: "m".into(), ..LoopConfig::default() },
+            zero_policy::PolicyEngine::new(zero_policy::Policy::new(
+                zero_policy::Mode::Auto,
+                zero_types::protected::ProtectedPaths::for_current(),
+            )),
             Arc::new(FakeClock::at(0)),
         );
         let outcome = agent.run("resume").unwrap();

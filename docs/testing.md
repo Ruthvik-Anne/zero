@@ -14,6 +14,11 @@ Layers, what each proves, and the command that runs it.
 | Sessions | Fork/clone/tree, compaction, summaries, export (SES-01..04, SES-10) | `cargo test -p zero-agent` |
 | Provider fixtures | Real adapters over loopback HTTP (PRV-02, PRV-03) | `cargo test -p zero-model --test http_fixture` |
 | Provider live smoke | Behind `ZERO_LIVE_OPENAI` / `ZERO_LIVE_OLLAMA` | `cargo test -p zero-model --test live` |
+| Policy and matrix | Modes, evaluator order, permits, approvals, transitions | `cargo test -p zero-policy` |
+| Deletion guards | POSIX/PowerShell/cmd corpus, Python hook, shims | `cargo test -p zero-policy --test python_guard` and `--test shims_unix` / `--test shims_windows` |
+| File safety | Trash, overwrite journal, purge, retention | `cargo test -p zero-fs` |
+| Audit chain | Hash chain and tamper localisation | `cargo test -p zero-store audit::` |
+| Sandbox spike | Windows job object, Linux Landlock | `cargo test -p zero-policy --test sandbox_windows` (Windows) / `--test sandbox_linux` (Linux) |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |

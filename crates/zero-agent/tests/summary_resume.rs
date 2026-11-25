@@ -51,6 +51,10 @@ fn fixture_summary_passes_shape_and_is_used_on_resume() {
         log,
         None::<MessageQueue>,
         LoopConfig { model: "m".into(), ..LoopConfig::default() },
+        zero_policy::PolicyEngine::new(zero_policy::Policy::new(
+            zero_policy::Mode::Auto,
+            zero_types::protected::ProtectedPaths::for_current(),
+        )),
         Arc::new(FakeClock::at(0)),
     );
     let messages = agent.preview_messages().unwrap();

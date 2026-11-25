@@ -250,6 +250,40 @@ fixtures run the real adapters over loopback HTTP instead.
 
 - **T-DEL-09 Zero-owned retention.** Limit internal GC to Zero data directories under a retention policy, logged. **Refs:** DEL-09. **Done:** a GC run deletes nothing outside the data root and trashes expired data.
 
+## M2 closure
+
+Run on 2026-11-25 from the repository root, plus the Linux-only tests in WSL
+Ubuntu (`CARGO_TARGET_DIR=/tmp/zero-target cargo test -p zero-policy -p zero-fs`).
+Detailed output is in `docs/m2-evidence.md`.
+
+| Task | Status | Evidence |
+|---|---|---|
+| T-POL-01 | done | `mode::tests::matrix_is_exhaustive_and_matches_the_golden_defaults`: 5 modes × 15 classes = 75 cells; the golden rows are the regression gate. |
+| T-POL-02 | done | `eval::tests::conflicting_rules_resolve_to_deny`, `self_escalation_is_a_typed_hard_deny`, `approval_lifts_an_ask_but_never_a_deny`. |
+| T-POL-03 | done | `dispatch::tests::a_mode_change_re_evaluates_pending_calls_and_not_the_running_one`; the running call finishes, pending calls use the new policy version. |
+| T-POL-04 | done | `dispatch::tests::kernel_writes_are_denied_in_plan_mode_without_running_the_effect`: the effect closure never runs. |
+| T-POL-05 | done | `approval::tests`: exact-hash binding, a mutated command needs a new approval, expiry, first decision wins, durable across reopen. |
+| T-POL-06 | done | `regulator::tests::each_code_rule_has_a_fixture`: protected path, raw delete, inline secret, credential, network allowlist, cost, recursion, schema change. |
+| T-POL-07 | done | `regulator::tests::injected_tool_output_cannot_reach_the_regulator_prompt`; `RegulatorInput` has no tool-output field. |
+| T-POL-08 | done | `regulator::tests::a_regulator_outage_blocks_instead_of_allowing`: absent and failing regulator both yield `Ask` plus `zero.pol.regulator_unavailable`. |
+| T-POL-09 | done | `headless::tests::a_headless_run_queues_one_item_and_completes_independent_work`; durable queue, resolve once. |
+| T-POL-10 | done | `transitions::tests::transition_matrix_with_in_flight_work` and `mode_persists_across_reopen_and_compaction`. |
+| T-POL-11 | done | `eval` hard deny for agent mode change; `tests/policy_dispatch.rs::self_escalation_is_denied_with_an_audit_record`; protected policy path in `tests/bypass.rs`. |
+| T-POL-12 | done | `eval::tests::plan_mode_requires_verified_read_only_tools`: unverified asks, verified allows, a write tool still asks. |
+| T-DEL-01 | done | `delete::tests::the_destructive_corpus_has_zero_false_allows`: 17 POSIX cases including `sudo`, `env`, `sh -c`, `bash -lc`, `xargs`, `find -delete`, `git clean`. |
+| T-DEL-02 | done | Same test: 10 PowerShell and 6 cmd cases, including `powershell -Command` and `cmd /c`, plus `Clear-Content` and aliases. |
+| T-DEL-03 | done | `cargo test -p zero-policy --test python_guard`: 10 listed calls raise `DeletionBlocked`; a fresh-path rename still works. |
+| T-DEL-04 | done | `tests/shims_windows.rs` blocks a PowerShell `Remove-Item`; `tests/shims_unix.rs` blocks a Makefile `rm -rf` through the PATH shim (green in WSL and hosted Linux). |
+| T-DEL-05 | done | `zero-fs` trash tests: project file, read-only, long path, open file, symlink (target kept), cross-device on a separate tmpfs, protected refusal. |
+| T-DEL-06 | done | `overwrite_journal::tests::an_overwrite_restores_byte_exactly` (4 KiB binary), snapshots survive reopen, truncation recoverable. |
+| T-DEL-07 | done | `protected::tests::each_listed_path_returns_a_refusal_with_the_reason` (9 kinds) plus trash refusal for home and `.git`. |
+| T-DEL-08 | done | `purge::tests::purge_is_dry_run_confirmed_and_audited`: dry-run, exact digest, literal phrase, changed plan refused, audit row; no agent route. |
+| T-DEL-09 | done | `retention::tests::gc_deletes_nothing_outside_the_data_root_and_trashes_expired_data`, dry-run, symlink escape skipped. |
+| T-TRU-01 | done | `trust::tests::an_untrusted_repo_contributes_nothing` and `trust_and_revocation_control_loading`: hooks, monitors, MCP, skills, instructions, and `.halcyon-mode` are inert until trusted; policy is plan-equivalent. |
+| T-TRU-02 | done | `audit::tests::the_chain_verifies_and_detects_an_edited_record` and `deleting_a_middle_record_breaks_the_chain`; tampered logs refuse to open. |
+| T-TRU-03 | done | `sandbox_windows` (job object, 64 MiB cap, kill-on-close) and `sandbox_linux` (Landlock denies writes, reads succeed; green in WSL); decision record `docs/decisions/0001-sandbox.md`. |
+| T-TRU-04 | done | `tests/bypass.rs::bypass_suite_fails_closed` covers seven routes; `a_denied_tool_never_executes_through_the_loop`; permits are bound to one action hash. |
+
 ## M3 — TUI and actions
 
 - **T-TUI-01 Cell grid.** Front and back buffers with styles and widths.

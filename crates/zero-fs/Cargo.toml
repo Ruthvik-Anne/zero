@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "zero-fs"
 version.workspace = true
 edition.workspace = true
@@ -9,6 +9,8 @@ zero-types = { workspace = true }
 zero-store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+blake3 = { workspace = true }
+trash = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

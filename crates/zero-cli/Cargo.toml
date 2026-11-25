@@ -13,6 +13,7 @@ zero-types = { workspace = true }
 zero-store = { workspace = true }
 zero-agent = { workspace = true }
 zero-model = { workspace = true }
+zero-policy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

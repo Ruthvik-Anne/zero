@@ -15,6 +15,7 @@ pub mod log;
 pub mod net;
 pub mod paths;
 pub mod proto;
+pub mod protected;
 pub mod redact;
 pub mod sim;
 pub mod telemetry;

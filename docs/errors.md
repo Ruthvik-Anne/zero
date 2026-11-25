@@ -56,6 +56,18 @@ A duplicate, undocumented, or stale code fails `error::tests`.
 | `zero.pol.denied` | Switch mode or get user approval. |
 | `zero.pol.ask` | Approve the action in the host UI. |
 | `zero.pol.approval_expired` | Request a fresh approval. |
+| `zero.pol.approval_resolved` | Another client already decided this prompt. |
+| `zero.pol.self_escalation` | Only the user can change mode, policy, or protected files. |
+| `zero.pol.regulator_unavailable` | The affected class degrades to manual; approve explicitly. |
+| `zero.pol.transition_invalid` | End the headless run or choose an allowed transition. |
+| `zero.pol.rule_violation` | Adjust the action to satisfy the rule named in the message. |
 | `zero.del.protected` | Choose a path outside the protected set. |
+| `zero.del.blocked` | Use the `trash` tool instead; permanent deletion is human-only. |
+| `zero.del.trash_failed` | Check the path and permissions; the original was left in place. |
+| `zero.del.snapshot_missing` | The overwrite journal has no snapshot to restore. |
+| `zero.del.purge_denied` | Permanent purge requires a human confirmation token. |
+| `zero.del.retention_scope` | Garbage collection is limited to Zero's own data root. |
+| `zero.tru.trust_required` | Trust the project explicitly before its content is used. |
 | `zero.tru.untrusted` | Trust the project explicitly before using its configuration. |
 | `zero.tru.audit_broken` | Run `zero doctor`; the audit chain failed verification. |
+| `zero.tru.tamper` | The audit chain does not match; treat the record as untrusted. |

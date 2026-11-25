@@ -20,6 +20,10 @@ Supporting pages in this directory:
 | [`sessions.md`](sessions.md) | Log format, tree, compaction, resume, attach, leases, journal, export. |
 | [`context-files.md`](context-files.md) | `AGENTS.md` / `CLAUDE.md` precedence and size caps. |
 | [`providers.md`](providers.md) | Provider trait, adapters, retry classes, fixtures, live flags. |
+| [`policy.md`](policy.md) | Modes, the matrix, evaluator order, permits, approvals, regulators, transitions. |
+| [`deletion-safety.md`](deletion-safety.md) | Command guards, shims, the Python hook, trash, journal, purge, retention, and stated limits. |
+| [`trust.md`](trust.md) | Trust boundaries, workspace trust, protected files, audit integrity. |
+| [`decisions/0001-sandbox.md`](decisions/0001-sandbox.md) | Sandbox spike decision with the Windows and Linux prototypes. |
 | [`protocol.md`](protocol.md) | Frame layout, versioning, JSON projection, and the two readers. |
 | [`testing.md`](testing.md) | Test layers, harnesses, the benchmark gate, and how to run everything. |
 
