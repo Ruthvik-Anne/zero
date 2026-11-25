@@ -1,12 +1,15 @@
 # MCP core client
 
 `zero-mcp` currently ships the stateless MCP core client (T-MCP-01, MCP-01 to
-MCP-05) and the stdio and Streamable HTTP transports (T-MCP-02, MCP-06 and
-MCP-17): JSON-RPC 2.0 envelopes, revision negotiation, `resultType`
-classification, routing headers, a cached `tools/list`, bounded tool schemas, a
-scrubbed stdio child process, and a POST/SSE HTTP exchange. The legacy HTTP+SSE
-shim is off by default. MRTR, tasks, events, apps, auth, security caps,
-resources, server mode, and the conformance suite are later tasks.
+MCP-05), the stdio and Streamable HTTP transports (T-MCP-02, MCP-06 and
+MCP-17), and MRTR with elicitation (T-MCP-03, MCP-07 and MCP-08): JSON-RPC 2.0
+envelopes, revision negotiation, `resultType` classification, routing headers,
+a cached `tools/list`, bounded tool schemas, a scrubbed stdio child process, a
+POST/SSE HTTP exchange, an `input_required` outcome parser, one-shot
+`inputResponses` retries, form-mode credential refusal, and URL-mode host
+approval. The legacy HTTP+SSE shim is off by default. Tasks, events, apps, auth,
+security caps, resources, server mode, and the conformance suite are later
+tasks.
 
 ## Client and transport seam
 
@@ -42,7 +45,11 @@ the transport echoes it (see [Transports](#transports)).
 ```
 
 Per-request capabilities in `_meta`, sampling, roots, and elicitation
-capabilities are not modelled yet, so `capabilities` is empty.
+capabilities are not sent yet, so `capabilities` is empty. The consequence for
+MRTR is recorded in [MRTR and elicitation](#mrtr-and-elicitation): this client
+parses and enforces `input_required` when a server sends it, but a strictly
+conformant `2026-07-28` server may withhold elicitation until the client
+declares the capability in each request's `_meta`.
 
 ## Revisions
 
@@ -66,15 +73,188 @@ later call. A revision outside the table is rejected with
 - An unrecognised string is preserved as `Other` and passed through; the client
   does not fail a server for adding a future value.
 - On `2025-11-25`, every result is `Complete`, even if a `resultType` field is
-  present. Older servers are treated as `complete` (MCP-03).
-- An `input_required` result is surfaced with its `inputRequests` payload but is
-  not retried. The retry with `inputResponses` is MRTR (T-MCP-03).
+  present. Older servers are treated as `complete` (MCP-03), and an
+  `input_required` payload is never produced.
+- `Client::tools_call` keeps its T-MCP-01 behaviour: it surfaces the raw
+  `inputRequests` value and never retries. `Client::tools_call_outcome` parses
+  the requests and supports exactly one MRTR retry (see
+  [MRTR and elicitation](#mrtr-and-elicitation)).
 - A non-string `resultType` is a protocol error.
 
 **Assumption:** on `2026-07-28`, a missing or `null` `resultType` is also treated
 as `Complete`. The specification says every result carries the field; being
 tolerant here keeps a strict-but-old server usable. This is documented rather
 than guessed silently.
+
+## MRTR and elicitation
+
+Source: the Model Context Protocol `2026-07-28` specification, [Multi Round-Trip
+Requests](https://modelcontextprotocol.io/specification/draft/basic/patterns/mrtr)
+and [Elicitation](https://modelcontextprotocol.io/specification/draft/client/elicitation),
+plus the linked schema for `InputRequiredResult`, `InputRequests`,
+`InputResponses`, `ElicitRequestFormParams`, and `ElicitRequestURLParams`.
+
+No stream is held open. The initial `tools/call` and the retry are independent
+JSON-RPC requests with different ids; the server carries context through the
+opaque `requestState`.
+
+### Wire shape
+
+An `input_required` result is:
+
+```json
+{
+  "resultType": "input_required",
+  "inputRequests": {
+    "city": {
+      "method": "elicitation/create",
+      "params": {
+        "mode": "form",
+        "message": "Which city?",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {"city": {"type": "string"}},
+          "required": ["city"]
+        }
+      }
+    },
+    "login": {
+      "method": "elicitation/create",
+      "params": {
+        "mode": "url",
+        "url": "https://mcp.example.com/ui/set_api_key",
+        "message": "Provide an API key to continue."
+      }
+    }
+  },
+  "requestState": "opaque server state"
+}
+```
+
+- `inputRequests` is a map keyed by a server-assigned, non-empty string id. The
+  key becomes `InputRequest::id` and is reused as the `inputResponses` key.
+- Each value is an `elicitation/create` request with a `params` object.
+- `message` is required and must be a non-empty string.
+- Form mode may omit `mode` (the specification defaults it to `"form"`).
+  `requestedSchema` is required, must declare `type: "object"`, and must carry a
+  `properties` object. Each property must be a schema object; `required`, when
+  present, must be an array of strings. Unknown request fields are ignored.
+- URL mode requires `mode: "url"` and `url`; it must not carry
+  `requestedSchema`. The URL must be an absolute `http` or `https` URL with an
+  authority, no whitespace, and no control characters. Other schemes, including
+  `javascript:` and `file:`, are refused.
+- `requestState` is optional and must be a string. It is echoed verbatim and
+  never inspected or parsed.
+- At least one of `inputRequests` or `requestState` must be present. A
+  state-only result is valid and may be retried immediately.
+- A result that mixes `complete` with `inputRequests`/`requestState`, or
+  `input_required` with `content`/`structuredContent`/`isError`, is a protocol
+  error (`zero.prv.protocol`). So is a malformed map, request, mode, message,
+  schema, URL, or state.
+
+The retry request is the same tool call with `inputResponses` and the echoed
+`requestState` in `params`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "weather",
+    "arguments": {"units": "metric"},
+    "inputResponses": {
+      "city": {"action": "accept", "content": {"city": "Paris"}},
+      "login": {"action": "accept"}
+    },
+    "requestState": "opaque server state"
+  }
+}
+```
+
+An elicitation response is `{"action": "accept" | "decline" | "cancel"}`;
+`content` is present only for a form-mode `accept`. URL-mode `accept` has no
+`content`.
+
+### Retry rule
+
+`Client::tools_call_outcome(name, arguments)` sends one `tools/call` and returns
+`ToolCallOutcome`:
+
+```rust
+pub enum ToolCallOutcome {
+    Complete { content: Value, structured: Option<Value> },
+    InputRequired { requests: Vec<InputRequest>, state: Option<Value> },
+    Other(String),
+}
+```
+
+An `input_required` outcome records the pending call. `Client::retry_with_inputs`
+then sends exactly **one** additional request:
+
+1. It validates every pending request has a response and that no extra key is
+   present.
+2. It sends the same `name` and `arguments`, a new JSON-RPC id, the
+   `inputResponses` map (omitted when empty), and the exact `requestState`.
+3. It returns the retry outcome. If the server asks again, the second
+   `input_required` is returned to the caller; the client does not loop and
+   clears the pending call. `retry_with_inputs` without a pending call is
+   `zero.fnd.invalid_input`.
+4. `Client::has_pending_input` and `Client::pending_input_requests` expose the
+   pending state. `Client::tools_call_outcome` refuses to start another call
+   while one is pending.
+
+There is no third request, no background continuation, and no stream kept alive
+between attempts.
+
+### Form-mode credential refusal
+
+A form request is allowed only for non-sensitive input. If a property name,
+`title`, `description`, or `format` indicates a credential, or the property is
+`writeOnly: true`, the whole result is refused with `zero.pol.denied` before any
+pending call is recorded, no typed response is built, and no retry is sent.
+
+Refused markers (case-insensitive; `_`, `-`, and spaces are normalised):
+`password`, `passphrase`, `passwd`, `token`, `apikey` / `api key`, `secret`,
+`privatekey` / `private key`, `cookie`, `session`, `credential`. Matching is
+deliberately conservative: a false refusal is safe, a false acceptance is not.
+The refusal names the field but never copies field content.
+
+### URL-mode host approval
+
+URL mode is classified `InputSensitivity::Sensitive`. The client never opens,
+follows, pre-fetches, or submits the URL, and it never invents an acceptance
+response.
+
+`ToolCallOutcome::host_actions` returns a `HostAction` for every URL-mode
+request. `HostAction` has private fields and no public constructor; the only way
+to obtain one is from the client, so consent is tied to the URL request the host
+actually saw rather than a free-form value:
+
+```rust
+pub struct HostAction { /* private */ }
+
+impl HostAction {
+    pub fn request_id(&self) -> &str;
+    pub fn url(&self) -> &str;
+    pub fn message(&self) -> &str;
+}
+```
+
+The host must display the full URL and obtain user consent. Only then can it call
+`InputResponses::approve_url(&action)`, which records the approval and inserts the
+URL-mode `{"action": "accept"}` response. `retry_with_inputs` rejects a missing
+response with `zero.fnd.invalid_input` and an unapproved URL acceptance with
+`zero.pol.denied`. Declining or cancelling does not require approval.
+
+### Capability limitation
+
+The `2026-07-28` specification asks clients to declare `elicitation` in
+`_meta.io.modelcontextprotocol/clientCapabilities` on each request. This task
+implements the result, request, refusal, approval, and retry shapes but does not
+yet emit per-request `_meta`; that remains part of the later conformance work.
+A server that only elicits after seeing the declaration can still return a
+normal `complete` result.
 
 ## Headers
 
@@ -266,6 +446,15 @@ missing or mismatched `id`, both `result` and `error`, neither, or a malformed
 error object. A tool-level failure (`isError: true`) is not an error here; it is
 returned as `ToolCallResult::is_error`.
 
+MRTR failures use the same taxonomy:
+
+| Condition | Stable code |
+|---|---|
+| Malformed `inputRequests`, request, mode, message, schema, URL, or `requestState`; mixed complete/input-required result; no requests and no state | `zero.prv.protocol` |
+| Form request asks for a credential field | `zero.pol.denied` |
+| Missing response, extra response key, or retry without a pending call | `zero.fnd.invalid_input` |
+| URL-mode acceptance without the matching host approval | `zero.pol.denied` |
+
 ## Tests and fixtures
 
 `crates/zero-mcp/tests/fixtures/2025-11-25.json` and
@@ -274,6 +463,14 @@ result. `crates/zero-mcp/tests/core_client.rs` drives both through a scripted
 in-memory transport and covers negotiation, stateless calls, caching, TTL,
 invalidation, refresh hashing, `resultType` per revision, malformed envelopes,
 JSON-RPC errors, routing headers, and schema bounds.
+
+`crates/zero-mcp/tests/mrtr.rs` drives MRTR and elicitation through the same
+scripted seam. It asserts the `input_required` request shape, a single retry
+with the exact `inputResponses` and `requestState`, a second `input_required`
+that is returned rather than looped, state-only retry, form-mode omission of
+`mode`, credential refusal with no wire retry, URL-mode host approval (including
+refusal of an unapproved accept), malformed request shapes, and that
+`2025-11-25` never yields `input_required`.
 
 `crates/zero-mcp/tests/transports.rs` covers the transports without an external
 runtime or host:
@@ -299,7 +496,9 @@ $env:CARGO_INCREMENTAL='0'; cargo clippy -p zero-mcp --all-targets -- -D warning
 
 - The legacy HTTP+SSE compatibility shim itself; T-MCP-02 ships only the
   default-off switch.
-- MRTR `input_required` retry and elicitation (T-MCP-03).
+- Per-request `_meta` and the `elicitation` capability declaration; T-MCP-03
+  implements the wire shapes, refusals, approval, and retry, not the
+  declaration.
 - Tasks and events (T-MCP-04, T-MCP-05).
 - Apps and extension negotiation (T-MCP-06).
 - OAuth 2.1, PKCE, resource indicators, and CIMD (T-MCP-07).

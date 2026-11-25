@@ -18,6 +18,7 @@ use zero_types::error::{ErrorCode, Result, ZeroError};
 
 use crate::headers::{Headers, HEADER_METHOD, HEADER_NAME, HEADER_PROTOCOL_VERSION};
 use crate::jsonrpc::{expect_object, expect_result, protocol_error, Request, RequestId};
+use crate::mrtr::{parse_input_requests, InputRequest, InputResponses, ToolCallOutcome};
 use crate::revision::McpRevision;
 use crate::schema::{hash_bytes, hash_start, schema_hash, SchemaLimits};
 
@@ -267,6 +268,18 @@ struct CachedCatalog {
     stored_at: Timestamp,
 }
 
+/// The tool call kept between an `input_required` result and its one retry.
+///
+/// No transport stream is kept open: the retry is a fresh JSON-RPC request
+/// with the same tool name and arguments, a new id, and `inputResponses`.
+#[derive(Debug, Clone)]
+struct PendingToolCall {
+    name: String,
+    arguments: Value,
+    requests: Vec<InputRequest>,
+    state: Option<Value>,
+}
+
 /// A JSON-RPC exchange with a server.
 ///
 /// Implementations take a complete request value and return a complete
@@ -303,6 +316,7 @@ pub struct Client<T: Transport> {
     headers: Headers,
     next_id: u64,
     cache: Option<CachedCatalog>,
+    pending_input: Option<PendingToolCall>,
     clock: Arc<dyn Clock>,
     schema_limits: SchemaLimits,
 }
@@ -321,6 +335,7 @@ impl<T: Transport> Client<T> {
             headers,
             next_id: 0,
             cache: None,
+            pending_input: None,
             clock: Arc::new(SystemClock),
             schema_limits: SchemaLimits::default(),
         }
@@ -331,6 +346,7 @@ impl<T: Transport> Client<T> {
         self.requested_revision = revision;
         self.negotiated_revision = None;
         self.cache = None;
+        self.pending_input = None;
         self.headers
             .insert(HEADER_PROTOCOL_VERSION, revision.as_str());
         self
@@ -470,6 +486,7 @@ impl<T: Transport> Client<T> {
         let instructions = optional_string(&object, "instructions", METHOD_INITIALIZE)?;
 
         self.negotiated_revision = Some(protocol_version);
+        self.pending_input = None;
         self.headers
             .insert(HEADER_PROTOCOL_VERSION, protocol_version.as_str());
         if self
@@ -574,6 +591,149 @@ impl<T: Transport> Client<T> {
         })
     }
 
+    /// Call one tool and classify the result for MRTR (MCP-03, MCP-07, MCP-08).
+    ///
+    /// A `complete` result is returned as [`ToolCallOutcome::Complete`] with the
+    /// raw `content` array. An `input_required` result is validated and parsed
+    /// into [`ToolCallOutcome::InputRequired`]; the pending call is kept so
+    /// [`Self::retry_with_inputs`] can send exactly one retry. An unknown
+    /// `resultType` is passed through as [`ToolCallOutcome::Other`].
+    ///
+    /// Form-mode requests that ask for a credential field are refused with
+    /// `zero.pol.denied` before any pending call is recorded. On `2025-11-25`,
+    /// every result is `complete`; an `input_required` payload is never
+    /// produced for an older revision.
+    pub fn tools_call_outcome(&mut self, name: &str, arguments: Value) -> Result<ToolCallOutcome> {
+        if name.trim().is_empty() {
+            return Err(ZeroError::new(
+                ErrorCode::InvalidInput,
+                "MCP tool name must not be empty",
+            ));
+        }
+        if self.pending_input.is_some() {
+            return Err(ZeroError::new(
+                ErrorCode::InvalidInput,
+                "a tool call is already awaiting input; call `retry_with_inputs` first",
+            ));
+        }
+        let params = json!({"name": name, "arguments": arguments.clone()});
+        let result = self.exchange(METHOD_TOOLS_CALL, Some(params))?;
+        let outcome = self.parse_tool_call_outcome(result)?;
+        if let ToolCallOutcome::InputRequired { requests, state } = &outcome {
+            self.pending_input = Some(PendingToolCall {
+                name: name.to_string(),
+                arguments,
+                requests: requests.clone(),
+                state: state.clone(),
+            });
+        }
+        Ok(outcome)
+    }
+
+    /// Retry the pending tool call once with `inputResponses`.
+    ///
+    /// The retry sends the same tool name and arguments with a new JSON-RPC id,
+    /// the `inputResponses` map, and the exact `requestState` the server sent.
+    /// It never loops: a second `input_required` is returned to the caller and
+    /// no further request is sent. The pending call is consumed even when the
+    /// retry fails so a caller cannot accidentally retry more than once.
+    ///
+    /// Accepting a URL-mode request requires an [`InputResponses`] built with
+    /// the [`HostAction`] from the outcome; the client never opens, follows, or
+    /// submits a URL on its own.
+    pub fn retry_with_inputs(&mut self, responses: InputResponses) -> Result<ToolCallOutcome> {
+        let pending = self.pending_input.as_ref().ok_or_else(|| {
+            ZeroError::new(
+                ErrorCode::InvalidInput,
+                "no tool call is awaiting input; call `tools_call_outcome` first",
+            )
+        })?;
+        responses.validate_for(&pending.requests)?;
+        let pending = self
+            .pending_input
+            .take()
+            .expect("pending input was checked above");
+
+        let mut params = Map::new();
+        params.insert("name".to_string(), Value::String(pending.name));
+        params.insert("arguments".to_string(), pending.arguments);
+        if !responses.is_empty() {
+            params.insert("inputResponses".to_string(), responses.as_value());
+        }
+        if let Some(state) = pending.state {
+            params.insert("requestState".to_string(), state);
+        }
+
+        let result = self.exchange(METHOD_TOOLS_CALL, Some(Value::Object(params)))?;
+        self.parse_tool_call_outcome(result)
+    }
+
+    /// Whether an `input_required` result is waiting for a retry.
+    pub fn has_pending_input(&self) -> bool {
+        self.pending_input.is_some()
+    }
+
+    /// Requests carried by the pending tool call, or an empty slice.
+    pub fn pending_input_requests(&self) -> &[InputRequest] {
+        self.pending_input
+            .as_ref()
+            .map_or(&[], |pending| pending.requests.as_slice())
+    }
+
+    fn parse_tool_call_outcome(&self, result: Value) -> Result<ToolCallOutcome> {
+        let object = expect_object(result, METHOD_TOOLS_CALL)?;
+        if !self.current_revision().supports_result_type() {
+            return Ok(ToolCallOutcome::Complete {
+                content: tool_call_content(&object)?,
+                structured: structured_content(&object),
+            });
+        }
+
+        match ResultType::from_result(self.current_revision(), &object)? {
+            ResultType::Complete => {
+                if has_non_null(&object, "inputRequests") || has_non_null(&object, "requestState") {
+                    return Err(protocol_error(
+                        "`tools/call` result mixes `complete` with `inputRequests`/`requestState`",
+                    ));
+                }
+                Ok(ToolCallOutcome::Complete {
+                    content: tool_call_content(&object)?,
+                    structured: structured_content(&object),
+                })
+            }
+            ResultType::InputRequired => {
+                if has_non_null(&object, "content")
+                    || has_non_null(&object, "structuredContent")
+                    || has_non_null(&object, "isError")
+                {
+                    return Err(protocol_error(
+                        "`tools/call` result mixes `input_required` with complete content",
+                    ));
+                }
+                let requests = match object.get("inputRequests") {
+                    None | Some(Value::Null) => Vec::new(),
+                    Some(value) => parse_input_requests(value)?,
+                };
+                let state = match object.get("requestState") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(_)) => object.get("requestState").cloned(),
+                    Some(other) => {
+                        return Err(protocol_error(format!(
+                            "`tools/call` requestState must be a string, got {other}"
+                        )))
+                    }
+                };
+                if requests.is_empty() && state.is_none() {
+                    return Err(protocol_error(
+                        "`tools/call` input_required result carries neither `inputRequests` nor `requestState`",
+                    ));
+                }
+                Ok(ToolCallOutcome::InputRequired { requests, state })
+            }
+            ResultType::Other(value) => Ok(ToolCallOutcome::Other(value)),
+        }
+    }
+
     fn exchange(&mut self, method: &str, params: Option<Value>) -> Result<Value> {
         self.next_id = self.next_id.saturating_add(1);
         let id = RequestId::Number(self.next_id);
@@ -628,6 +788,27 @@ impl<T: Transport> Client<T> {
         let elapsed = self.clock.now().0.saturating_sub(entry.stored_at.0).max(0) as u64;
         elapsed < ttl_ms
     }
+}
+
+fn has_non_null(object: &Map<String, Value>, key: &str) -> bool {
+    object.get(key).is_some_and(|value| !value.is_null())
+}
+
+fn tool_call_content(object: &Map<String, Value>) -> Result<Value> {
+    match object.get("content") {
+        None | Some(Value::Null) => Ok(json!([])),
+        Some(value @ Value::Array(_)) => Ok(value.clone()),
+        Some(other) => Err(protocol_error(format!(
+            "`tools/call` content must be an array, got {other}"
+        ))),
+    }
+}
+
+fn structured_content(object: &Map<String, Value>) -> Option<Value> {
+    object
+        .get("structuredContent")
+        .filter(|value| !value.is_null())
+        .cloned()
 }
 
 fn optional_string(object: &Map<String, Value>, key: &str, method: &str) -> Result<Option<String>> {
