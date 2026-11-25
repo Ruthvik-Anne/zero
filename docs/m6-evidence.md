@@ -233,6 +233,27 @@ Known limits, documented in `docs/doctor.md`: config validation is structural
 ports/kernel/auth use injected snapshots, and mesh/worker/MCP checks validate
 shape rather than performing live handshakes.
 
+## MCP conformance — T-MCP-11 (done)
+
+`zero-mcp` now ships a conformance fixture format and replay runner (MCP-11,
+MCP-19). Two checked-in fixtures cover `2025-11-25` (initialize, tools/list,
+complete call, resources/list, JSON-RPC error) and `2026-07-28` (resultType,
+annotations/cache hints, structured content, input_required + retry, task
+handle, prompts/list, error). The runner validates the fixture schema, rejects
+unknown versions/revisions, zero exchanges, wrong request/response ids,
+out-of-order methods, revision-mismatched responses, and undeclared
+expectations, and returns per-exchange failures without panicking. The suite
+runs under `cargo test -p zero-mcp`, so it gates CI.
+
+| Test area | Evidence |
+|---|---|
+| Coverage | 8 conformance tests load every fixture and assert both revisions pass 100%. |
+| Mutation | Bad expectation, wrong ids, unknown schema, zero exchanges, wrong revision, malformed JSON all fail typed. |
+| CI | The suite is a normal crate test; no separate job needed. |
+
+Commands: `cargo test -p zero-mcp` (204 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings` (run with `-j 1` under disk pressure).
+
 ## MCP server mode — T-MCP-10 (done)
 
 `zero-mcp` can now expose tools, sessions, and events over MCP behind a flag
@@ -392,6 +413,28 @@ Commands: `cargo test -p zero-mcp` (92 tests), `cargo clippy -p zero-mcp
 --all-targets -- -D warnings`. Durable cursors, push streaming, and the webhook
 HTTP server are documented as deferred.
 
+## Browser automation — T-WEB-08 (done)
+
+`zero-web` now drives a DevTools-protocol session through an injectable
+`CdpTransport` (WEB-08, WEB-15): navigate with a bounded load-event wait,
+click via a trusted mouse press/release at the node centre, type via
+`Input.insertText`, bounded `wait_for` polling, `evaluate` with a 256 KiB
+result cap and secret scan, PNG screenshot with strict base64 decode and an
+8 MiB cap, and download with egress/redirect re-checks, path confinement,
+`create_new` no-overwrite, and a 64 MiB cap. Session-assigned request ids are
+verified; CDP errors map to `zero.prv.protocol` with a truncated message and
+never echo params/data; every action has a timeout; `close` is idempotent.
+
+| Test area | Evidence |
+|---|---|
+| Done flow | 22 browser tests: navigate → click → type → wait → screenshot, exact CDP method/params and decoded bytes. |
+| Safety | Wrong id, CDP error, missing node, timeout, oversized screenshot/evaluate, egress refusal, download escape/overwrite. |
+| Events | Load events arriving before the response are consumed without id confusion. |
+
+Commands: `cargo test -p zero-web` (221 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`. The production WebSocket transport
+and browser install/supervision are deferred (WEB-09).
+
 ## Fetch reader — T-WEB-04 (done)
 
 `zero-web` now reads fetched content into Markdown (WEB-04, WEB-08, WEB-10).
@@ -518,6 +561,27 @@ marker.
 
 Commands: `cargo test -p zero-web` (89 tests + 2 doc tests), `cargo clippy
 -p zero-web --all-targets -- -D warnings`.
+
+## Hunting waves — T-SR-03 (done)
+
+`zero-review` now runs coverage-led hunting waves (SR-04, SR-05). A
+`CandidateFinding` must name a lower-trust principal, a crossed boundary
+matching the unit, at least one canonical evidence ref inside the unit's paths,
+and a concrete result; severity is bounded by the demonstrated impact. The
+`HuntAgent`/`AgentPool` and independent `Critic` seams are injectable, agent
+errors mark a unit `Blocked` without failing the wave, critic `Accept` confirms
+(and records the transition), `Reject` refutes with a reason, and
+`NeedsEvidence` defers for NEEDS-VALIDATION. Budget/agent caps stop the wave
+before exceeding.
+
+| Test area | Evidence |
+|---|---|
+| Planted bug | Seeded fixture with `Command::new(user_input)`, scripted agent + critic: finding `FND-1`, unit `Confirmed`, pending→assigned→reviewed→confirmed history, report derives consistently. |
+| Evidence bar | 11 hunt tests: missing principal, off-unit evidence, boundary mismatch, critical without result, critic reject/needs-evidence. |
+| Limits | Unit/agent caps; hunter/critic label collision refused before mutation; agent error blocks only its unit. |
+
+Commands: `cargo test -p zero-review` (75 tests), `cargo clippy -p zero-review
+--all-targets -- -D warnings`.
 
 ## Review reports — T-SR-06 (done)
 
