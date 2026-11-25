@@ -71,3 +71,8 @@ were not yet in `docs/errors.md`; the generated page is now committed and the
 
 Run [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 on `0e4fcf46` covers the tasks/todos slice: all eight jobs successful as well.
+
+Run [45544273274](https://github.com/Ruthvik-Anne/zero/actions/runs/45544273274)
+on `d23eb167` covers the locks/pools slice: all eight jobs successful, including
+the 10,000-interleaving file-lock simulation and the Banker's pool tests on
+every platform.
