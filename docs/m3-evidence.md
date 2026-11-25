@@ -24,6 +24,11 @@ architecture: 24 crates, 23 edges — OK
 New in M3: 46 `zero-tui` unit tests, 5 golden-frame tests, 16 `zero-actions`
 tests, and 3 `zero-daemon-app` tests.
 
+Hosted matrix run [45536140318](https://github.com/Ruthvik-Anne/zero/actions/runs/45536140318)
+on `ci/m0-m1-verification` (`2dc071c8`): all eight jobs successful, including
+golden-frame comparisons on both macOS targets and the actions lint in the docs
+job.
+
 ## Golden frames
 
 `crates/zero-tui/tests/golden/` stores the terminal read-back text and every

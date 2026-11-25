@@ -350,9 +350,11 @@ is green on all eight jobs. Detailed output is in `docs/m2-evidence.md`.
 
 ## M3 closure
 
-Run on 2026-11-25 from the repository root. Detailed output is in
-`docs/m3-evidence.md`. The golden comparator normalises line endings so hosted
-checks on LF checkouts match the recorded frames.
+Run on 2026-11-25 from the repository root. Hosted matrix run
+[45536140318](https://github.com/Ruthvik-Anne/zero/actions/runs/45536140318) is
+green on all eight jobs. Detailed output is in `docs/m3-evidence.md`. The golden
+comparator normalises line endings so hosted checks on LF checkouts match the
+recorded frames.
 
 | Task | Status | Evidence |
 |---|---|---|
