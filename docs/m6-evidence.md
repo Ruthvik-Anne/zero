@@ -161,6 +161,29 @@ host approval.
 Commands: `cargo test -p zero-mcp` (54 tests), `cargo clippy -p zero-mcp
 --all-targets -- -D warnings`.
 
+## MCP task lifecycle — T-MCP-04 (done)
+
+`zero-mcp` now implements the task extension (MCP-04, MCP-09): `tasks/get`,
+`tasks/update` with `inputResponses`, and `tasks/cancel`, plus task parsing for
+`working`, `input_required`, `completed`, `failed`, `cancelled`, and unknown
+states. `resultType: "task"` from `tools/call` now yields
+`ToolCallOutcome::Task`, so a tool can create a task and `poll_until_done` can
+drive it to completion end-to-end. Polling uses an injected sleeper, honours a
+changing `pollIntervalMs`, caps sleeps against the TTL/budget, and stops on any
+non-working state. Task IDs are bearer secrets: `Debug`/`Display` are always
+`[redacted]`, raw access is explicit, and ids are scrubbed from errors,
+`statusMessage`, and unknown statuses. The older revision never yields a task.
+
+| Test area | Evidence |
+|---|---|
+| Lifecycle | 14 `tests/tasks.rs` cases: work → input_required → update → completed, cancel, failure, TTL expiry, poll intervals. |
+| End to end | `tools_call_task_result_is_polled_to_completion`; `older_revision_never_yields_a_task_outcome`. |
+| Secrecy | Raw id absent from `Debug`, `Display`, and every error message, including server errors that echo it. |
+| Shapes | Malformed tasks are `zero.prv.protocol`; unknown states are preserved; unsupported revisions are typed. |
+
+Commands: `cargo test -p zero-mcp` (70 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`, `cargo doc -p zero-mcp --no-deps` (no warnings).
+
 ## SSRF and egress — T-WEB-09 (done)
 
 `zero-web` now has an egress guard (WEB-16, WEB-17): scheme refusal
@@ -210,9 +233,468 @@ Known limits, documented in `docs/doctor.md`: config validation is structural
 ports/kernel/auth use injected snapshots, and mesh/worker/MCP checks validate
 shape rather than performing live handshakes.
 
+## MCP server mode — T-MCP-10 (done)
+
+`zero-mcp` can now expose tools, sessions, and events over MCP behind a flag
+(MCP-10, MCP-15). `ServerConfig::default()` is disabled; `handle`/`handle_line`
+refuse everything until enabled, and each capability flag gates its methods.
+`McpServer` dispatches `initialize`, `tools/list`, `tools/call`, and the Zero
+session tools `sessions/list`, `sessions/prompt`, `sessions/events` over the
+crate's JSON-RPC envelopes against injectable `ToolHost`/`SessionHost` seams.
+The server never touches credentials, and `sessions/prompt` is advertised with
+`destructiveHint: true` so a client's default policy asks. Host errors map to
+JSON-RPC codes with a stable `data.zeroCode`; host messages are never copied to
+the wire. Requests are bounded (256 KiB, args 64 KiB/depth 32), results 1 MiB,
+and live lists are capped; oversize data is rejected, not truncated.
+
+| Test area | Evidence |
+|---|---|
+| Gate | Disabled server refuses all methods; enabling one capability exposes only it. |
+| Done criterion | Editor flow: initialize → sessions/list → sessions/prompt → sessions/events returns the new event. |
+| Safety | Destructive annotation drives `Ask`; host error payloads never reach the wire; bounds enforced. |
+| Errors | `-32700/-32600/-32601/-32602/-32603` envelopes, wrong ids, malformed params. |
+
+Commands: `cargo test -p zero-mcp` (196 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`. The socket/stdio accept loop, resource/prompt
+methods, and per-editor auth are deferred.
+
+## MCP resources and prompts — T-MCP-09 (done)
+
+`zero-mcp` now models resources and prompts (MCP-09, MCP-16). Resource and
+prompt catalogs parse and reject duplicate names/URIs/arguments; `@name`,
+`@server:name`, and `@<uri>` resolve by exact URI → exact name → unique
+case-insensitive name → simple `{var}` template, and an ambiguous name lists
+every candidate instead of picking one. `ResourceStore` persists catalogs as
+schema-versioned JSON with atomic writes, so `@` references resolve after a
+restart with the server offline; corrupt or stored-mismatch data is a typed
+`zero.fnd.corrupt`, an unknown schema is `zero.fnd.schema_version`. Slash
+commands parse `/name` with positional and `key=value` arguments, bind against
+the prompt's arguments, and report missing/unknown/duplicate arguments; local
+completions are case-insensitive, sorted, deduped, and capped at 100. A
+`completion/complete` request/response model with an injectable transport is
+included and documented as server-side follow-up.
+
+| Test area | Evidence |
+|---|---|
+| References | 28 resource tests: all `@` forms, resolution order, ambiguity, templates, restart persistence, corrupt/version errors. |
+| Slash/prompt | Parse, required/unknown/duplicate args, unknown command, binding. |
+| Completions | Prefix/sort/dedupe/cap; request/response shapes. |
+
+Commands: `cargo test -p zero-mcp` (125 lib + 63 integration tests), `cargo
+clippy -p zero-mcp --all-targets -- -D warnings`. No quoting in slash arguments,
+only level-1 RFC 6570 templates, and no pagination/`resources/read` yet —
+documented.
+
+## MCP security — T-MCP-08 (done)
+
+`zero-mcp` now has the MCP security controls (MCP-08, MCP-14) as host policy
+objects. `SchemaPinStore` records per-server tool schema hashes: first pin and
+unchanged catalogs proceed, any added/removed/changed tool returns exactly
+`ToolDecision::Ask`, and `require_approval` accepts only the exact new hash set
+(empty/stale/partial/wrong-server approvals are denied). Tool risk defaults:
+read-only allow, writes ask (auto may allow), destructive deny under Restricted
+and ask otherwise, and unannotated tools always ask. `ResponseLimits` (1 MiB
+content/structured, 1,024 items) and `TimeoutPolicy` (30 s request / 5 min
+total, bounded maxima) reject without echoing payloads. A self-contained
+`check_resource_url` blocks loopback/private/link-local/metadata and non-HTTP(S)
+schemes, including IPv4-mapped and numeric/hex/octal forms. `ReplayGuard`
+(4,096 ids, 10 min window) distinguishes fresh/replay/expired with FIFO
+eviction.
+
+| Test area | Evidence |
+|---|---|
+| Pinning | 24 security tests: New/Unchanged/Changed, description-only changes ignored, exact approval required, stale/wrong-server denied. |
+| Done criterion | `a_changed_schema_is_changed_and_the_decision_is_exactly_ask`. |
+| Risk/limits | Full risk matrix; oversize content/structured/items rejected; timeout bounds. |
+| URL/replay | Metadata/loopback/private refusal; repeated id inside window rejected and expired id pruned. |
+
+Commands: `cargo test -p zero-mcp` (160 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`. DNS pinning, TLS pinning, cryptographic schema
+signatures, cancellation, and wiring these policies into `Client`/transports are
+documented as deferred.
+
+## MCP auth — T-MCP-07 (done)
+
+`zero-mcp` now has an OAuth 2.1 public-client flow (MCP-07, MCP-13): RFC 8414 →
+OIDC discovery with a hard issuer-equality check, PKCE S256 only (RFC 7636
+verifier rules, redacted verifier), authorization URLs carrying code flow,
+exact redirect, state, and an RFC 8707 `resource` equal to the canonical MCP
+server, code exchange and refresh with no client secret, and a token response
+that must be Bearer with a matching resource. `AccessToken`/`TokenBinding`
+validation rejects a wrong issuer, resource, client id, expected audience, or
+expired token, and tokens never appear in `Debug`/`Display`/errors. The
+`a_stolen_token_fails_on_another_server` fixture is the Done criterion: a token
+minted for server A fails against server B and succeeds against A. CIMD is
+primary: the client id must be an HTTPS URL with a path, metadata must be a
+public client (`token_endpoint_auth_method=none`, `code`,
+`authorization_code`), redirect URIs match exactly, and wildcards are refused.
+
+| Test area | Evidence |
+|---|---|
+| Discovery/PKCE | 27 auth tests: discovery paths, issuer mismatch, RFC 7636 vector, S256-only, resource canonicalization. |
+| Theft fixture | Wrong server/issuer/resource/client/audience/expiry all rejected; token values absent from errors. |
+| CIMD | HTTPS+path client id, public-client metadata, exact redirect, wildcard refusal, bounded redirect count. |
+| Exchange/refresh | Missing/blank token, non-Bearer, resource mismatch, rotated refresh token. |
+
+Commands: `cargo test -p zero-mcp` (136 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`. JWT/JWKS signature verification, RFC 9207 `iss`,
+RFC 9728 resource metadata, DCR, and enterprise managed auth are documented as
+deferred.
+
+## MCP apps and extensions — T-MCP-06 (done)
+
+`zero-mcp` now models untrusted MCP apps and extension negotiation (MCP-06,
+MCP-11, MCP-12). `ui://` resources require an authority and reject other
+schemes, userinfo, ports, queries, fragments, control characters, and raw or
+percent-encoded dot/separator tricks before URL normalization. `AppFrame`
+renders a sandbox of exactly `allow-scripts` (no same-origin, top-navigation,
+popups, forms, downloads, or modals) with a CSP of `default-src 'none'`,
+inline scripts/styles only, `connect-src 'none'`, `frame-ancestors 'none'`,
+`base-uri 'none'`, `form-action 'none'`, and no `unsafe-eval`. HTML placed in
+`srcdoc` escapes `& < > " '`, so a hostile `</iframe>` cannot break out. The
+host navigation guard always refuses top-level, popup, download, `_top`,
+`_parent`, `_blank`, javascript/data/file, and origin-mismatched intents;
+extension negotiation ignores unknown optional extensions and reports a
+required unknown one without failing.
+
+| Test area | Evidence |
+|---|---|
+| App URI and escaping | 17 unit tests: authority rules, encoded traversal, hostile quote/tag breakout. |
+| Sandbox/CSP | Exact token set; `allow-same-origin` and `unsafe-eval` absent; required directives present. |
+| Navigation | Top-level/popup/form/download matrix; origin exact match; `window.open` rejected. |
+| Extensions | Unknown optional ignored, required reported, malformed rejected, duplicates resolved. |
+
+Commands: `cargo test -p zero-mcp` (109 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`. Live browser enforcement and `ui/initialize`
+are deferred to T-MCP-11.
+
+## MCP events — T-MCP-05 (done)
+
+`zero-mcp` now handles event delivery (MCP-05, MCP-10). Cursor polling advances
+only on a batch with `next_cursor`; an expired or unknown cursor returns a typed
+`ResyncRequired` and replays from the oldest event instead of silently skipping.
+Each batch's `ttlMs` sets an expiry that `renew` can extend; polling a lapsed
+lease returns `zero.prv.timeout` and requires `resubscribe`. Webhooks verify an
+HMAC-SHA256 signature over the exact raw body in constant time (hex, optional
+`sha256=` prefix), then check the timestamp replay window, then parse JSON, and
+finally dedupe event ids in a 1024-entry FIFO. Missing/invalid signatures are
+rejected before parsing; errors never include the signature, key, or body.
+`HmacSha256Verifier` matches RFC 4231 cases 2 and 6.
+
+| Test area | Evidence |
+|---|---|
+| Cursors and TTL | 17 `tests/events.rs` cases: order, advancement, resync, no-gap rule, TTL expiry/renew/resubscribe, attempt bound. |
+| Signatures | RFC 4231 vectors; tampered body/key; missing headers; timestamp too old/future. |
+| Replay | Duplicate id returns `Duplicate` without redelivery; FIFO eviction at the bound. |
+| Secrecy | No signature, key id, key, or payload appears in an error; verifier/event `Debug` redacts payloads. |
+
+Commands: `cargo test -p zero-mcp` (92 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`. Durable cursors, push streaming, and the webhook
+HTTP server are documented as deferred.
+
+## Fetch reader — T-WEB-04 (done)
+
+`zero-web` now reads fetched content into Markdown (WEB-04, WEB-08, WEB-10).
+Format detection uses extension/content-type, magic bytes, ZIP container paths,
+and a NUL/invalid-UTF-8 binary check. HTML reader mode prefers the first
+`<article>`/`<main>`, drops nav/header/footer/aside/script/style/noscript/
+template/svg, and converts headings, paragraphs, lists, pre/code, blockquote,
+hr, links, images, and simple tables to Markdown, collecting links. Markdown/
+text/code pass through; CSV becomes a pipe-escaped table; JSON becomes a pretty
+fenced block. DOCX, PPTX, XLSX, and EPUB are parsed through the validated ZIP
+planner (document.xml, slide order, shared strings/worksheets, container→OPF→
+spine) with entry/count/ratio bounds. PDF text is extracted page by page with
+`lopdf` 0.47 (pure Rust, no C bindings), with encrypted PDFs returning a typed
+`Unsupported`. Every path enforces input/output/tag/page caps and reports
+truncation.
+
+| Test area | Evidence |
+|---|---|
+| Fixture corpus | 23 reader tests: HTML with nav/script/article, Markdown, CSV, JSON, code, DOCX, XLSX, PPTX, EPUB spine order, hand-built PDFs. |
+| Safety | Zip-slip and compression-bomb refusal via the archive planner; binary rejection; encrypted PDF refused. |
+| Caps | Input/output/tag/page/row bounds and truncation flags. |
+
+Commands: `cargo test -p zero-web` (199 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`. HTML is a tokenizer (no DOM repair/
+CSS), PDF is text-only (no OCR), and office styling/merged cells are not
+rendered — documented.
+
+## Map and extract — T-WEB-07 (done)
+
+`zero-web` now maps URLs and extracts structured data against a caller schema
+(WEB-07, WEB-13, WEB-14). `map_urls` discovers seed-page links and sitemap
+`<loc>` entries without fetching every page, resolves relatives, keeps the seed
+host (optionally subdomains), dedupes with `canonical_url_key`, applies URL and
+per-page limits, sorts deterministically, and reports counts per source. The
+schema subset covers `type`, `properties`, `required`, `items`, `enum`, string/
+number limits, `maxItems`, and `additionalProperties`, with depth/node bounds
+and typed JSON-path errors. Extraction maps JSON keys or HTML `<title>`, meta
+tags, links, and `data-zero-field` elements, decodes entities, ignores
+script/style, and re-validates the whole object: a schema violation is an error,
+never a partial result.
+
+| Test area | Evidence |
+|---|---|
+| Schema | Type/required/enum/limit/array/object cases, malformed schemas, depth/node bounds, JSON paths. |
+| Extraction | JSON nested/arrays/optional missing; HTML meta/title/data-field/href; entity decode; script/style ignored; input bounds. |
+| URL map | Sitemap+links, relative resolution, canonical dedupe, host filter, limits, deterministic order. |
+| Done criterion | `invalid_extraction_returns_the_typed_error_and_valid_one_revalidates`. |
+
+Commands: `cargo test -p zero-web` (176 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`. The HTML reader is a bounded
+tokenizer, not a DOM: no CSS selectors, DOM repair, `<base>`, or charset
+decoding.
+
+## Crawl — T-WEB-06 (done)
+
+`zero-web` now runs persistent, resumable crawls (WEB-06, WEB-11, WEB-12). A
+`CrawlJob` is stored as schema-versioned JSON and rewritten atomically after
+every transition; it holds the frontier, seen set, completed/failed results,
+robots-blocked list, retry attempts, and state. The engine is BFS with
+canonical URL dedupe, depth/page/byte limits, and path allow/deny globs (prefix,
+`*`, trailing `$`; no regex). `robots.txt` parsing supports groups, `Allow`/
+`Disallow`, `*`/`$` wildcards, longest-match with allow-on-tie, and global
+`Sitemap` collection; sitemap `<loc>` scanning decodes entities and expands a
+sitemap index one level. Retries use exponential backoff against an injected
+clock and end in `failed`; CAPTCHA/login responses become `robots_blocked`, not
+failures; `cancel` stops further fetches. Progress and paging cover the three
+result lists separately.
+
+| Test area | Evidence |
+|---|---|
+| Frontier | BFS order/depth, canonical dedupe, page/byte limits, path matcher, relative links. |
+| robots/sitemaps | Allow/disallow/longest/tie/group selection, entity decoding, index depth-1, 4xx allow / 5xx deny. |
+| Retries/status | Backoff, exhaustion, failure list, robots-blocked separate, CAPTCHA 403/429, cancel. |
+| Resume | 24 crawl tests including kill-and-resume: reload serializes byte-for-byte and every page is fetched exactly once. |
+
+Commands: `cargo test -p zero-web` (133 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`. The matcher is regex-free; robots
+group matching is case-insensitive substring, and nested sitemap indexes are
+not expanded further.
+
+## Archive safety — T-WEB-10 (done)
+
+`zero-web` now inspects and extracts ZIP archives safely (WEB-10, WEB-18) using
+`zip` 9.7.3 with the pure-Rust zlib backend. `inspect` walks the central
+directory without extracting and refuses the whole archive on: entry-count,
+total/per-entry size, compression-ratio, path-depth, absolute/drive/UNC/
+backslash/NUL paths, dot-segment traversal, symlinks or any non-regular Unix
+type, encrypted entries, unsupported methods, duplicate or case/alias-colliding
+names, and file/directory conflicts. `extract` re-checks every path before use,
+refuses to overwrite, counts actual decompressed bytes and ratio (a declared
+size may lie), never follows links, writes only under the destination, and
+cleans up partial output inside the destination on failure. Tests generate
+their fixtures at runtime, plus a mutated-header corpus that must return typed
+errors rather than panic.
+
+| Test area | Evidence |
+|---|---|
+| Traversal | Zip-slip, absolute, drive/UNC, backslash, NUL, encoded dot segments. |
+| Links and types | Symlink and non-regular Unix modes refused; no link is ever created. |
+| Bombs | Declared and actual byte/ratio limits; entry count; depth. |
+| Robustness | 20 archive tests including a mutated central-directory corpus; extraction cleanup. |
+
+Commands: `cargo test -p zero-web` (109 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`.
+
+## Budgets and untrusted content — T-WEB-11 (done)
+
+`zero-web` now has crawl/search budgets and the untrusted-content envelope
+(WEB-11, WEB-19, WEB-21). `CrawlBudget::reserve` checks pages, bytes, cost, and
+requests before charging; a denial leaves the spend unchanged, `Some(0)` denies
+every page, `None` is unlimited, exact-boundary reservations succeed, and
+counter overflow is a typed `LimitExceeded` instead of a wrap. A page reserves
+its estimate before the fetch, matching "account before starting".
+`UntrustedContent::render_for_prompt` emits a fixed warning and a
+`<untrusted-data source="…">` envelope, escaping `<`, `>`, and `&` in the body
+so a payload cannot close the envelope or inject a tag, escaping the source
+attribute, preserving newline/tab, and truncating at 256 KiB with an explicit
+marker.
+
+| Test area | Evidence |
+|---|---|
+| Budget | 19 fixtures: each dimension, zero/unlimited, failed reservation leaves spend unchanged, exact boundary, overflow. |
+| Envelope | Stable label, exact tag shape, breakout payload escaped (`</untrusted-data>` becomes text), quote/control escaping, truncation marker, empty body. |
+
+Commands: `cargo test -p zero-web` (89 tests + 2 doc tests), `cargo clippy
+-p zero-web --all-targets -- -D warnings`.
+
+## Review reports — T-SR-06 (done)
+
+`zero-review` now derives the report set from records only (SR-06, SR-14). After
+validating the ledger, findings, refs, ids, timestamps, and budget invariants,
+`derive` writes `REPORT.md`, `FINDINGS-DETAIL.md`, `NEEDS-VALIDATION.md`, and
+re-validated copies of `findings.json`/`coverage-ledger.json`. REPORT contains
+only confirmed findings plus counts, profile/partial flag, coverage gaps, and
+budget gaps; DETAIL carries confirmed findings with unit, severity, canonical
+evidence, checks, and transition history; NEEDS-VALIDATION lists every
+unconfirmed unit/finding with its status. Ordering is by id and timestamps come
+only from the inputs. A structural consistency check parses the generated
+Markdown and compares ids/severities/counts to the JSON before anything is
+published, so prose and JSON cannot silently diverge.
+
+| Test area | Evidence |
+|---|---|
+| Derivation | 5 report tests: five files, confirmed-only REPORT/DETAIL, all unconfirmed in NEEDS-VALIDATION. |
+| Done criterion | `consistency_report`/`assert_consistent`; a mutated Markdown id is detected. |
+| Safety | Invalid refs/ids/severity refused before `out_dir` is created; JSON copies re-validated. |
+| Determinism | Same inputs produce byte-identical files; budget/partial flags appear. |
+
+Commands: `cargo test -p zero-review` (64 tests), `cargo clippy -p zero-review
+--all-targets -- -D warnings`. The consistency check is structural, not
+semantic; scoped-run state must be supplied via budget/profile.
+
+## Review ledger schema — T-SR-02 (done)
+
+The review ledger now has a canonical schema (SR-02, SR-03, SR-06, SR-13).
+`CanonicalRef` accepts `path:line[:col]` or `AA-01` requirement ids, rejecting
+absolute/drive/UNC paths, backslashes, control characters, `.`/`..`, empty
+segments, and bad line/column numbers; with a root, path refs must resolve to an
+existing regular file under it, and a unit may not repeat a ref. Each unit has
+an append-only history with a strict transition matrix
+(`Pending → Assigned → Reviewed → Confirmed/Refuted`, note-gated
+`OutOfScope`/`Deferred`/`Blocked`, no reopening a terminal unit); `advance`
+rejects illegal transitions, missing notes/actors, and backwards time, and
+validation rejects non-monotonic or from/to-mismatched history. Quick/Standard/
+Deep profiles carry phase sets and budgets; any scoped run is labeled partial,
+and a budget-trimmed full run reports both counts. `findings.json` and
+`coverage-ledger.json` validators reject unknown schema versions, duplicate ids,
+orphan units, empty/duplicate evidence, status/confirmed drift, and unconfirmed
+severity above info.
+
+| Test area | Evidence |
+|---|---|
+| Refs | Grammar and root checks; duplicates in a unit; canonical formatting. |
+| History | Transition matrix, missing notes/actors, backwards time, from/to mismatch, terminal states. |
+| Profiles | Phase sets, budgets, partial labeling for scoped and trimmed runs. |
+| Output | Ledger/findings JSON validation incl. orphan unit and unconfirmed severity. |
+
+Commands: `cargo test -p zero-review` (59 tests), `cargo clippy -p zero-review
+--all-targets -- -D warnings`. Case-only path duplicates on Windows and
+filesystem-checked finding refs are documented gaps.
+
+## Security review ledger — T-SR-01 (done)
+
+`zero-review` now seeds a coverage ledger (SR-01..03). The mode gate returns
+guidance (recon + output) for a plain question and only plans audit phases when
+the user explicitly asks for an audit/full review/report artifacts. Seeding
+walks a bounded fixture tree, classifies surfaces/subsystems, detects trust
+boundaries and attack classes from source markers (process spawn, path I/O,
+network clients, deserialization, SQL, secrets, `unsafe`, permissions), and
+emits one unit per `(surface, boundary, subsystem, attack class)` with canonical
+`path:line` refs, starting paths, companions/exclusions with reasons, checks,
+and a deterministic fingerprint. Exclusions are recorded, never dropped.
+Validation rejects duplicate ids/tuples, empty refs/checks/fingerprints, missing
+owners or reviewed paths, exclusion overlaps, `out_of_scope` counted as covered,
+summary mismatches, and unknown schema versions; assignment validates first.
+
+| Test area | Evidence |
+|---|---|
+| Seeding | A fixture repo with parser/shell/file/network/secret code yields the expected boundaries and classes. |
+| Done criterion | The fixture ledger validates; 29 tests cover duplicates, bad refs, overlaps, out_of_scope, summaries. |
+| Mode gate | Guidance never includes hunt/validation phases; audit requires an explicit request. |
+| Determinism | Two seeds of the same tree produce identical ids/fingerprints; caps report truncation. |
+
+Commands: `cargo test -p zero-review` (29 tests), `cargo clippy -p zero-review
+--all-targets -- -D warnings`. Markers are heuristics: hits are review
+evidence, never findings.
+
+## Doctor agent API — T-DOC-06 (done)
+
+The doctor exposes `diagnose`, `plan`, and `apply` to the agent (DOC-06,
+DOC-08) and enforces a turn gate. `plan` maps only checks with a safe repair
+(config with a backup, stale locks, missing journal directories) and refuses
+everything else by name; deletion requires policy permission at plan time.
+`apply` delegates to the reversible repair engine, and dry-run plans refuse
+before mutation. `finish_turn` requires every failing check to appear in the
+turn report with the right stable code and playbook, or to be resolved by an
+actually applied action; a hidden failure returns `zero.pol.ask` naming the
+check, and unknown checks, blank/oversized/secret-looking summaries, fabricated
+resolutions, wrong check counts, and code mismatches are rejected.
+
+| Test area | Evidence |
+|---|---|
+| Tools | `diagnose` returns 13 checks; `plan` covers only safe repairs and refuses the rest; dry-run does not mutate. |
+| Gate | 18 `agent_api` tests: hidden failure refused, correct report accepted, fabricated resolution refused, unknown check/wrong code refused, wrong check count refused. |
+| Apply | Delegates to repair with rollback; `actions_taken` must match the applied action. |
+
+Commands: `cargo test -p zero-doctor` (105 lib + 3 integration tests), `cargo
+clippy -p zero-doctor --all-targets -- -D warnings`. The gate is structural,
+not cryptographic: the host must pass the report from `diagnose`.
+
+## Forensics — T-DOC-05 (done)
+
+The doctor can now build a timeline and a redacted offline bundle (DOC-05,
+DOC-07, OBS-07). The timeline folds JSONL or tab-separated artifacts into a
+deterministically ordered, de-duplicated event list, counts malformed lines
+without echoing them, bounds at 10k events, and reports drops. `build_bundle`
+writes a self-contained directory (`manifest.json`, `timeline.jsonl`,
+`files/…`) with `offline: true`, `network: "none"`, per-file sizes and FNV-1a
+hashes. It excludes vault/keys/credential paths, `.env*`, `*.enc`, `*.pem`,
+`*.key`, caller redaction values, symlinks, outside-root paths, and binaries;
+it scrubs PEM blocks, strong token prefixes, and caller values from every text
+file and from skipped-path labels, and reports every skip rather than truncating
+silently.
+
+| Test area | Evidence |
+|---|---|
+| Timeline | JSONL/tab parsing, ordering, exact-repeat dedupe, bounds, malformed count, redaction re-sort. |
+| Exclusions | Vault/key/credential/.env/enc/pem paths, symlink escape (Unix), outside root, binary. |
+| Redaction | Injected caller values, `sk-`/`ghp_`/`oc_sk_`/`AKIA`, PEM block: absent from every bundle file. |
+| Caps | Per-file/total skip with reasons; no silent truncation; deterministic manifest. |
+
+Commands: `cargo test -p zero-doctor` (87 lib + 3 integration tests), `cargo
+clippy -p zero-doctor --all-targets -- -D warnings`. Redaction is pattern-based,
+not a guarantee for unknown secret formats; the hash is non-cryptographic.
+
+## Repair — T-DOC-04 (done)
+
+The doctor can now execute reversible repairs (DOC-04..06, DOC-10). A
+`RepairPlan` carries stable-id actions (create dir, write/rotate/repair files,
+move to trash, remove stale lock); `RepairPolicy` requires absolute paths inside
+canonical allowed roots, rejects `.`/`..` and symlink escapes (nearest-existing
+ancestor and final symlink), gates deletion, and caps plan size. `dry_run`
+validates the whole plan and previews changes without touching the tree.
+`apply` validates everything before the first mutation, snapshots existing
+files, records inverses, and on any failure rolls back in reverse and reports
+that rollback happened. Repeated apply is idempotent; a round-tripped report
+refuses rollback because the inverse log is process-local.
+
+| Test area | Evidence |
+|---|---|
+| Dry-run | Preview leaves the tree byte-identical; policy violations rejected up front. |
+| Rollback | Injected failure restores original bytes; explicit rollback reverses every action. |
+| Policy | Outside-root, `..`, symlink escape, delete without `allow_delete`, and too many actions refused. |
+| Idempotency | Second apply reports already-applied with no changes. |
+
+Commands: `cargo test -p zero-doctor` (75 lib + 3 integration tests), `cargo
+clippy -p zero-doctor --all-targets -- -D warnings`. Two Unix-only cases
+(symlink escape, mode restore) run only on Unix; syscall-level disk-full
+injection is documented as not exercised.
+
+## Playbooks — T-DOC-03 (done)
+
+Every stable `ErrorCode` (75 today) now has a doctor playbook (DOC-03, DOC-04,
+DOC-11): a distinct title, 1–3 symptoms, 2–5 ordered safe steps, the stable
+remediation line, and an escalation note where the user must take over.
+`playbook(code)` is an exhaustive `match`, so adding a code without a playbook
+fails to compile; `all()` follows `ErrorCode::ALL` order; `triage(&ZeroError)`
+selects by the stable code only. A destructive-action guard rejects
+`rm -rf`/`del /f`/`format`/`drop database`-style steps, and a test asserts the
+injected error message never leaks into playbook text.
+
+| Test area | Evidence |
+|---|---|
+| Coverage | `every_error_code_has_exactly_one_playbook` over `ErrorCode::ALL` (75/75). |
+| Fault injection | `triage_uses_the_injected_error_code` constructs one `ZeroError` per code; `remediation_matches_the_stable_code_line`. |
+| Safety | Non-empty fields, trimmed text, no destructive commands, no message leakage. |
+
+Commands: `cargo test -p zero-doctor` (55 lib + 3 integration tests), `cargo
+clippy -p zero-doctor --all-targets -- -D warnings`.
+
 ## Still open in M6
 
-T-WEB-04..08, T-WEB-10..11, T-MCP-04..11, T-DOC-03..06, T-MON-01..04, and T-SR-01..08.
+T-WEB-04..05, T-WEB-08, T-MCP-10..11, T-MON-02..04, T-SR-01..08, T-MON-01..04, and T-SR-01..08.
 
 Hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
 on `fd1f322d`, [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012)

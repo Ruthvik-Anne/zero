@@ -37,7 +37,7 @@ Layers, what each proves, and the command that runs it.
 | Secret flows | Host prompts, file/git scan, headless queue, sign-in gate | `cargo test -p zero-secrets flows::` |
 | Sign-in | PKCE, loopback callback, device polling, refresh, token storage, terms gate | `cargo test -p zero-secrets signin::` |
 | Web fusion | Parallel adapters, RRF, URL/title dedupe, engine failure isolation | `cargo test -p zero-web` |
-| Doctor | Independent binary, report shape, daemon-dead run | `cargo test -p zero-doctor` |`n| MCP core | JSON-RPC envelopes, revisions, cache/TTL, schema bounds | `cargo test -p zero-mcp` |
+| Doctor | Independent binary, report shape, daemon-dead run | `cargo test -p zero-doctor` |`n| MCP core | JSON-RPC envelopes, revisions, cache/TTL, schema bounds | `cargo test -p zero-mcp` |`n| Security review | Mode gate, ledger seeding/validation, profiles, output schema | `cargo test -p zero-review` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |
