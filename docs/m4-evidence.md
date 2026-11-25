@@ -102,3 +102,6 @@ every platform.
 Run [45545824128](https://github.com/Ruthvik-Anne/zero/actions/runs/45545824128)
 on `7305e24c` covers the scheduler slice: all eight jobs successful, including
 the kill/restart durable-queue test on every platform.
+
+Run [45546934655](https://github.com/Ruthvik-Anne/zero/actions/runs/45546934655)
+on `33df1b0d` covers the tool catalogue slice: all eight jobs successful.
