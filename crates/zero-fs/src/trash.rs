@@ -15,6 +15,7 @@ pub enum TrashOutcome {
     Refused { path: PathBuf, reason: String, kind: String },
 }
 
+#[derive(Debug, Clone)]
 pub struct TrashService {
     protected: ProtectedPaths,
 }

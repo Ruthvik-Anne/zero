@@ -103,11 +103,18 @@ codes! {
     ProtectedPath => "zero.del.protected", "Choose a path outside the protected set.";
 
     // Deletion safety
-    DeletionBlocked => "zero.del.blocked", "Use the `trash` tool instead; permanent deletion is human-only.";
-    TrashFailed => "zero.del.trash_failed", "Check the path and permissions; the original was left in place.";
+    DeletionBlocked => "zero.del.blocked", "Use the `trash` tool instead; permanent deletion is human-only.";    TrashFailed => "zero.del.trash_failed", "Check the path and permissions; the original was left in place.";
     SnapshotMissing => "zero.del.snapshot_missing", "The overwrite journal has no snapshot to restore.";
     PurgeDenied => "zero.del.purge_denied", "Permanent purge requires a human confirmation token.";
     RetentionScope => "zero.del.retention_scope", "Garbage collection is limited to Zero's own data root.";
+
+    // File manager and edit tool
+    Stale => "zero.fs.stale", "Reopen the file; it changed outside this session and the write was refused.";
+    Locked => "zero.fs.locked", "Wait for the lease holder or use another path.";
+    BatchFailed => "zero.fs.batch_failed", "The batch rolled back; correct the failing operation and retry.";
+    Conflict => "zero.fs.conflict", "Resolve the reported conflict; nothing was overwritten.";
+    AnchorDrift => "zero.edt.anchor_drift", "Re-read the file and use a fresh anchor; the target text changed.";
+    TooLarge => "zero.edt.too_large", "Edit a smaller range or raise the limit in config.";
 
     // Trust and audit
     TrustRequired => "zero.tru.trust_required", "Trust the project explicitly before its content is used.";

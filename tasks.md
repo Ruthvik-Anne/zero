@@ -505,6 +505,17 @@ recorded frames.
 - **T-SCH-06 Durable queues.** Persist queues, resume after restart, and never duplicate an in-flight call. **Refs:** SCH-06, SCH-08, SCH-11. **Done:** kill and restart mid-queue yields one dispatch per call.
 - **T-TOOL-06 Tool telemetry.** Record surfaced, chosen, rejected, and failed tools. **Refs:** TOOL-06, TOOL-10, TOOL-12. **Done:** a rotation report exists; kernel and protocol routes log identically.
 
+## M4 progress
+
+M4 is in progress; only the file manager and edit tool groups are closed. The
+full list and remaining tasks stay below. Evidence: `docs/m4-evidence.md`.
+
+| Task group | Status | Evidence |
+|---|---|---|
+| T-FS-01..T-FS-08 | done | `cargo test -p zero-fs`: handles/stale, atomic matrix, identity, watcher, leases, batch rollback/recovery, overlay merge. |
+| T-EDT-01..T-EDT-06 | done | `cargo test -p zero-fs`: all ops, fail-closed anchors, bounded receipts, 50-file undo, 1 GB O(edits) range edits, no-delete refusal. |
+| T-TSK, T-TODO, T-LCK, T-SCH, T-TOOL, T-KRN, T-AUT | todo | Not implemented yet. |
+
 ## M5 — Projects, credentials, and secrets
 
 - **T-PRJ-01 Identity.** Key generation, `projectId`, and binding registry.
