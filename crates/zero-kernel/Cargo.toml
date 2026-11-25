@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "zero-kernel"
 version.workspace = true
 edition.workspace = true
@@ -10,6 +10,11 @@ zero-store = { workspace = true }
 zero-policy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+zeromq = "0.7"
+tokio = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+bytes = "1"
 thiserror = { workspace = true }
 
 [dev-dependencies]

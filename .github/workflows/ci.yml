@@ -43,6 +43,12 @@ jobs:
         run: cargo build --workspace --all-targets --locked
       - name: lint
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: kernel test dependencies (unix)
+        if: runner.os != 'Windows'
+        run: python3 -m pip install --user --quiet --break-system-packages ipykernel pyzmq
+      - name: kernel test dependencies (windows)
+        if: runner.os == 'Windows'
+        run: python -m pip install --user --quiet ipykernel pyzmq
       - name: test
         run: cargo test --workspace --locked
       - name: docs and traceability gates

@@ -526,7 +526,8 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 | T-LCK-01..T-LCK-04 | done | `cargo test -p zero-sched -p zero-fs`: Banker safety/atomic/aging/preemption, canonical + wound-wait + timeouts, 10,000 no-deadlock interleavings, election/partition/fenced handoff, degraded ordered fallback. |
 | T-SCH-01..T-SCH-06 | done | `cargo test -p zero-sched`: MLFQ aging/fair share, admission with Retry-After, budgets, backoff/breakers, usage windows, and the kill/restart queue test. |
 | T-TOOL-01..T-TOOL-06 | done | `cargo test -p zero-agent`: metadata/schema/deferral, BM25, advisory activation, cache-safe prefix hash, policy filtering/hygiene, telemetry rotation. |
-| T-KRN, T-AUT | todo | Not implemented yet. |
+| T-KRN-01..T-KRN-05 | done | `cargo test -p zero-kernel`: real ipykernel round-trip, HMAC, host gate, kill/rehydrate, output cap and process guard, `%cd`/preload. |
+| T-AUT | todo | Not implemented yet. |
 
 ## M5 — Projects, credentials, and secrets
 

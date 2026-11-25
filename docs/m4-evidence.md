@@ -28,8 +28,8 @@ M4 is not closed. This page records the completed task groups so far.
 
 ## Still open in M4
 
-T-KRN-01..05, T-AUT-01..04. No M4
-task outside FS, EDT, TSK, TODO, LCK, SCH, and TOOL is marked done.
+T-AUT-01..04. No M4
+task outside FS, EDT, TSK, TODO, LCK, SCH, TOOL, and KRN is marked done.
 
 ## Locks and pools — T-LCK-01..04 (done)
 
@@ -75,6 +75,16 @@ task outside FS, EDT, TSK, TODO, LCK, SCH, and TOOL is marked done.
 | T-TOOL-04 | `tool_injection_leaves_the_stable_prefix_hash_unchanged`. |
 | T-TOOL-05 | `denied_tools_are_hidden_and_duplicates_are_flagged`: plan hides writes and mutating shell; duplicate schema/description flagged. |
 | T-TOOL-06 | `telemetry_records_all_four_outcomes_on_every_route`: surfaced/chosen/rejected/failed, identical kernel and protocol shapes; rotation report. |
+
+## Kernel — T-KRN-01..05 (done)
+
+| Task | Evidence |
+|---|---|
+| T-KRN-01 | `jupyter::tests` HMAC fixture and frame round-trip; `tests/ipykernel.rs::real_ipykernel_execute_round_trip` against a real ipykernel. |
+| T-KRN-02 | `tests/host_gate.rs`: plan mode denies a kernel write, delete, and shell before the effect; reads pass; auto mode writes. |
+| T-KRN-03 | `state_survives_a_kill_and_rehydrate_reports_the_lost_cell`: timeout kills, `last_lost` is set, restart replays history and `x` survives. |
+| T-KRN-04 | `an_output_flood_is_capped_and_the_kernel_stays_usable` (cap + truncation marker), `a_process_spawn_flood_is_bounded_and_the_kernel_stays_usable` (≤8 children), duration kill in the restart test. |
+| T-KRN-05 | `percent_cd_persists_and_the_preloaded_namespace_exists`; Unix-only `%%bash` leak test runs in CI. |
 
 ## Commands
 
