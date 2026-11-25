@@ -513,8 +513,9 @@ closed. The full list and remaining tasks stay below. Evidence:
 [45538950771](https://github.com/Ruthvik-Anne/zero/actions/runs/45538950771) (FS/EDT)
 and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 (tasks/todos), [45544273274](https://github.com/Ruthvik-Anne/zero/actions/runs/45544273274)
-(locks/pools), and [45545824128](https://github.com/Ruthvik-Anne/zero/actions/runs/45545824128)
-(scheduler) are green on all eight jobs.
+(locks/pools), [45545824128](https://github.com/Ruthvik-Anne/zero/actions/runs/45545824128)
+(scheduler), and [45546934655](https://github.com/Ruthvik-Anne/zero/actions/runs/45546934655)
+(tools) are green on all eight jobs.
 
 | Task group | Status | Evidence |
 |---|---|---|
