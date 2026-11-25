@@ -505,7 +505,7 @@ recorded frames.
 - **T-SCH-06 Durable queues.** Persist queues, resume after restart, and never duplicate an in-flight call. **Refs:** SCH-06, SCH-08, SCH-11. **Done:** kill and restart mid-queue yields one dispatch per call.
 - **T-TOOL-06 Tool telemetry.** Record surfaced, chosen, rejected, and failed tools. **Refs:** TOOL-06, TOOL-10, TOOL-12. **Done:** a rotation report exists; kernel and protocol routes log identically.
 
-## M4 progress
+## M4 closure
 
 M4 is in progress; the file manager, edit tool, task store, and todo groups are
 closed. The full list and remaining tasks stay below. Evidence:
@@ -528,7 +528,7 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 | T-SCH-01..T-SCH-06 | done | `cargo test -p zero-sched`: MLFQ aging/fair share, admission with Retry-After, budgets, backoff/breakers, usage windows, and the kill/restart queue test. |
 | T-TOOL-01..T-TOOL-06 | done | `cargo test -p zero-agent`: metadata/schema/deferral, BM25, advisory activation, cache-safe prefix hash, policy filtering/hygiene, telemetry rotation. |
 | T-KRN-01..T-KRN-05 | done | `cargo test -p zero-kernel`: real ipykernel round-trip, HMAC, host gate, kill/rehydrate, output cap and process guard, `%cd`/preload. |
-| T-AUT | todo | Not implemented yet. |
+| T-AUT-01..T-AUT-04 | done | `cargo test -p zero-agent autonomy::`: goal survives compaction, heartbeats pause/resume, cron ticks coalesce with exclusive claims, limits stop a runaway run, cancellation cascades. |
 
 ## M5 — Projects, credentials, and secrets
 

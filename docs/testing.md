@@ -29,6 +29,7 @@ Layers, what each proves, and the command that runs it.
 | Scheduler | MLFQ/aging/fair share, admission, budgets, backoff, usage windows, durable queue | `cargo test -p zero-sched` and `--test queue_crash` |
 | Tools | Metadata/deferral, BM25, activation, injection, filtering, telemetry | `cargo test -p zero-agent` |
 | Kernel | Jupyter round-trip, host gate, restart, limits, preload (needs ipykernel) | `cargo test -p zero-kernel` |
+| Autonomy | Goals/compaction, heartbeats, cron coalescing, limits, cancel cascade | `cargo test -p zero-agent autonomy::` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |

@@ -86,7 +86,21 @@ task outside FS, EDT, TSK, TODO, LCK, SCH, TOOL, and KRN is marked done.
 | T-KRN-04 | `an_output_flood_is_capped_and_the_kernel_stays_usable` (cap + truncation marker), `a_process_spawn_flood_is_bounded_and_the_kernel_stays_usable` (≤8 children), duration kill in the restart test. |
 | T-KRN-05 | `percent_cd_persists_and_the_preloaded_namespace_exists`; Unix-only `%%bash` leak test runs in CI. |
 
-## Commands
+## Autonomy — T-AUT-01..04 (done)
+
+| Task | Evidence |
+|---|---|
+| T-AUT-01 | `autonomy::tests::a_goal_survives_compaction_and_resume`: objective/accounting survive compaction, reopen, pause/resume/clear. |
+| T-AUT-02 | `heartbeats_pause_and_resume`: due ticks, pause stops them, resume restarts from now. |
+| T-AUT-03 | `missed_cron_ticks_coalesce_and_claims_are_exclusive` and `one_off_schedules_finish_after_one_tick`. |
+| T-AUT-04 | `a_runaway_run_stops_at_the_limit_and_reports` and `cancel_cascades_to_children`. |
+
+## M4 closure
+
+Every M4 task group is done: FS, EDT, TSK, TODO, LCK, SCH, TOOL, KRN, AUT.
+Hosted runs for the slices: 45538950771 (FS/EDT), 45541018098 (tasks/todos),
+45544273274 (locks/pools), 45545824128 (scheduler), 45546934655 (tools), and
+45549561333 (kernel); the autonomy slice is verified below.
 
 ```text
 cargo test -p zero-fs             44 passed
