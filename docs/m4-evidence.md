@@ -28,8 +28,8 @@ M4 is not closed. This page records the completed task groups so far.
 
 ## Still open in M4
 
-T-TOOL-01..06, T-KRN-01..05, T-AUT-01..04. No M4
-task outside FS, EDT, TSK, TODO, LCK, and SCH is marked done.
+T-KRN-01..05, T-AUT-01..04. No M4
+task outside FS, EDT, TSK, TODO, LCK, SCH, and TOOL is marked done.
 
 ## Locks and pools — T-LCK-01..04 (done)
 
@@ -64,6 +64,17 @@ task outside FS, EDT, TSK, TODO, LCK, and SCH is marked done.
 | T-TODO-01/03 | `merged_project_and_session_views_are_ordered_and_deduplicated`. |
 | T-TODO-02 | `the_agent_tool_is_versioned_and_respects_confirmation` and `the_agent_needs_confirmation_to_complete_or_drop_a_user_item`. |
 | T-TODO-04 | `a_full_keyboard_capture_flow_needs_no_mouse`; `review_reports_stale_and_due_soon_items`; `linking_is_explicit_and_never_completes_the_task`. |
+
+## Tools — T-TOOL-01..06 (done)
+
+| Task | Evidence |
+|---|---|
+| T-TOOL-01 | `tools::tests::the_registry_has_metadata_schemas_and_passes_lint` and `deferred_tools_stay_off_the_wire_until_activated`; core echo/read_file load with metadata. |
+| T-TOOL-02 | `bm25_ranks_the_relevant_tool_first` over a fixed six-tool corpus. |
+| T-TOOL-03 | `activation_is_advisory_and_explains_itself`: language, git, keyword, and recent-use reasons; the catalogue is unchanged. |
+| T-TOOL-04 | `tool_injection_leaves_the_stable_prefix_hash_unchanged`. |
+| T-TOOL-05 | `denied_tools_are_hidden_and_duplicates_are_flagged`: plan hides writes and mutating shell; duplicate schema/description flagged. |
+| T-TOOL-06 | `telemetry_records_all_four_outcomes_on_every_route`: surfaced/chosen/rejected/failed, identical kernel and protocol shapes; rotation report. |
 
 ## Commands
 

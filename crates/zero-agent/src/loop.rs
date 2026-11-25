@@ -60,11 +60,35 @@ pub trait Tool {
     fn action_class(&self) -> ActionClass {
         ActionClass::Read
     }
+    fn tags(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn examples(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn read_only(&self) -> bool {
+        self.action_class() == ActionClass::Read
+    }
+    /// Deferred tools are omitted from the wire until search or context activates them.
+    fn deferrable(&self) -> bool {
+        false
+    }
+    fn namespace(&self) -> Option<&str> {
+        None
+    }
+    fn version(&self) -> &str {
+        "1"
+    }
+}
+
+pub struct ToolEntry {
+    pub tool: Box<dyn Tool>,
+    pub meta: crate::tools::ToolMeta,
 }
 
 #[derive(Default)]
 pub struct ToolRegistry {
-    tools: std::collections::BTreeMap<String, Box<dyn Tool>>,
+    tools: std::collections::BTreeMap<String, ToolEntry>,
 }
 
 impl ToolRegistry {
@@ -73,7 +97,31 @@ impl ToolRegistry {
     }
 
     pub fn register(&mut self, tool: Box<dyn Tool>) {
-        self.tools.insert(tool.name().to_string(), tool);
+        self.register_with(crate::tools::ToolSource::Native, tool);
+    }
+
+    pub fn register_with(&mut self, source: crate::tools::ToolSource, tool: Box<dyn Tool>) {
+        let meta = crate::tools::ToolMeta::from_tool(&*tool, source);
+        self.tools.insert(meta.name.clone(), ToolEntry { tool, meta });
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = &ToolEntry> {
+        self.tools.values()
+    }
+
+    /// Registry lint: incomplete metadata or a duplicate description.
+    pub fn lint(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        for entry in self.tools.values() {
+            if entry.meta.name.is_empty() || entry.meta.description.is_empty() {
+                problems.push(format!("tool `{}` has incomplete metadata", entry.meta.name));
+            }
+            if !entry.meta.schema.is_object() {
+                problems.push(format!("tool `{}` has a non-object schema", entry.meta.name));
+            }
+        }
+        problems.extend(crate::tools::hygiene(self));
+        problems
     }
 
     pub fn names(&self) -> Vec<&str> {
@@ -81,25 +129,18 @@ impl ToolRegistry {
     }
 
     pub fn schemas(&self) -> Vec<ToolSchema> {
-        self.tools
-            .values()
-            .map(|t| ToolSchema {
-                name: t.name().to_string(),
-                description: t.description().to_string(),
-                parameters: t.parameters(),
-            })
-            .collect()
+        self.tools.values().map(|entry| entry.meta.to_schema()).collect()
     }
 
     fn call_internal(&mut self, name: &str, args: &serde_json::Value) -> Result<String> {
-        let tool = self.tools.get_mut(name).ok_or_else(|| {
+        let entry = self.tools.get_mut(name).ok_or_else(|| {
             ZeroError::new(ErrorCode::NotFound, format!("unknown tool `{name}`"))
         })?;
-        tool.call(args)
+        entry.tool.call(args)
     }
 
     pub fn class_of(&self, name: &str) -> ActionClass {
-        self.tools.get(name).map(|t| t.action_class()).unwrap_or(ActionClass::Read)
+        self.tools.get(name).map(|entry| entry.meta.action_class).unwrap_or(ActionClass::Read)
     }
 
     /// The only public dispatch used by the agent loop. The permit must have been
@@ -140,6 +181,9 @@ impl Tool for EchoTool {
             .map(str::to_string)
             .ok_or_else(|| ZeroError::new(ErrorCode::InvalidInput, "echo requires a string `text`"))
     }
+    fn tags(&self) -> Vec<String> {
+        vec!["test".into(), "echo".into()]
+    }
 }
 
 /// Read-only file tool with a size cap. Policy gating arrives in M2.
@@ -176,6 +220,12 @@ impl Tool for ReadFileTool {
             ));
         }
         Ok(String::from_utf8_lossy(&bytes).to_string())
+    }
+    fn tags(&self) -> Vec<String> {
+        vec!["file".into(), "read".into()]
+    }
+    fn read_only(&self) -> bool {
+        true
     }
 }
 
@@ -379,7 +429,11 @@ impl AgentLoop {
 
             let mut extra = Vec::new();
             let messages = self.transcript(&mut extra)?;
-            let tools = if self.capabilities().tool_calls { self.tools.schemas() } else { Vec::new() };
+            let tools = if self.capabilities().tool_calls {
+                crate::tools::wire_schemas(&self.tools, &std::collections::BTreeSet::new())
+            } else {
+                Vec::new()
+            };
             let mut request = CompletionRequest::new(
                 if self.config.model.is_empty() { "auto" } else { &self.config.model },
                 messages,
