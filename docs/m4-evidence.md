@@ -100,7 +100,7 @@ task outside FS, EDT, TSK, TODO, LCK, SCH, TOOL, and KRN is marked done.
 Every M4 task group is done: FS, EDT, TSK, TODO, LCK, SCH, TOOL, KRN, AUT.
 Hosted runs for the slices: 45538950771 (FS/EDT), 45541018098 (tasks/todos),
 45544273274 (locks/pools), 45545824128 (scheduler), 45546934655 (tools), and
-45549561333 (kernel); the autonomy slice is verified below.
+45549561333 (kernel), and 45550911645 (autonomy). All are green on eight jobs.
 
 ```text
 cargo test -p zero-fs             44 passed

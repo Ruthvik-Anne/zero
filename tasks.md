@@ -516,7 +516,8 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 (locks/pools), [45545824128](https://github.com/Ruthvik-Anne/zero/actions/runs/45545824128)
 (scheduler), and [45546934655](https://github.com/Ruthvik-Anne/zero/actions/runs/45546934655)
 (tools), and [45549561333](https://github.com/Ruthvik-Anne/zero/actions/runs/45549561333)
-(kernel) are green on all eight jobs.
+(kernel), and [45550911645](https://github.com/Ruthvik-Anne/zero/actions/runs/45550911645)
+(autonomy) are green on all eight jobs. M4 is closed: every task group is done.
 
 | Task group | Status | Evidence |
 |---|---|---|
