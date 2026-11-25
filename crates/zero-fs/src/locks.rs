@@ -43,6 +43,12 @@ pub struct Lease {
     pub generation: u64,
     pub expires_ms: i64,
     pub fence: u64,
+    /// Higher priority wounds lower priority holders (wound-wait).
+    #[serde(default)]
+    pub priority: i32,
+    /// A critical section is never wounded.
+    #[serde(default)]
+    pub critical: bool,
 }
 
 #[derive(Debug, Default)]
@@ -50,14 +56,16 @@ pub struct LockManager {
     leases: Vec<Lease>,
     generations: BTreeMap<String, u64>,
     next_fence: u64,
+    /// Identity cache: one open per path per manager, not per attempt.
+    identities: BTreeMap<PathBuf, FileIdentity>,
 }
 
 impl LockManager {
     pub fn new() -> Self {
-        Self { leases: Vec::new(), generations: BTreeMap::new(), next_fence: 1 }
+        Self { leases: Vec::new(), generations: BTreeMap::new(), next_fence: 1, identities: BTreeMap::new() }
     }
 
-    fn next_lease(&mut self, resource: Resource, owner: &str, now_ms: i64, ttl_ms: i64) -> Lease {
+    fn next_lease(&mut self, resource: Resource, owner: &str, now_ms: i64, ttl_ms: i64, priority: i32) -> Lease {
         let key = resource.key();
         let generation = self.generations.entry(key).or_insert(0);
         *generation += 1;
@@ -69,6 +77,8 @@ impl LockManager {
             generation: *generation,
             expires_ms: now_ms + ttl_ms,
             fence,
+            priority,
+            critical: false,
         }
     }
 
@@ -91,7 +101,7 @@ impl LockManager {
                 ),
             ));
         }
-        let lease = self.next_lease(resource, owner, now_ms, ttl_ms);
+        let lease = self.next_lease(resource, owner, now_ms, ttl_ms, 0);
         self.leases.push(lease.clone());
         Ok(lease)
     }
@@ -105,7 +115,7 @@ impl LockManager {
                 format!("{} is covered by {} (fence {})", dir.as_ref().display(), existing.owner, existing.fence),
             ));
         }
-        let lease = self.next_lease(resource, owner, now_ms, ttl_ms);
+        let lease = self.next_lease(resource, owner, now_ms, ttl_ms, 0);
         self.leases.push(lease.clone());
         Ok(lease)
     }
@@ -162,7 +172,7 @@ impl LockManager {
             )),
             Some(_) => {
                 self.leases.retain(|l| !l.resource.overlaps(&resource));
-                let lease = self.next_lease(resource, owner, now_ms, ttl_ms);
+                let lease = self.next_lease(resource, owner, now_ms, ttl_ms, 0);
                 self.leases.push(lease.clone());
                 Ok(lease)
             }
@@ -172,6 +182,98 @@ impl LockManager {
 
     pub fn active(&self) -> &[Lease] {
         &self.leases
+    }
+}
+
+impl LockManager {
+    /// Canonical acquisition order, independent of how the caller listed paths.
+    pub fn canonical_order(paths: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
+        let mut keyed: Vec<(String, std::path::PathBuf)> = paths
+            .iter()
+            .map(|path| {
+                let identity = identity_or_path(path);
+                (identity.canonical.display().to_string(), path.clone())
+            })
+            .collect();
+        keyed.sort();
+        keyed.dedup_by(|a, b| a.0 == b.0);
+        keyed.into_iter().map(|(_, path)| path).collect()
+    }
+
+    fn file_resource(&mut self, path: &Path) -> Resource {
+        let identity = self
+            .identities
+            .get(path)
+            .cloned()
+            .unwrap_or_else(|| {
+                let identity = identity_or_path(path);
+                self.identities.insert(path.to_path_buf(), identity.clone());
+                identity
+            });
+        Resource::File { id: identity.id, canonical: identity.canonical }
+    }
+
+    /// Acquire a set of files in canonical order. A lower-priority holder is
+    /// wounded; an equal/higher or critical holder makes the request wait, and
+    /// the wait fails with `Locked` or `Timeout` (the caller retries, so no
+    /// thread blocks inside the lock manager).
+    pub fn acquire_many(
+        &mut self,
+        paths: &[PathBuf],
+        owner: &str,
+        priority: i32,
+        now_ms: i64,
+        ttl_ms: i64,
+        deadline_ms: i64,
+    ) -> Result<Vec<Lease>> {
+        let mut ordered = Self::canonical_order(paths);
+        // canonical_order is path-based; use cached identities for the lock key.
+        ordered.sort_by_key(|path| self.file_resource(path).key());
+        let mut acquired: Vec<Lease> = Vec::new();
+        for path in &ordered {
+            let resource = self.file_resource(path);
+            loop {
+                match self.conflicting(&resource) {
+                    None => {
+                        let lease = self.next_lease(resource, owner, now_ms, ttl_ms, priority);
+                        self.leases.push(lease.clone());
+                        acquired.push(lease);
+                        break;
+                    }
+                    Some(existing) if priority > existing.priority && !existing.critical => {
+                        // Wound-wait: the younger low-priority holder is preempted.
+                        let victim = existing.clone();
+                        self.release(&victim);
+                        continue;
+                    }
+                    Some(_) => {
+                        for lease in &acquired {
+                            self.release(lease);
+                        }
+                        if now_ms >= deadline_ms {
+                            return Err(ZeroError::new(
+                                ErrorCode::Timeout,
+                                format!("timed out acquiring {}", path.display()),
+                            ));
+                        }
+                        return Err(ZeroError::new(
+                            ErrorCode::Locked,
+                            format!("{} is held; retry after the holder finishes", path.display()),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(acquired)
+    }
+
+    /// Mark a lease's critical section so wound-wait cannot preempt it.
+    pub fn protect(&mut self, lease: &Lease) {
+        for existing in &mut self.leases {
+            if existing.resource == lease.resource && existing.generation == lease.generation {
+                existing.critical = true;
+            }
+        }
     }
 }
 
@@ -236,5 +338,92 @@ mod tests {
         let mut locks = LockManager::new();
         locks.acquire_file(&file, "owner", 0, 1000).unwrap();
         assert_eq!(locks.acquire_file(&hard, "other", 1, 1000).unwrap_err().code(), ErrorCode::Locked);
+    }
+
+    #[test]
+    fn canonical_order_ignores_the_caller_order() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        let forward = vec![dir.path().join("a.txt"), dir.path().join("b.txt")];
+        let reversed = vec![dir.path().join("b.txt"), dir.path().join("a.txt")];
+        assert_eq!(LockManager::canonical_order(&forward), LockManager::canonical_order(&reversed));
+        let mut locks = LockManager::new();
+        let leases = locks.acquire_many(&reversed, "w", 0, 0, 1000, 100).unwrap();
+        assert_eq!(leases[0].resource, leases[0].resource.clone());
+        assert!(leases.len() >= 2);
+    }
+
+    #[test]
+    fn wound_wait_preempts_lower_priority_and_respects_critical_sections() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"x").unwrap();
+        let mut locks = LockManager::new();
+        let low = locks.acquire_file(&file, "low", 0, 1000).unwrap();
+        let high = locks
+            .acquire_many(std::slice::from_ref(&file), "high", 10, 1, 1000, 100)
+            .unwrap();
+        assert_eq!(high.len(), 1);
+        assert!(locks.validate(&low, 2).is_err(), "the low-priority lease was wounded");
+        assert!(locks.validate(&high[0], 2).is_ok());
+
+        // A critical section is not wounded: the high-priority request waits.
+        let mut locks = LockManager::new();
+        let low = locks.acquire_file(&file, "low", 0, 1000).unwrap();
+        locks.protect(&low);
+        let blocked = locks.acquire_many(std::slice::from_ref(&file), "high", 10, 1, 1000, 100).unwrap_err();
+        assert_eq!(blocked.code(), ErrorCode::Locked);
+        let timed_out = locks.acquire_many(std::slice::from_ref(&file), "high", 10, 1000, 1000, 100).unwrap_err();
+        assert_eq!(timed_out.code(), ErrorCode::Timeout);
+    }
+
+    #[test]
+    fn ten_thousand_interleavings_never_deadlock() {
+        use zero_types::id::DeterministicRng;
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        std::fs::write(&a, b"a").unwrap();
+        std::fs::write(&b, b"b").unwrap();
+        // One manager and one file pair, reused across 10,000 orderings; every
+        // lease is released before the next seed.
+        let mut locks = LockManager::new();
+        for seed in 0..10_000u64 {
+            let mut rng = DeterministicRng::new(seed);
+            let mut pending: Vec<(String, Vec<PathBuf>, i32)> = (0..4)
+                .map(|worker| {
+                    let paths = if rng.below(2) == 0 { vec![a.clone()] } else { vec![b.clone()] };
+                    (format!("w{worker}"), paths, rng.below(3) as i32)
+                })
+                .collect();
+            let mut now = 0i64;
+            let mut rounds = 0;
+            while !pending.is_empty() {
+                rounds += 1;
+                assert!(rounds < 200, "seed {seed} deadlocked: {pending:?}");
+                let mut progressed = false;
+                let mut still = Vec::new();
+                for (owner, paths, priority) in pending {
+                    match locks.acquire_many(&paths, &owner, priority, now, 10_000, now + 1_000) {
+                        Ok(leases) => {
+                            for lease in &leases {
+                                locks.release(lease);
+                            }
+                            progressed = true;
+                        }
+                        Err(e) if e.code() == ErrorCode::Locked => still.push((owner, paths, priority)),
+                        Err(e) => panic!("seed {seed}: unexpected {}: {}", e.code(), e.message()),
+                    }
+                }
+                pending = still;
+                now += 1;
+                if !progressed {
+                    // All remaining requests were waiting in this round; retry.
+                    continue;
+                }
+            }
+        }
     }
 }

@@ -28,8 +28,17 @@ M4 is not closed. This page records the completed task groups so far.
 
 ## Still open in M4
 
-T-LCK-01..04, T-SCH-01..07, T-TOOL-01..06, T-KRN-01..05, T-AUT-01..04. No M4
-task outside FS, EDT, TSK, and TODO is marked done.
+T-SCH-01..07, T-TOOL-01..06, T-KRN-01..05, T-AUT-01..04. No M4
+task outside FS, EDT, TSK, TODO, and LCK is marked done.
+
+## Locks and pools — T-LCK-01..04 (done)
+
+| Task | Evidence |
+|---|---|
+| T-LCK-01 | `banker::tests`: atomic grants, maxima abort, bounded safety check, aging promotes a waiting request, preemption only at a safe boundary with a fencing rejection, degraded reason. |
+| T-LCK-02 | `locks::tests::canonical_order_ignores_the_caller_order`, `wound_wait_preempts_lower_priority_and_respects_critical_sections`, `ten_thousand_interleavings_never_deadlock`; optimistic versions are the stale-handle tests; overlays are the isolated workspaces. |
+| T-LCK-03 | `election::tests`: deterministic owner, minority partition denies new leases (`zero.lck.no_quorum`), fenced handoff invalidates the old lease. |
+| T-LCK-04 | `banker::tests::a_worker_without_maxima_is_degraded_with_a_reason` and `a_degraded_worker_uses_ordered_acquisition_with_timeouts`; `degraded_workers()` feeds status. |
 
 ## Tasks and todos — T-TSK-01..07, T-TODO-01..04 (done)
 

@@ -24,6 +24,7 @@ Supporting pages in this directory:
 | [`themes.md`](themes.md) | The 29 theme tokens, defaults, overriding, accessibility. |
 | [`actions.md`](actions.md) | Action record, forms, policy, idempotency, audit, namespacing, keys, lint. |
 | [`tasks-and-todos.md`](tasks-and-todos.md) | Task DAG, claims, journal, limits, plan seeding; todo store, ownership, capture. |
+| [`locks.md`](locks.md) | Banker's pools, aging/preemption, file strategy, owner election, degraded mode. |
 | [`policy.md`](policy.md) | Modes, the matrix, evaluator order, permits, approvals, regulators, transitions. |
 | [`deletion-safety.md`](deletion-safety.md) | Command guards, shims, the Python hook, trash, journal, purge, retention, and stated limits. |
 | [`trust.md`](trust.md) | Trust boundaries, workspace trust, protected files, audit integrity. |

@@ -117,6 +117,11 @@ codes! {
     TooLarge => "zero.edt.too_large", "Edit a smaller range or raise the limit in config.";
     TodoConfirmation => "zero.todo.confirmation", "Ask the user to confirm completing or dropping a user-created todo.";
 
+    // Locks and scheduling
+    PoolMaxima => "zero.lck.maxima", "A worker exceeded its declared pool maximum; abort the request.";
+    UnsafePreemption => "zero.lck.unsafe_preempt", "Preempt only at a safe boundary; retry when the call finishes.";
+    NoQuorum => "zero.lck.no_quorum", "This node is in a minority partition; new leases are denied until quorum returns.";
+
     // Trust and audit
     TrustRequired => "zero.tru.trust_required", "Trust the project explicitly before its content is used.";
     Untrusted => "zero.tru.untrusted", "Trust the project explicitly before using its configuration.";
