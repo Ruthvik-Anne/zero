@@ -1756,10 +1756,9 @@ mod tests {
         let dir = dir();
         let root = dir.path();
         let target = root.join("target.txt");
-        let blocker = root.join("blocker");
+        let blocker = root.join("created-dir");
         let snapshots = root.join("snapshots");
         write(&target, b"original bytes\n");
-        write(&blocker, b"not a directory\n");
 
         let plan = plan(
             "fail",
@@ -1768,8 +1767,13 @@ mod tests {
                     path: target.clone(),
                     contents: "changed\n".to_string(),
                 },
+                RepairAction::CreateDirectory {
+                    path: blocker.clone(),
+                },
+                // Writing to the directory created above succeeds through
+                // preflight (it does not exist yet) and fails during apply.
                 RepairAction::WriteFile {
-                    path: blocker.join("child.txt"),
+                    path: blocker.clone(),
                     contents: "x".to_string(),
                 },
             ],
@@ -1777,13 +1781,12 @@ mod tests {
 
         let error = apply(&plan, &policy(root, 16, false), &snapshots).unwrap_err();
         match &error {
-            RepairError::Apply { rolled_back, .. } => assert_eq!(*rolled_back, 1, "{error}"),
+            RepairError::Apply { rolled_back, .. } => assert_eq!(*rolled_back, 2, "{error}"),
             other => panic!("unexpected error: {other}"),
         }
         assert!(error.to_string().contains("rolled back"), "{error}");
         assert_eq!(read(&target), b"original bytes\n");
-        assert!(blocker.is_file());
-        assert!(!blocker.join("child.txt").exists());
+        assert!(!blocker.exists());
     }
 
     #[test]

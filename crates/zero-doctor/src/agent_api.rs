@@ -1026,6 +1026,15 @@ mod tests {
         let zero = root.join(".zero");
         write(&zero.join("config.toml"), "[core]\nmodel = \"local\"\n");
         write(&zero.join("key"), "key-material");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                zero.join("key"),
+                std::fs::Permissions::from_mode(0o600),
+            )
+            .expect("owner-only key");
+        }
         write(
             &zero.join("workers.json"),
             r#"{"workers":[{"status":"running"}]}"#,
