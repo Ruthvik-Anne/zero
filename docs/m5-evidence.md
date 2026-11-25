@@ -69,4 +69,5 @@ on `7008692b`: all jobs successful.
 
 - TPM/DPAPI unattended key wrapping (T-CRT-06 currently uses a machine-bound key file).
 
-The hosted run for the M5 closure is recorded here after CI.
+Hosted run [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
+on `fd1f322d`: all ten jobs successful. M5 is closed.

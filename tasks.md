@@ -607,7 +607,7 @@ hosted runs
 (projects), [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580)
 (credentials), [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780)
 (secrets), and [45559701189](https://github.com/Ruthvik-Anne/zero/actions/runs/45559701189)
-(native keychain on Windows and Linux, 10/10 jobs) are green.
+(native keychain on Windows and Linux, 10/10 jobs), and [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571) (M5 closure and the first M6 slices, 10/10 jobs) are green.
 
 | Task group | Status | Evidence |
 |---|---|---|
@@ -709,7 +709,7 @@ hosted runs
 
 M6 is in progress. Search fusion (T-WEB-01) and the independent doctor binary
 (T-DOC-01) are done; the remaining web, MCP, doctor, monitor, and
-security-review tasks are open. Evidence: `docs/m6-evidence.md`.
+security-review tasks are open. Evidence: `docs/m6-evidence.md`; hosted run [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571) is green on all ten jobs.
 
 | Task group | Status | Evidence |
 |---|---|---|
