@@ -67,6 +67,12 @@ A duplicate, undocumented, or stale code fails `error::tests`.
 | `zero.del.snapshot_missing` | The overwrite journal has no snapshot to restore. |
 | `zero.del.purge_denied` | Permanent purge requires a human confirmation token. |
 | `zero.del.retention_scope` | Garbage collection is limited to Zero's own data root. |
+| `zero.fs.stale` | Reopen the file; it changed outside this session and the write was refused. |
+| `zero.fs.locked` | Wait for the lease holder or use another path. |
+| `zero.fs.batch_failed` | The batch rolled back; correct the failing operation and retry. |
+| `zero.fs.conflict` | Resolve the reported conflict; nothing was overwritten. |
+| `zero.edt.anchor_drift` | Re-read the file and use a fresh anchor; the target text changed. |
+| `zero.edt.too_large` | Edit a smaller range or raise the limit in config. |
 | `zero.tru.trust_required` | Trust the project explicitly before its content is used. |
 | `zero.tru.untrusted` | Trust the project explicitly before using its configuration. |
 | `zero.tru.audit_broken` | Run `zero doctor`; the audit chain failed verification. |
