@@ -87,3 +87,7 @@ Run [45544273274](https://github.com/Ruthvik-Anne/zero/actions/runs/45544273274)
 on `d23eb167` covers the locks/pools slice: all eight jobs successful, including
 the 10,000-interleaving file-lock simulation and the Banker's pool tests on
 every platform.
+
+Run [45545824128](https://github.com/Ruthvik-Anne/zero/actions/runs/45545824128)
+on `7305e24c` covers the scheduler slice: all eight jobs successful, including
+the kill/restart durable-queue test on every platform.

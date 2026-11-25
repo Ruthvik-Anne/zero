@@ -512,8 +512,9 @@ closed. The full list and remaining tasks stay below. Evidence:
 `docs/m4-evidence.md`; hosted runs
 [45538950771](https://github.com/Ruthvik-Anne/zero/actions/runs/45538950771) (FS/EDT)
 and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
-(tasks/todos), and [45544273274](https://github.com/Ruthvik-Anne/zero/actions/runs/45544273274)
-(locks/pools) are green on all eight jobs.
+(tasks/todos), [45544273274](https://github.com/Ruthvik-Anne/zero/actions/runs/45544273274)
+(locks/pools), and [45545824128](https://github.com/Ruthvik-Anne/zero/actions/runs/45545824128)
+(scheduler) are green on all eight jobs.
 
 | Task group | Status | Evidence |
 |---|---|---|
