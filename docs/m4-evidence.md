@@ -28,8 +28,22 @@ M4 is not closed. This page records the completed task groups so far.
 
 ## Still open in M4
 
-T-TSK-01..07, T-TODO-01..04, T-LCK-01..04, T-SCH-01..07, T-TOOL-01..06,
-T-KRN-01..05, T-AUT-01..04. No M4 task outside FS/EDT is marked done.
+T-LCK-01..04, T-SCH-01..07, T-TOOL-01..06, T-KRN-01..05, T-AUT-01..04. No M4
+task outside FS, EDT, TSK, and TODO is marked done.
+
+## Tasks and todos — T-TSK-01..07, T-TODO-01..04 (done)
+
+| Task | Evidence |
+|---|---|
+| T-TSK-01 | `store::tests::a_cycle_is_rejected_with_the_path`; readiness walks dependencies; plan cycles seed nothing. |
+| T-TSK-02 | `one_claim_per_task_and_stale_claims_are_fenced`: one owner, monotonic generation, TTL, stale completion refused. |
+| T-TSK-03 | `transitions_are_compare_and_swap_and_journaled` and `replay_reconstructs_the_state_after_reopen`; dependency edges journaled. |
+| T-TSK-04 | `a_blocked_on_user_task_goes_to_the_queue_and_work_continues` with the policy user queue. |
+| T-TSK-05 | `two_hundred_tasks_respect_limits_and_fair_share`: all 200 dispatched once, per-project cap; events carry actor/ts/evidence. |
+| T-TSK-07 | `plan_seeding_is_exactly_once_and_cycle_checked`. |
+| T-TODO-01/03 | `merged_project_and_session_views_are_ordered_and_deduplicated`. |
+| T-TODO-02 | `the_agent_tool_is_versioned_and_respects_confirmation` and `the_agent_needs_confirmation_to_complete_or_drop_a_user_item`. |
+| T-TODO-04 | `a_full_keyboard_capture_flow_needs_no_mouse`; `review_reports_stale_and_due_soon_items`; `linking_is_explicit_and_never_completes_the_task`. |
 
 ## Commands
 

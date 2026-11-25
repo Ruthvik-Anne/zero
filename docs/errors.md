@@ -73,6 +73,7 @@ A duplicate, undocumented, or stale code fails `error::tests`.
 | `zero.fs.conflict` | Resolve the reported conflict; nothing was overwritten. |
 | `zero.edt.anchor_drift` | Re-read the file and use a fresh anchor; the target text changed. |
 | `zero.edt.too_large` | Edit a smaller range or raise the limit in config. |
+| `zero.todo.confirmation` | Ask the user to confirm completing or dropping a user-created todo. |
 | `zero.tru.trust_required` | Trust the project explicitly before its content is used. |
 | `zero.tru.untrusted` | Trust the project explicitly before using its configuration. |
 | `zero.tru.audit_broken` | Run `zero doctor`; the audit chain failed verification. |

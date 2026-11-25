@@ -516,7 +516,9 @@ is green on all eight jobs.
 |---|---|---|
 | T-FS-01..T-FS-08 | done | `cargo test -p zero-fs`: handles/stale, atomic matrix, identity, watcher, leases, batch rollback/recovery, overlay merge. |
 | T-EDT-01..T-EDT-06 | done | `cargo test -p zero-fs`: all ops, fail-closed anchors, bounded receipts, 50-file undo, 1 GB O(edits) range edits, no-delete refusal. |
-| T-TSK, T-TODO, T-LCK, T-SCH, T-TOOL, T-KRN, T-AUT | todo | Not implemented yet. |
+| T-TSK-01..T-TSK-07 | done | `cargo test -p zero-tasks`: DAG/cycles, CAS journal replay, claims/fencing, limits/fairness, user queue, plan seeding. |
+| T-TODO-01..T-TODO-04 | done | `cargo test -p zero-tasks`: merged scopes, versioned agent tool with confirmation, keyboard-only capture, explicit links, review. |
+| T-LCK, T-SCH, T-TOOL, T-KRN, T-AUT | todo | Not implemented yet. |
 
 ## M5 — Projects, credentials, and secrets
 

@@ -115,6 +115,7 @@ codes! {
     Conflict => "zero.fs.conflict", "Resolve the reported conflict; nothing was overwritten.";
     AnchorDrift => "zero.edt.anchor_drift", "Re-read the file and use a fresh anchor; the target text changed.";
     TooLarge => "zero.edt.too_large", "Edit a smaller range or raise the limit in config.";
+    TodoConfirmation => "zero.todo.confirmation", "Ask the user to confirm completing or dropping a user-created todo.";
 
     // Trust and audit
     TrustRequired => "zero.tru.trust_required", "Trust the project explicitly before its content is used.";

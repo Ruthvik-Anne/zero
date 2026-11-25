@@ -23,6 +23,7 @@ Supporting pages in this directory:
 | [`tui.md`](tui.md) | Renderer, Unicode layout, streaming, transcript, input, accessibility, golden frames. |
 | [`themes.md`](themes.md) | The 29 theme tokens, defaults, overriding, accessibility. |
 | [`actions.md`](actions.md) | Action record, forms, policy, idempotency, audit, namespacing, keys, lint. |
+| [`tasks-and-todos.md`](tasks-and-todos.md) | Task DAG, claims, journal, limits, plan seeding; todo store, ownership, capture. |
 | [`policy.md`](policy.md) | Modes, the matrix, evaluator order, permits, approvals, regulators, transitions. |
 | [`deletion-safety.md`](deletion-safety.md) | Command guards, shims, the Python hook, trash, journal, purge, retention, and stated limits. |
 | [`trust.md`](trust.md) | Trust boundaries, workspace trust, protected files, audit integrity. |

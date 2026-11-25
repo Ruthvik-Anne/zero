@@ -23,6 +23,8 @@ Layers, what each proves, and the command that runs it.
 | Golden frames | Terminal text and escape sequences per state and size | `cargo test -p zero-tui --test golden` |
 | Actions | Schema, forms, palette, keys, policy, idempotency, audit | `cargo test -p zero-actions` |
 | Actions lint | Implicit controls, namespacing, completeness (CI) | `cargo run -p zero-actions --bin actions-lint` |
+| Tasks | DAG/cycles, CAS journal replay, claims/fencing, limits, plan seeding | `cargo test -p zero-tasks` |
+| Todos | Scopes, ownership confirmation, linking, capture, review | `cargo test -p zero-tasks` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |

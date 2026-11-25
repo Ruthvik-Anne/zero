@@ -1920,6 +1920,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+ "zero-policy",
  "zero-store",
  "zero-types",
 ]
