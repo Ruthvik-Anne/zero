@@ -459,6 +459,8 @@ not approval), preserving their next times.
 
 Commands: `cargo test -p zero-agent resume` (18 tests), `cargo clippy -p
 zero-agent --all-targets -- -D warnings`.
-## Still open in M7
+## M7 closure
 
-T-HAL-02..07, T-MDL-01..08, T-USG-02..03, and T-AR-02/03.
+M7 is closed: every M7 task group is implemented and verified in the tables above.
+
+Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on 1801d291: all 12 jobs successful.

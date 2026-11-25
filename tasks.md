@@ -709,17 +709,54 @@ hosted runs
 - **T-DOC-06 Doctor agent API.** `diagnose`, `plan`, and `apply` tools with a required unresolved-failure report. **Refs:** DOC-06, DOC-08. **Done:** an agent cannot finish a turn hiding an unresolved failure.
 - **T-MON-04 Monitor restart policy.** Restart after teleport or resume only with confirmation. **Refs:** MON-04, MON-12, MON-11. **Done:** a monitor does not silently restart.
 
-## M6 progress
+## M6 closure
 
-M6 is in progress. Search fusion (T-WEB-01) and the independent doctor binary
-(T-DOC-01) are done; the remaining web, MCP, doctor, monitor, and
-security-review tasks are open. Evidence: `docs/m6-evidence.md`; hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571), [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012), [45570302744](https://github.com/Ruthvik-Anne/zero/actions/runs/45570302744), [45575132889](https://github.com/Ruthvik-Anne/zero/actions/runs/45575132889), and [45587668887](https://github.com/Ruthvik-Anne/zero/actions/runs/45587668887) are green on all ten jobs.
+M6 is closed: every web, MCP, doctor, monitor, and security-review task is
+implemented and verified. Evidence: `docs/m6-evidence.md`; hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571), [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012), [45570302744](https://github.com/Ruthvik-Anne/zero/actions/runs/45570302744), [45575132889](https://github.com/Ruthvik-Anne/zero/actions/runs/45575132889), and [45587668887](https://github.com/Ruthvik-Anne/zero/actions/runs/45587668887) are green on all ten jobs.
 
 | Task group | Status | Evidence |
 |---|---|---|
-| T-WEB-01 | done | `cargo test -p zero-web`: parallel adapters, RRF k=60, URL/title dedupe, per-engine failure isolation, health skip. |`n| T-WEB-02 | done | `cargo test -p zero-web`: 19-case filter matrix (freshness, domains, categories, substrings), fail-closed dates, provenance with source. |`n| T-WEB-03 | done | `cargo test -p zero-web`: SQLite FTS5 cache with per-category TTL and cache age, rate limit/backoff/breaker, reserve engine, CAPTCHA benching. |`n| T-WEB-09 | done | `cargo test -p zero-web`: egress guard blocks metadata/loopback/private/link-local/ULA, refuses bad schemes and userinfo, pins every resolved address, re-checks redirects, and scans for secrets. |`n| T-WEB-11 | done | `cargo test -p zero-web`: budget admission before spend (pages/bytes/cost/requests), overflow-safe, and untrusted-content envelope with breakout escaping and truncation. |`n| T-WEB-10 | done | `cargo test -p zero-web`: ZIP inspection/extraction rejects zip-slip, absolute/drive/UNC paths, symlinks, encrypted entries, count/size/ratio/depth bombs; mutated-header corpus stays typed. |`n| T-WEB-06 | done | `cargo test -p zero-web`: persistent BFS crawl with robots/sitemaps, path/byte/page limits, retries, robots-blocked separation, and kill-and-resume without refetching. |`n| T-WEB-07 | done | `cargo test -p zero-web`: URL map from sitemaps/links with canonical dedupe and limits; JSON/HTML extraction validates against the schema subset and re-validates the result. |`n| T-WEB-04 | done | `cargo test -p zero-web`: reader-mode HTML to Markdown plus DOCX/XLSX/PPTX/EPUB/PDF/CSV/JSON fixture corpus, zip-bomb and encrypted-PDF refusal, caps. |`n| T-WEB-08 | done | `cargo test -p zero-web`: CDP session drives navigate/click/type/wait/evaluate/screenshot/download with egress, duration, size, and path confinement. |`n| T-WEB-05 | done | `cargo test -p zero-web`: system-browser discovery, checksummed install, per-session profiles, headless `--dump-dom` with timeout/caps; real Chrome rendered a JS-only page. |
-| T-DOC-01 | done | `cargo test -p zero-doctor`: plugin-free core and binary run with the daemon dead; JSON and version paths. |`n| T-DOC-02 | done | `cargo test -p zero-doctor`: 13 named checks over an injectable context, pass/fail fixture per check, redaction-safe details, no daemon or network access. |`n| T-DOC-03 | done | `cargo test -p zero-doctor`: 75 playbooks (one per stable code), exhaustive triage/fault-injection tests, destructive-action guard. |`n| T-DOC-04 | done | `cargo test -p zero-doctor`: plan/policy, dry-run preview, snapshot + reversible apply, rollback on injected failure, idempotent repeat. |`n| T-DOC-05 | done | `cargo test -p zero-doctor`: timeline from JSONL/tab artifacts; offline bundle excludes vault/keys/credentials and scans clean for injected secrets. |`n| T-DOC-06 | done | `cargo test -p zero-doctor`: `diagnose`/`plan`/`apply` tools plus turn gate; hidden failing checks return `zero.pol.ask`, fabricated or mismatched reports are refused. |`n| T-SR-01 | done | `cargo test -p zero-review`: guidance/audit gate, trust-boundary seeding, one unit per surface/boundary/subsystem/class, ledger validation. |`n| T-SR-02 | done | `cargo test -p zero-review`: canonical refs, strict transition/history rules, quick/standard/deep profiles with partial labeling, findings/ledger JSON validators. |`n| T-SR-03 | done | `cargo test -p zero-review`: hunting waves with evidence bar, independent critic, planted-bug confirmation, and ledger transitions. |`n| T-SR-04 | done | `cargo test -p zero-review`: verifier quorum, evidence re-read and false-positive rejection, fingerprint invalidation, severity caps. |`n| T-SR-07 | done | `cargo test -p zero-review`: vulnerable/clean/partial golden runs; partial coverage and blocked units reported; fingerprint edit defers a carried confirmation. |`n| T-SR-05 | done | `cargo test -p zero-review`: sandbox availability gate refuses unconfined runs, policy blocks env/network/path escapes, scratch/promotion checks. |`n| T-SR-06 | done | `cargo test -p zero-review`: REPORT/FINDINGS-DETAIL/NEEDS-VALIDATION derived only from records; consistency check proves prose and JSON agree. |`n| T-MCP-01 | done | `cargo test -p zero-mcp`: stateless JSON-RPC client, both revisions, `resultType`, TTL cache + invalidation, schema bounds; 14 integration tests over two fixtures. |`n| T-MCP-02 | done | `cargo test -p zero-mcp`: stdio with a scrubbed child environment and timeouts, loopback JSON/SSE HTTP with session id, legacy shim refused by default. |`n| T-MCP-03 | done | `cargo test -p zero-mcp`: one MRTR retry with `inputResponses`/`requestState`, form-mode credential refusal, URL mode returned for host approval. |`n| T-MCP-04 | done | `cargo test -p zero-mcp`: task lifecycle via `tasks/get|update|cancel`, `resultType: task` wired to `ToolCallOutcome`, TTL/poll budgets, bearer task IDs redacted everywhere. |`n| T-MCP-05 | done | `cargo test -p zero-mcp`: cursor polling with resync-required, TTL renewal, HMAC-SHA256 webhook verification, replay window and dedupe. |`n| T-MCP-06 | done | `cargo test -p zero-mcp`: `ui://` sandbox (allow-scripts only), strict CSP with escaped srcdoc, navigation/popup/form/download blocks, unknown-extension tolerance. |`n| T-MCP-07 | done | `cargo test -p zero-mcp`: OAuth 2.1 + PKCE S256 + resource indicators + issuer equality + CIMD; token theft across servers fails; token values never printed. |`n| T-MCP-08 | done | `cargo test -p zero-mcp`: schema pinning asks on change, destructive defaults matrix, response/timeout caps, resource SSRF refusal, replay guard. |`n| T-MCP-09 | done | `cargo test -p zero-mcp`: `@` resource refs resolve after restart from a persisted store, slash prompts bind arguments, local completions are sorted/capped. |`n| T-MCP-10 | done | `cargo test -p zero-mcp`: server disabled by default; enabling exposes tools/sessions/events; editor flow lists, prompts, and streams an event; destructive prompt annotated. |`n| T-MCP-11 | done | `cargo test -p zero-mcp`: conformance fixtures for both revisions, typed rejection of bad ids/schema/revisions, suite runs in CI. |`n| T-MCP-12 | done | `cargo test -p zero-mcp`: TS/Python code API, single-tool and search/execute shapes, name sanitization, policy bridge returning only the final result. |`n| T-MON-02 | done | `cargo test -p zero-agent monitor`: line streaming, burst coalescing without loss, stderr logs only, env scrub, mute/stop, caps. |`n| T-MON-03 | done | `cargo test -p zero-agent monitor`: declarative manifest, policy allowlists/source checks, skill-triggered start, idempotent start and stop_all. |`n| T-MON-04 | done | `cargo test -p zero-agent monitor`: journal-based restart policy; resume/teleport skip by default and restart only with fresh per-monitor confirmation. |`n| T-SR-08 | done | `cargo test -p zero-agent audit`: validated run under `.zero/audits/run-N`, five canonical outputs, idempotent unit tasks visible on the panel, SR-16 profile refusal. |
-| — | M6 implementation is complete | Closure hosted run is recorded after the next CI dispatch. |
+| T-WEB-01 | done | `cargo test -p zero-web`: parallel adapters, RRF k=60, URL/title dedupe, per-engine failure isolation, health skip. |
+| T-WEB-02 | done | `cargo test -p zero-web`: 19-case filter matrix (freshness, domains, categories, substrings), fail-closed dates, provenance with source. |
+| T-WEB-03 | done | `cargo test -p zero-web`: SQLite FTS5 cache with per-category TTL and cache age, rate limit/backoff/breaker, reserve engine, CAPTCHA benching. |
+| T-WEB-09 | done | `cargo test -p zero-web`: egress guard blocks metadata/loopback/private/link-local/ULA, refuses bad schemes and userinfo, pins every resolved address, re-checks redirects, and scans for secrets. |
+| T-WEB-11 | done | `cargo test -p zero-web`: budget admission before spend (pages/bytes/cost/requests), overflow-safe, and untrusted-content envelope with breakout escaping and truncation. |
+| T-WEB-10 | done | `cargo test -p zero-web`: ZIP inspection/extraction rejects zip-slip, absolute/drive/UNC paths, symlinks, encrypted entries, count/size/ratio/depth bombs; mutated-header corpus stays typed. |
+| T-WEB-06 | done | `cargo test -p zero-web`: persistent BFS crawl with robots/sitemaps, path/byte/page limits, retries, robots-blocked separation, and kill-and-resume without refetching. |
+| T-WEB-07 | done | `cargo test -p zero-web`: URL map from sitemaps/links with canonical dedupe and limits; JSON/HTML extraction validates against the schema subset and re-validates the result. |
+| T-WEB-04 | done | `cargo test -p zero-web`: reader-mode HTML to Markdown plus DOCX/XLSX/PPTX/EPUB/PDF/CSV/JSON fixture corpus, zip-bomb and encrypted-PDF refusal, caps. |
+| T-WEB-08 | done | `cargo test -p zero-web`: CDP session drives navigate/click/type/wait/evaluate/screenshot/download with egress, duration, size, and path confinement. |
+| T-WEB-05 | done | `cargo test -p zero-web`: system-browser discovery, checksummed install, per-session profiles, headless `--dump-dom` with timeout/caps; real Chrome rendered a JS-only page. |
+| T-DOC-01 | done | `cargo test -p zero-doctor`: plugin-free core and binary run with the daemon dead; JSON and version paths. |
+| T-DOC-02 | done | `cargo test -p zero-doctor`: 13 named checks over an injectable context, pass/fail fixture per check, redaction-safe details, no daemon or network access. |
+| T-DOC-03 | done | `cargo test -p zero-doctor`: 75 playbooks (one per stable code), exhaustive triage/fault-injection tests, destructive-action guard. |
+| T-DOC-04 | done | `cargo test -p zero-doctor`: plan/policy, dry-run preview, snapshot + reversible apply, rollback on injected failure, idempotent repeat. |
+| T-DOC-05 | done | `cargo test -p zero-doctor`: timeline from JSONL/tab artifacts; offline bundle excludes vault/keys/credentials and scans clean for injected secrets. |
+| T-DOC-06 | done | `cargo test -p zero-doctor`: `diagnose`/`plan`/`apply` tools plus turn gate; hidden failing checks return `zero.pol.ask`, fabricated or mismatched reports are refused. |
+| T-SR-01 | done | `cargo test -p zero-review`: guidance/audit gate, trust-boundary seeding, one unit per surface/boundary/subsystem/class, ledger validation. |
+| T-SR-02 | done | `cargo test -p zero-review`: canonical refs, strict transition/history rules, quick/standard/deep profiles with partial labeling, findings/ledger JSON validators. |
+| T-SR-03 | done | `cargo test -p zero-review`: hunting waves with evidence bar, independent critic, planted-bug confirmation, and ledger transitions. |
+| T-SR-04 | done | `cargo test -p zero-review`: verifier quorum, evidence re-read and false-positive rejection, fingerprint invalidation, severity caps. |
+| T-SR-07 | done | `cargo test -p zero-review`: vulnerable/clean/partial golden runs; partial coverage and blocked units reported; fingerprint edit defers a carried confirmation. |
+| T-SR-05 | done | `cargo test -p zero-review`: sandbox availability gate refuses unconfined runs, policy blocks env/network/path escapes, scratch/promotion checks. |
+| T-SR-06 | done | `cargo test -p zero-review`: REPORT/FINDINGS-DETAIL/NEEDS-VALIDATION derived only from records; consistency check proves prose and JSON agree. |
+| T-MCP-01 | done | `cargo test -p zero-mcp`: stateless JSON-RPC client, both revisions, `resultType`, TTL cache + invalidation, schema bounds; 14 integration tests over two fixtures. |
+| T-MCP-02 | done | `cargo test -p zero-mcp`: stdio with a scrubbed child environment and timeouts, loopback JSON/SSE HTTP with session id, legacy shim refused by default. |
+| T-MCP-03 | done | `cargo test -p zero-mcp`: one MRTR retry with `inputResponses`/`requestState`, form-mode credential refusal, URL mode returned for host approval. |
+| T-MCP-04 | done | `cargo test -p zero-mcp`: task lifecycle via `tasks/get|update|cancel`, `resultType: task` wired to `ToolCallOutcome`, TTL/poll budgets, bearer task IDs redacted everywhere. |
+| T-MCP-05 | done | `cargo test -p zero-mcp`: cursor polling with resync-required, TTL renewal, HMAC-SHA256 webhook verification, replay window and dedupe. |
+| T-MCP-06 | done | `cargo test -p zero-mcp`: `ui://` sandbox (allow-scripts only), strict CSP with escaped srcdoc, navigation/popup/form/download blocks, unknown-extension tolerance. |
+| T-MCP-07 | done | `cargo test -p zero-mcp`: OAuth 2.1 + PKCE S256 + resource indicators + issuer equality + CIMD; token theft across servers fails; token values never printed. |
+| T-MCP-08 | done | `cargo test -p zero-mcp`: schema pinning asks on change, destructive defaults matrix, response/timeout caps, resource SSRF refusal, replay guard. |
+| T-MCP-09 | done | `cargo test -p zero-mcp`: `@` resource refs resolve after restart from a persisted store, slash prompts bind arguments, local completions are sorted/capped. |
+| T-MCP-10 | done | `cargo test -p zero-mcp`: server disabled by default; enabling exposes tools/sessions/events; editor flow lists, prompts, and streams an event; destructive prompt annotated. |
+| T-MCP-11 | done | `cargo test -p zero-mcp`: conformance fixtures for both revisions, typed rejection of bad ids/schema/revisions, suite runs in CI. |
+| T-MCP-12 | done | `cargo test -p zero-mcp`: TS/Python code API, single-tool and search/execute shapes, name sanitization, policy bridge returning only the final result. |
+| T-MON-02 | done | `cargo test -p zero-agent monitor`: line streaming, burst coalescing without loss, stderr logs only, env scrub, mute/stop, caps. |
+| T-MON-03 | done | `cargo test -p zero-agent monitor`: declarative manifest, policy allowlists/source checks, skill-triggered start, idempotent start and stop_all. |
+| T-MON-04 | done | `cargo test -p zero-agent monitor`: journal-based restart policy; resume/teleport skip by default and restart only with fresh per-monitor confirmation. |
+| T-SR-08 | done | `cargo test -p zero-agent audit`: validated run under `.zero/audits/run-N`, five canonical outputs, idempotent unit tasks visible on the panel, SR-16 profile refusal. |
+| - | M6 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
 ## M7 — Halcyon, model pool, usage, auto-resume
 
 - **T-HAL-01 Discovery and trust.** Nearest-file rule, symlink rejection, and
@@ -772,17 +809,35 @@ security-review tasks are open. Evidence: `docs/m6-evidence.md`; hosted runs [45
 - **T-PRV-06 Catalogue refresh.** Refresh with a recorded source and keep an offline copy. **Refs:** PRV-06, PRV-08, PRV-01. **Done:** offline start uses the cached catalogue.
 - **T-MDL-08 Model data freshness.** Scheduled refresh with a source and a drift report. **Refs:** MDL-08, MDL-15, MDL-01. **Done:** a stale table warns instead of routing on it silently.
 
-## M7 progress
+## M7 closure
 
-M7 is in progress. Halcyon discovery/trust and the usage ledger are done; the
-remaining Halcyon, model-pool, usage-budget, and auto-resume tasks are open.
+M7 is closed: every Halcyon, model-pool, usage-budget, and auto-resume task is
+implemented and verified.
 Evidence: `docs/m7-evidence.md`.
 
 | Task group | Status | Evidence |
 |---|---|---|
 | T-HAL-01 | done | `cargo test -p zero-halcyon`: distance-based discovery, immediate child, same-distance conflicts disabled, symlink/junction refusal, trust inertness. |
-| T-USG-01 | done | `cargo test -p zero-sched usage_ledger`: append-only events, two-device union with no conflict, idempotent merge, attribution and totals. |`n| T-HAL-02 | done | `cargo test -p zero-halcyon`: Ed25519 over canonical bytes, pinned key id, expiry/skew, project binding; copied repo needs its own signed file. |`n| T-USG-02 | done | `cargo test -p zero-sched cost_budget`: inclusive warn/stop budgets with deterministic scope precedence; stop halts dispatch; surface snapshots agree; CSV/JSON export. |`n| T-HAL-03 | done | `cargo test -p zero-halcyon`: user-only keygen/sign/pin/rotate/revoke, Argon2id+AES-GCM sealed keys, revocation checked before pin; agent denied. |`n| T-USG-03 | done | `cargo test -p zero-sched cost_audit`: spend analysis, bounded evidence-backed proposals, dry-run default, apply-only-with-flag, rollback. |`n| T-HAL-04 | done | `cargo test -p zero-halcyon`: PATH/PATHEXT detection, version negotiation, missing/old adapter install guidance; no execution. |`n| T-AR-02 | done | `cargo test -p zero-agent resume`: 56-cell cause/state matrix, bounded backoff, device prompt, budget refusal, child resume on Auto only. |`n| T-MDL-02 | done | `cargo test -p zero-model classify`: nine work classes with capability floors; security/destructive refuse any downgrade; cheapest-above-floor selection. |`n| T-HAL-05 | done | `cargo test -p zero-halcyon`: gap/check/handover record; joker/epb-only routing; run without tkb check refused; finish idempotent. |`n| T-AR-03 | done | `cargo test -p zero-agent resume`: safe-boundary pause, wait/resume/refuse matrix, generation/sequence resume with no effect replay. |`n| T-HAL-06 | done | `cargo test -p zero-halcyon`: exactly four flags, boolean-only parsing, project can only disable; flags never bypass discovery/verification. |`n| T-MDL-04 | done | `cargo test -p zero-model roles`: six roles with seeded defaults, pin/upgrade/fallback precedence, floor enforcement; subagent uses role default. |`n| T-HAL-07 | done | `cargo test -p zero-halcyon`: two-way todo sync, idempotent push, offline queue, stale-version conflicts visible as items. |`n| T-MDL-03 | done | `cargo test -p zero-model router`: cheapest-above-floor routing, overrides/privacy/deprecation/budget, tier escalation with bounded evidence, never downgrade. |`n| T-MDL-06 | done | `cargo test -p zero-model decision`: append-only turn records with model/version/params/reason/cost; strict audit reconstruction with gaps; ledger mismatch. |`n| T-MDL-08 | done | `cargo test -p zero-model freshness`: fresh/stale/expired gate, stale routing warns (never silent), refresh drift report with source/time. |`n| T-MDL-07 | done | `cargo test -p zero-model measured`: sample minimums, evidence-threshold switches, deterministic exploration, reconciliation and budget gate. |`n| T-MDL-05 | done | `cargo test -p zero-model translation`: canonical transcript, OpenAI/Anthropic/Gemini mapping with recorded drops, tool ID preservation across escalation. |`n| T-MDL-01 | done | `cargo test -p zero-model pool`: seeded pool with dated source refs, validated limits/costs/grades, local and deprecated entries, to_pool conversion. |
-| — | M7 implementation is complete | Closure hosted run is recorded after the next CI dispatch. |
+| T-USG-01 | done | `cargo test -p zero-sched usage_ledger`: append-only events, two-device union with no conflict, idempotent merge, attribution and totals. |
+| T-HAL-02 | done | `cargo test -p zero-halcyon`: Ed25519 over canonical bytes, pinned key id, expiry/skew, project binding; copied repo needs its own signed file. |
+| T-USG-02 | done | `cargo test -p zero-sched cost_budget`: inclusive warn/stop budgets with deterministic scope precedence; stop halts dispatch; surface snapshots agree; CSV/JSON export. |
+| T-HAL-03 | done | `cargo test -p zero-halcyon`: user-only keygen/sign/pin/rotate/revoke, Argon2id+AES-GCM sealed keys, revocation checked before pin; agent denied. |
+| T-USG-03 | done | `cargo test -p zero-sched cost_audit`: spend analysis, bounded evidence-backed proposals, dry-run default, apply-only-with-flag, rollback. |
+| T-HAL-04 | done | `cargo test -p zero-halcyon`: PATH/PATHEXT detection, version negotiation, missing/old adapter install guidance; no execution. |
+| T-AR-02 | done | `cargo test -p zero-agent resume`: 56-cell cause/state matrix, bounded backoff, device prompt, budget refusal, child resume on Auto only. |
+| T-MDL-02 | done | `cargo test -p zero-model classify`: nine work classes with capability floors; security/destructive refuse any downgrade; cheapest-above-floor selection. |
+| T-HAL-05 | done | `cargo test -p zero-halcyon`: gap/check/handover record; joker/epb-only routing; run without tkb check refused; finish idempotent. |
+| T-AR-03 | done | `cargo test -p zero-agent resume`: safe-boundary pause, wait/resume/refuse matrix, generation/sequence resume with no effect replay. |
+| T-HAL-06 | done | `cargo test -p zero-halcyon`: exactly four flags, boolean-only parsing, project can only disable; flags never bypass discovery/verification. |
+| T-MDL-04 | done | `cargo test -p zero-model roles`: six roles with seeded defaults, pin/upgrade/fallback precedence, floor enforcement; subagent uses role default. |
+| T-HAL-07 | done | `cargo test -p zero-halcyon`: two-way todo sync, idempotent push, offline queue, stale-version conflicts visible as items. |
+| T-MDL-03 | done | `cargo test -p zero-model router`: cheapest-above-floor routing, overrides/privacy/deprecation/budget, tier escalation with bounded evidence, never downgrade. |
+| T-MDL-06 | done | `cargo test -p zero-model decision`: append-only turn records with model/version/params/reason/cost; strict audit reconstruction with gaps; ledger mismatch. |
+| T-MDL-08 | done | `cargo test -p zero-model freshness`: fresh/stale/expired gate, stale routing warns (never silent), refresh drift report with source/time. |
+| T-MDL-07 | done | `cargo test -p zero-model measured`: sample minimums, evidence-threshold switches, deterministic exploration, reconciliation and budget gate. |
+| T-MDL-05 | done | `cargo test -p zero-model translation`: canonical transcript, OpenAI/Anthropic/Gemini mapping with recorded drops, tool ID preservation across escalation. |
+| T-MDL-01 | done | `cargo test -p zero-model pool`: seeded pool with dated source refs, validated limits/costs/grades, local and deprecated entries, to_pool conversion. |
+| - | M7 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
 ## M8 — Mesh, teleport, self-improvement
 
 - **T-MESH-01 Identity.** Device key, approval flow, join tokens, rotation.
@@ -837,15 +892,34 @@ Evidence: `docs/m7-evidence.md`.
 - **T-TSK-06 Mesh task replication.** One writer per task across devices with fenced leases. **Refs:** TSK-06, TSK-10, LCK-07. **Done:** two devices cannot run the same task.
 - **T-SCH-07 Distributed limits.** Share one credential's limit through the owning node, with a conservative offline share. **Refs:** SCH-07, SCH-12, SCH-13. **Done:** two devices do not exceed the limit together.
 
-## M8 progress
+## M8 closure
 
-M8 is in progress. Mesh identity is done; the remaining mesh, teleport, and
-self-improvement tasks are open. Evidence: `docs/m8-evidence.md`.
+M8 is closed: every mesh, teleport, and self-improvement task is implemented
+and verified. Evidence: `docs/m8-evidence.md`.
 
 | Task group | Status | Evidence |
 |---|---|---|
 | T-MESH-01 | done | `cargo test -p zero-mesh`: Ed25519 device id, single-use join tokens, owner approval (unapproved device denied), rotation/revocation. |
-| T-SI-01 | done | `cargo test -p zero-agent eval_suite`: versioned held-out suite, public view without checks, trusted-root load, offline runner, hash/version refusal. |`n| T-MESH-02 | done | `cargo test -p zero-mesh`: owner-signed versioned membership; device-signed eviction rejected; rollback/conflict rules; names signed. |`n| T-MESH-03 | done | `cargo test -p zero-mesh`: signed peer announces, membership/revocation/signature/nonce checks; unauthenticated peers ignored; presence sweep. |`n| T-SI-02 | done | `cargo test -p zero-agent self_improve`: execute/verify/capture/distil/evaluate/promote/reenter loop; accepted and regressed fixtures. |`n| T-MESH-09 | done | `cargo test -p zero-mesh`: online/reachable-only presence; sleeping host offline; metered/low-battery/charging relay policy. |`n| T-MESH-05 | done | `cargo test -p zero-mesh`: default-deny relay of opaque ciphertext through approved nodes; no decrypt path; chain/TTL/size checks. |`n| T-MESH-08 | done | `cargo test -p zero-mesh`: delegate quorum binds version/hash; minority cannot write; signed revocations propagate and drop the device. |`n| T-SI-03 | done | `cargo test -p zero-agent promotion`: immutable core refusal, exact-diff human gate, atomic apply/rollback with tamper preflight. |`n| T-MESH-06 | done | `cargo test -p zero-mesh`: one-action offer with QR/short code, single-use token join to pending, approval, simulated under-60s timing. |`n| T-MESH-04 | done | `cargo test -p zero-mesh`: 25-cell NAT matrix, direct/hole-punch/TCP fallback, rendezvous-required failure explanation. |`n| T-TEL-01 | done | `cargo test -p zero-mesh`: seven-component signed snapshot, hash/signature verification, same-device restore with no partial writes. |`n| T-TEL-02 | done | `cargo test -p zero-mesh`: content-addressed chunk dedupe, manifest, checkpoint/resume after interruption, verify/materialize. |`n| T-TEL-03 | done | `cargo test -p zero-mesh`: X25519+HKDF+ChaCha20-Poly1305 per chunk with hash/AAD binding; corrupted chunk fails verification; retention until verified. |`n| T-TEL-04 | done | `cargo test -p zero-mesh`: full preflight, conflicting restores staged not overwritten, components/modes/symlinks, adopt, rollback. |`n| T-TEL-05 | done | `cargo test -p zero-mesh`: lease generations, CAS handoff, stale-holder write refusal, snapshot-or-events resume. |`n| T-TEL-06 | done | `cargo test -p zero-mesh`: Windows↔POSIX path remap, snapshot re-sign, OS-specific kernel plan, tool preflight/no-git. |`n| T-TEL-07 | done | `cargo test -p zero-mesh`: vault ciphertext envelope with Argon2id+AES-GCM, exactly one unlock, approval binding, transfer opacity. |`n| T-TEL-08 | done | `cargo test -p zero-mesh trip`: interrupted resume, unreachable source refusal, forced takeover fencing, A→B→A return trip. |`n| T-MESH-07 | done | `cargo test -p zero-mesh`: datagram session-stream prototype byte-identical under loss/reorder/duplication; ADR 0002 chooses datagram streams. |`n| — | M8 implementation is complete | Closure hosted run is recorded after the next CI dispatch. |
+| T-SI-01 | done | `cargo test -p zero-agent eval_suite`: versioned held-out suite, public view without checks, trusted-root load, offline runner, hash/version refusal. |
+| T-MESH-02 | done | `cargo test -p zero-mesh`: owner-signed versioned membership; device-signed eviction rejected; rollback/conflict rules; names signed. |
+| T-MESH-03 | done | `cargo test -p zero-mesh`: signed peer announces, membership/revocation/signature/nonce checks; unauthenticated peers ignored; presence sweep. |
+| T-SI-02 | done | `cargo test -p zero-agent self_improve`: execute/verify/capture/distil/evaluate/promote/reenter loop; accepted and regressed fixtures. |
+| T-MESH-09 | done | `cargo test -p zero-mesh`: online/reachable-only presence; sleeping host offline; metered/low-battery/charging relay policy. |
+| T-MESH-05 | done | `cargo test -p zero-mesh`: default-deny relay of opaque ciphertext through approved nodes; no decrypt path; chain/TTL/size checks. |
+| T-MESH-08 | done | `cargo test -p zero-mesh`: delegate quorum binds version/hash; minority cannot write; signed revocations propagate and drop the device. |
+| T-SI-03 | done | `cargo test -p zero-agent promotion`: immutable core refusal, exact-diff human gate, atomic apply/rollback with tamper preflight. |
+| T-MESH-06 | done | `cargo test -p zero-mesh`: one-action offer with QR/short code, single-use token join to pending, approval, simulated under-60s timing. |
+| T-MESH-04 | done | `cargo test -p zero-mesh`: 25-cell NAT matrix, direct/hole-punch/TCP fallback, rendezvous-required failure explanation. |
+| T-TEL-01 | done | `cargo test -p zero-mesh`: seven-component signed snapshot, hash/signature verification, same-device restore with no partial writes. |
+| T-TEL-02 | done | `cargo test -p zero-mesh`: content-addressed chunk dedupe, manifest, checkpoint/resume after interruption, verify/materialize. |
+| T-TEL-03 | done | `cargo test -p zero-mesh`: X25519+HKDF+ChaCha20-Poly1305 per chunk with hash/AAD binding; corrupted chunk fails verification; retention until verified. |
+| T-TEL-04 | done | `cargo test -p zero-mesh`: full preflight, conflicting restores staged not overwritten, components/modes/symlinks, adopt, rollback. |
+| T-TEL-05 | done | `cargo test -p zero-mesh`: lease generations, CAS handoff, stale-holder write refusal, snapshot-or-events resume. |
+| T-TEL-06 | done | `cargo test -p zero-mesh`: Windows↔POSIX path remap, snapshot re-sign, OS-specific kernel plan, tool preflight/no-git. |
+| T-TEL-07 | done | `cargo test -p zero-mesh`: vault ciphertext envelope with Argon2id+AES-GCM, exactly one unlock, approval binding, transfer opacity. |
+| T-TEL-08 | done | `cargo test -p zero-mesh trip`: interrupted resume, unreachable source refusal, forced takeover fencing, A→B→A return trip. |
+| T-MESH-07 | done | `cargo test -p zero-mesh`: datagram session-stream prototype byte-identical under loss/reorder/duplication; ADR 0002 chooses datagram streams. |
+| - | M8 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
 ## M9 — Desktop, web, Android, multimodal
 
 - **T-DSK-01 Desktop shell.** System webview around the local UI, loopback only.
@@ -887,16 +961,29 @@ self-improvement tasks are open. Evidence: `docs/m8-evidence.md`.
   purpose. **Refs:** MM-06, MM-13, MM-14. **Done:** declining leaves the modality
   unavailable with an explanation.
 
-## M9 progress
+## M9 closure
 
-M9 is in progress. Multimodal inputs are done; the remaining desktop/web/Android
-and multimodal tasks are open. Evidence: `docs/m8-evidence.md` (input slice) and
+M9 is closed: every desktop/web/Android and multimodal task is implemented and
+verified. Evidence: `docs/m8-evidence.md` (input slice) and
 `docs/multimodal.md`.
 
 | Task group | Status | Evidence |
 |---|---|---|
-| T-MM-01 | done | `cargo test -p zero-mm`: every input route fixture, typed blocks, `@` refs, per-modality accounting. |`n| T-MM-06 | done | `cargo test -p zero-mm`: consent prompt with licence/disk/memory/purpose; decline leaves the modality unavailable with explanation. |`n| T-WEBUI-01 | done | `cargo test -p zero-daemon-app`: loopback-only bind validation, one-time token, inline page/actions JSON, origin rules. |`n| T-DSK-02 | done | `cargo test -p zero-daemon-app`: one shared palette/mode/approval/secret model rendered per surface; scripted TUI-vs-JSON parity. |`n| T-DSK-01 | done | `cargo test -p zero-daemon-app`: system-only webview (bundled refused), loopback bind, shared action registry, token-free launch line. |`n| T-MM-02 | done | `cargo test -p zero-mm`: content-addressed originals with full re-read, deterministic downscale/tile/audio/video plans, injectable processor seams. |`n| T-MM-05 | done | `cargo test -p zero-mm`: labeled screenshots, chapters, assertions, shortcut flags; passing and failing flows both publish artifacts with failure ids. |`n| T-MM-04 | done | `cargo test -p zero-mm`: live-host risk matrix; manual asks every action incl. screenshots; plan denies; destructive always asks. |`n| T-MM-03 | done | `cargo test -p zero-mm`: sandbox spec with exact allowlist/no host mounts; escape attempts blocked and recorded; actions routed through policy. |
-| T-AND-01 | done | `cargo test -p zero-daemon-app android_pairing`: QR/short-code offer, single-use device-bound pairing, biometric gate; stolen code cannot pair. |`n| T-AND-02 | done | `cargo test -p zero-daemon-app android_session`: mesh seam and full list/open/transcript/prompt/steer/queue/diff/cancel flow with cursor/error handling. |`n| T-AND-03 | done | `cargo test -p zero-policy mobile_approval`: digest/nonce/device-bound approvals, replay rejection, locked view hiding, FLAG_SECURE. |`n| T-AND-04 | done | `cargo test -p zero-agent mobile_offline`: persisted offline queue, exactly-once flush after airplane mode, generation/cursor reconnect, redacted notifications. |`n| T-AND-05 | todo | Not implemented yet. |
+| T-MM-01 | done | `cargo test -p zero-mm`: every input route fixture, typed blocks, `@` refs, per-modality accounting. |
+| T-MM-06 | done | `cargo test -p zero-mm`: consent prompt with licence/disk/memory/purpose; decline leaves the modality unavailable with explanation. |
+| T-WEBUI-01 | done | `cargo test -p zero-daemon-app`: loopback-only bind validation, one-time token, inline page/actions JSON, origin rules. |
+| T-DSK-02 | done | `cargo test -p zero-daemon-app`: one shared palette/mode/approval/secret model rendered per surface; scripted TUI-vs-JSON parity. |
+| T-DSK-01 | done | `cargo test -p zero-daemon-app`: system-only webview (bundled refused), loopback bind, shared action registry, token-free launch line. |
+| T-MM-02 | done | `cargo test -p zero-mm`: content-addressed originals with full re-read, deterministic downscale/tile/audio/video plans, injectable processor seams. |
+| T-MM-05 | done | `cargo test -p zero-mm`: labeled screenshots, chapters, assertions, shortcut flags; passing and failing flows both publish artifacts with failure ids. |
+| T-MM-04 | done | `cargo test -p zero-mm`: live-host risk matrix; manual asks every action incl. screenshots; plan denies; destructive always asks. |
+| T-MM-03 | done | `cargo test -p zero-mm`: sandbox spec with exact allowlist/no host mounts; escape attempts blocked and recorded; actions routed through policy. |
+| T-AND-01 | done | `cargo test -p zero-daemon-app android_pairing`: QR/short-code offer, single-use device-bound pairing, biometric gate; stolen code cannot pair. |
+| T-AND-02 | done | `cargo test -p zero-daemon-app android_session`: mesh seam and full list/open/transcript/prompt/steer/queue/diff/cancel flow with cursor/error handling. |
+| T-AND-03 | done | `cargo test -p zero-policy mobile_approval`: digest/nonce/device-bound approvals, replay rejection, locked view hiding, FLAG_SECURE. |
+| T-AND-04 | done | `cargo test -p zero-agent mobile_offline`: persisted offline queue, exactly-once flush after airplane mode, generation/cursor reconnect, redacted notifications. |
+| T-AND-05 | done | `cargo test -p zero-daemon-app share`: share intake/sheet, direct/relay reporting, no VPN change, scripted session delivery. |
+| - | M9 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
 ## M10 — Release hardening
 
 - **T-INST-01 Packaging.** Per-platform artifacts, SBOM, signed manifest.
@@ -940,15 +1027,31 @@ and multimodal tasks are open. Evidence: `docs/m8-evidence.md` (input slice) and
 
 ---
 
-## M10 progress
+## M10 closure
 
-M10 is in progress. Packaging and the signed manifest are done; the remaining
-installer, update, observability, test, performance, and parity tasks are open.
+M10 is closed: every installer, observability, test, performance, documentation,
+and parity task is implemented and verified.
 
 | Task group | Status | Evidence |
 |---|---|---|
-| T-INST-01 | done | `cargo test -p zero-cli packaging`: signed manifest + SBOM, six-target naming, embedded-key verification, strict JSON. |`n| T-INST-04 | done | `cargo test -p zero-cli update`: signed/hash-verified update, atomic per-file swap, health check and mid-swap rollback byte-for-byte. |`n| T-INST-06 | done | `cargo test -p zero-cli bootstrap`: checksum-verified cache/offline bootstrap, tamper refusal, idempotent install, probe. |`n| T-INST-05 | done | `cargo test -p zero-cli service`: systemd/Windows/launchd unit rendering, validation, scripted start/stop/status lifecycle. |`n| T-INST-07 | done | `cargo test -p zero-cli uninstall`: scoped plan, confirmation TTL/fingerprint, service+PATH cleanup, trash data, no orphans. |`n| T-OBS-01 | done | `cargo test -p zero-store metrics`: closed metrics set, bucket percentiles, bounded labels, dashboard read, atomic snapshot. |`n| T-OBS-02 | done | `cargo test -p zero-store trace`: validated span tree, scripted turn covering provider/tool/frame, append-only JSONL and deterministic render. |`n| T-OBS-03 | done | `cargo test -p zero-fs retention`: age/quota sweep trashes expired data, keep_min, dry-run/idempotence, protected paths. |`n| T-TST-06 | done | `cargo test -p zero-doctor faults`: one fault per stable code (75/75), check-bound fixtures, inject/triage/playbook assertions. |`n| T-TST-07 | done | `cargo test -p zero-agent security_suite`: 7 prompt-injection fixtures with unchanged policy, 5-sink secret leakage redaction, external SSRF/zip-slip gate. |`n| T-TST-08 | done | `cargo test -p zero-mcp release_gate`: both MCP revisions plus protocol golden decode/projection round-trip; typed gate report. |`n| T-TST-05 | done | `cargo test -p zero-web impairment`: seeded loss/latency/partition scenarios through the resilience layer; NAT matrix recorded as external gate. |`n| T-PERF-01 | done | `cargo test -p xtask`: five budgets (startup/frame/attach/memory/session size) recorded and enforced by `bench --check`. |`n| T-DOCS-01 | done | `docs/install.md`, `configure.md`, `troubleshooting.md` + index; check-docs and link checks pass; stubs marked planned. |`n| T-INST-03 | done | `cargo test -p zero-cli unix_install`: POSIX installer validation; WSL end-to-end; CI ubuntu/macOS install job. |`n| T-PAR-03 | done | `xtask check-parity`: 133 Part 1/2/8 items assessed (31 implemented, 61 partial, 40 deferred, 1 out-of-scope, 0 unassessed). |
-| T-INST-02 | done | `cargo test -p zero-cli windows_install`: PowerShell installer validation; local end-to-end 39 assertions; new Windows CI job. |`n| — | M10 implementation is complete | Closure hosted run is recorded after the next CI dispatch. |
+| T-INST-01 | done | `cargo test -p zero-cli packaging`: signed manifest + SBOM, six-target naming, embedded-key verification, strict JSON. |
+| T-INST-04 | done | `cargo test -p zero-cli update`: signed/hash-verified update, atomic per-file swap, health check and mid-swap rollback byte-for-byte. |
+| T-INST-06 | done | `cargo test -p zero-cli bootstrap`: checksum-verified cache/offline bootstrap, tamper refusal, idempotent install, probe. |
+| T-INST-05 | done | `cargo test -p zero-cli service`: systemd/Windows/launchd unit rendering, validation, scripted start/stop/status lifecycle. |
+| T-INST-07 | done | `cargo test -p zero-cli uninstall`: scoped plan, confirmation TTL/fingerprint, service+PATH cleanup, trash data, no orphans. |
+| T-OBS-01 | done | `cargo test -p zero-store metrics`: closed metrics set, bucket percentiles, bounded labels, dashboard read, atomic snapshot. |
+| T-OBS-02 | done | `cargo test -p zero-store trace`: validated span tree, scripted turn covering provider/tool/frame, append-only JSONL and deterministic render. |
+| T-OBS-03 | done | `cargo test -p zero-fs retention`: age/quota sweep trashes expired data, keep_min, dry-run/idempotence, protected paths. |
+| T-TST-06 | done | `cargo test -p zero-doctor faults`: one fault per stable code (75/75), check-bound fixtures, inject/triage/playbook assertions. |
+| T-TST-07 | done | `cargo test -p zero-agent security_suite`: 7 prompt-injection fixtures with unchanged policy, 5-sink secret leakage redaction, external SSRF/zip-slip gate. |
+| T-TST-08 | done | `cargo test -p zero-mcp release_gate`: both MCP revisions plus protocol golden decode/projection round-trip; typed gate report. |
+| T-TST-05 | done | `cargo test -p zero-web impairment`: seeded loss/latency/partition scenarios through the resilience layer; NAT matrix recorded as external gate. |
+| T-PERF-01 | done | `cargo test -p xtask`: five budgets (startup/frame/attach/memory/session size) recorded and enforced by `bench --check`. |
+| T-DOCS-01 | done | `docs/install.md`, `configure.md`, `troubleshooting.md` + index; check-docs and link checks pass; stubs marked planned. |
+| T-INST-03 | done | `cargo test -p zero-cli unix_install`: POSIX installer validation; WSL end-to-end; CI ubuntu/macOS install job. |
+| T-PAR-03 | done | `xtask check-parity`: 133 Part 1/2/8 items assessed (31 implemented, 61 partial, 40 deferred, 1 out-of-scope, 0 unassessed). |
+| T-INST-02 | done | `cargo test -p zero-cli windows_install`: PowerShell installer validation; local end-to-end 39 assertions; new Windows CI job. |
+| - | M10 is closed | Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on `1801d291`: all 12 jobs green. |
 ## Coverage checks
 
 - Every requirement ID in `features.md` Part 10 appears in at least one task's

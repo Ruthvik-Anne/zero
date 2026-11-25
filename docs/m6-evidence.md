@@ -990,13 +990,8 @@ injected error message never leaks into playbook text.
 Commands: `cargo test -p zero-doctor` (55 lib + 3 integration tests), `cargo
 clippy -p zero-doctor --all-targets -- -D warnings`.
 
-## Still open in M6
+## M6 closure
 
-T-WEB-04..05, T-WEB-08, T-MCP-10..11, T-MON-02..04, T-SR-01..08, T-MON-01..04, and T-SR-01..08.
+M6 is closed: every M6 task group is implemented and verified in the tables above.
 
-Hosted runs [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
-on `fd1f322d`, [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012)
-on `702b2ec4`, [45570302744](https://github.com/Ruthvik-Anne/zero/actions/runs/45570302744)
-on `61cf6e5f`, and [45575132889](https://github.com/Ruthvik-Anne/zero/actions/runs/45575132889)
-on `1772ec89`, and [45587668887](https://github.com/Ruthvik-Anne/zero/actions/runs/45587668887)
-on `24c27a02`: all ten jobs successful.
+Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on 1801d291: all 12 jobs successful.

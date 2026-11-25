@@ -1120,6 +1120,8 @@ Commands: `cargo test -p zero-mm` (30 tests), `cargo clippy -p zero-mm
 spaces need direct attachment; chunking and image/pixel metadata arrive with
 T-MM-02.
 
-## Still open in M8
+## M8 closure
 
-T-MESH-04, T-MESH-07, and T-TEL-01...
+M8 is closed: mesh identity/state/discovery/relay/presence/transport, teleport snapshot/bundle/transfer/restore/fence/portability/vault, and self-improvement are implemented and recorded above. Evidence for M9/M10 slices also present in this file is superseded by docs/m9-evidence.md and docs/m10-evidence.md.
+
+Run [45722626227](https://github.com/Ruthvik-Anne/zero/actions/runs/45722626227) on 1801d291: all 12 jobs successful.
