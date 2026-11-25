@@ -255,7 +255,7 @@ fixtures run the real adapters over loopback HTTP instead.
 Run on 2026-11-25 from the repository root, plus the Linux-only tests in WSL
 Ubuntu (`CARGO_TARGET_DIR=/tmp/zero-target cargo test -p zero-policy -p zero-fs`).
 Hosted matrix run [45532483220](https://github.com/Ruthvik-Anne/zero/actions/runs/45532483220)
-is green on all eight jobs; credentials run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580) is also green. Detailed output is in `docs/m2-evidence.md`.
+is green on all eight jobs; credentials run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580) is also green; secrets run [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780) is green. Detailed output is in `docs/m2-evidence.md`.
 
 | Task | Status | Evidence |
 |---|---|---|
@@ -601,7 +601,7 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 ## M5 progress
 
 M5 is in progress; only the project group is closed. Evidence:
-`docs/m5-evidence.md`; hosted run [45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438) is green on all eight jobs; credentials run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580) is also green.
+`docs/m5-evidence.md`; hosted run [45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438) is green on all eight jobs; credentials run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580) is also green; secrets run [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780) is green.
 
 | Task group | Status | Evidence |
 |---|---|---|
