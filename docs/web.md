@@ -1,9 +1,10 @@
 # Web search and fusion
 
-`zero-web` currently ships the keyless search contract and the fusion step
-(T-WEB-01, WEB-01 and WEB-02). Filters, provenance dates, caching, fetch,
-crawling, and browser automation are later tasks. No live engine adapter is
-bundled yet; each adapter is a small implementation of the trait below.
+`zero-web` currently ships the keyless search contract, the fusion step, result
+filters, and date provenance (T-WEB-01, T-WEB-02; WEB-01 through WEB-04).
+Caching, fetch, crawling, and browser automation are later tasks. No live engine
+adapter is bundled yet; each adapter is a small implementation of the trait
+below.
 
 ## Adapter contract
 
@@ -96,6 +97,78 @@ earlier engine. All contributing `EngineRank`s are kept and sorted by engine
 order, and duplicate scores are summed. An empty URL is not used as a URL key;
 such a hit can still merge by title.
 
+## Filters and provenance
+
+`apply(filters, response, now_ms)` (also `SearchResponse::apply`) narrows a
+fused response without touching fusion: surviving results keep their original
+scores, source ranks, and order. `FilteredResponse` carries the surviving
+`FilteredResult`s, the engine failures, and a `dropped` count.
+
+Every `SearchFilters` field is an ANDed restriction; an empty list imposes no
+restriction:
+
+| Field | Rule |
+|---|---|
+| `freshness` | keep results whose age in whole days is at most the window: `Day` 1, `Week` 7, `Month` 30, `Year` 365 |
+| `include_domains` | host must equal an entry or be one of its subdomains |
+| `exclude_domains` | host must equal an entry or be one of its subdomains; exclusion wins over inclusion |
+| `categories` | keep only the listed `category_for` values; empty keeps every category |
+| `required_substrings` | every entry must appear in `title + snippet`, case-insensitively |
+| `forbidden_substrings` | no entry may appear in `title + snippet`, case-insensitively |
+
+Domain matching uses the canonical host: lowercased, with a leading `www.` and
+any port removed. Entries tolerate a scheme and a leading `*.`, so
+`https://example.com:8443` matches `example.com`. `example.com` matches
+`example.com`, `docs.example.com`, and `www.example.com`, but not
+`notexample.com`. `exclude_domains` is checked first, so a host that is both
+included and excluded is dropped. A URL without a host survives only when
+`include_domains` is empty.
+
+Substring matching lowercases both the haystack (`title` and `snippet`) and the
+needle. Blank needles are ignored, so a stray empty entry can neither keep nor
+forbid everything.
+
+### Categories
+
+`category_for(url)` assigns exactly one of four values; the first matching row
+wins:
+
+| Category | Match |
+|---|---|
+| `docs` | host starts with `docs.` or `developer.`, or the first path segment is `docs` or `documentation` |
+| `code` | host is `github.com`, `gitlab.com`, or `bitbucket.org`, or the first path segment is `src` |
+| `news` | host starts with `news.` or `blog.`, or the first path segment is `news`, `blog`, or `press` |
+| `general` | everything else, including host-less URLs |
+
+That table is the whole taxonomy; no other categories exist. A non-empty
+`categories` filter keeps only the listed values.
+
+### Result age and date source
+
+Every `FilteredResult` carries
+`Provenance { published, age_days, source }`. `published` is the engine's raw
+string and is kept even when it cannot be parsed. `age_days` is the number of
+whole days between the parsed instant and `now_ms`, clamped to zero for a
+timestamp ahead of `now_ms` (clock skew).
+
+`parse_timestamp_ms` accepts exactly:
+
+- `YYYY-MM-DD`, interpreted as midnight UTC;
+- an RFC 3339 timestamp: `YYYY-MM-DDTHH:MM:SS` followed by `Z` or a `+HH:MM` /
+  `-HH:MM` offset, with optional fractional seconds (truncated).
+
+Anything else — a space separator, a missing offset, an out-of-range field, or
+a non-leap `02-29` — yields `age_days: None`, `source: DateSource::Unknown`,
+and the original string. A date is never guessed from surrounding text.
+
+`DateSource` is `Engine` today because fetching does not exist yet: every
+parseable engine value is attributed to the engine. `Page` is reserved for
+reader-mode extraction (T-WEB-04), and `Unknown` means no parseable date.
+
+Freshness fails closed: when `freshness` is set, a result with
+`age_days: None` is dropped. Without a freshness window, results with unknown
+dates are kept and reported with `source: Unknown`.
+
 ## Failure policy
 
 A single engine must never fail the search:
@@ -115,5 +188,6 @@ Callers decide how to surface partial results: `results` may be non-empty while
 
 `cargo test -p zero-web` runs scripted fixtures with no network access: a
 three-engine relevance fixture, URL and fuzzy-title deduplication, an engine
-error, an unhealthy engine, empty-query and zero-limit behavior, and key
-normalization.
+error, an unhealthy engine, empty-query and zero-limit behavior, key
+normalization, timestamp parsing, a 19-case filter matrix, provenance ages and
+date sources, and category classification.
