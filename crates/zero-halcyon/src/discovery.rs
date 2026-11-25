@@ -327,9 +327,10 @@ pub fn discover(start: &Path, home: Option<&Path>) -> Result<Discovery, ZeroErro
         )));
     }
 
-    // Check every existing ancestor of the supplied path, not just the leaf, so
-    // a symlinked intermediate directory cannot carry the walk somewhere else.
-    reject_symlink_directories(&start_absolute)?;
+    // Check symlinked ancestors between the supplied path and the home
+    // boundary. System-level links above home (for example `/var` on macOS)
+    // are not part of the workspace and must not block discovery.
+    reject_symlink_ancestors_within(&start_absolute, home)?;
 
     let start_canonical = fs::canonicalize(&start_absolute)
         .map_err(|error| io_error("cannot resolve the start directory", start, error))?;
@@ -502,18 +503,29 @@ fn absolute(path: &Path) -> Result<PathBuf, ZeroError> {
 }
 
 /// Reject any symlink or reparse point among the ancestors of `path`.
-fn reject_symlink_directories(path: &Path) -> Result<(), ZeroError> {
-    for ancestor in path.ancestors() {
-        // Skip drive-prefix pseudo-components such as `C:` and empty ancestors.
-        if !ancestor.has_root() {
-            continue;
+/// Reject symlinked ancestors only between `path` and the home boundary.
+///
+/// System-level links above home (for example `/var` on macOS) are not part of
+/// the workspace and must not disable discovery.
+fn reject_symlink_ancestors_within(path: &Path, home: Option<&Path>) -> Result<(), ZeroError> {
+    let Some(home) = home else {
+        return Ok(());
+    };
+    let home = absolute(home)?;
+    if !path.starts_with(&home) {
+        return Ok(());
+    }
+    let mut current = Some(path);
+    while let Some(dir) = current {
+        if !dir.has_root() {
+            break;
         }
-        match fs::symlink_metadata(ancestor) {
+        match fs::symlink_metadata(dir) {
             Ok(metadata) => {
                 if is_link_like(&metadata) {
                     return Err(denied(format!(
                         "{} is a symlink or reparse point; the discovery walk does not follow it",
-                        ancestor.display()
+                        dir.display()
                     )));
                 }
             }
@@ -521,11 +533,15 @@ fn reject_symlink_directories(path: &Path) -> Result<(), ZeroError> {
             Err(error) => {
                 return Err(io_error(
                     "cannot inspect a directory in the discovery walk",
-                    ancestor,
+                    dir,
                     error,
                 ));
             }
         }
+        if dir == home {
+            break;
+        }
+        current = dir.parent();
     }
     Ok(())
 }
