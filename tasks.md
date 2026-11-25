@@ -348,6 +348,43 @@ is green on all eight jobs. Detailed output is in `docs/m2-evidence.md`.
 - **T-ACT-12 Extension namespacing.** Reject shadowing and unnamespaced
   registration. **Refs:** ACT-12, ACT-09. **Done:** a plugin claiming a core ID fails.
 
+## M3 closure
+
+Run on 2026-11-25 from the repository root. Detailed output is in
+`docs/m3-evidence.md`. The golden comparator normalises line endings so hosted
+checks on LF checkouts match the recorded frames.
+
+| Task | Status | Evidence |
+|---|---|---|
+| T-TUI-01 | done | `buffer::tests::invariants_hold_under_random_mutations`: 2,000 seeded mutations with a Unicode corpus; resizing clears a truncated wide glyph. |
+| T-TUI-02 | done | `screen::tests::wide_glyphs_and_styles_have_byte_exact_golden_output`; changed-run-only output with `CSI ?2026h/l`; fallback redraw without markers. |
+| T-TUI-03 | done | `unicode::tests`: CJK, emoji ZWJ/skin tone/flags, combining marks, tabs, `[RTL]` degradation, control stripping; grid corpus renders without corruption. |
+| T-TUI-04 | done | `markdown::tests::a_ten_thousand_message_stream_keeps_parse_and_layout_flat`: <128 bytes scanned per push, ≤41 blocks per frame, thinking folded. |
+| T-TUI-05 | done | `transcript::tests::layout_visits_only_visible_messages_and_scroll_cost_is_flat`: bounded visits with 10k history; fullscreen toggle. |
+| T-TUI-06 | done | `input::tests`: Windows Terminal, ConPTY, tmux, legacy, Kitty Shift+Tab; bounded Kitty probe; paste, mouse, focus, resize. |
+| T-TUI-07 | done | `selection::tests::an_async_refresh_cannot_move_the_selection`; stale generation rejected. |
+| T-TUI-08 | done | `slow::tests::forty_millisecond_writes_switch_to_slow_frames`; frame interval ≥ 80 ms. |
+| T-TUI-09 | done | `theme::tests`: 29 tokens, every one overridable and documented in `docs/themes.md`; JSON round-trip rejects partial themes. |
+| T-TUI-10 | done | `cargo test -p zero-tui --test golden`: five scenes across three sizes, text plus escape sequences. |
+| T-TUI-11 | done | `a11y::tests`: scripted screen-reader session, no-animation, high contrast, text-only state. |
+| T-TUI-12 | done | `image::tests`: Kitty, iTerm2, half-block, and none all resolve `image:<id>`; protocol detection. |
+| T-TUI-13 | done | `modal::tests::an_agent_cannot_forge_a_modal_or_draw_into_it`; host-only approval/secret chrome; controls stripped. |
+| T-TUI-14 | done | `status::tests`: idle/working, queue, approvals, WARN/STOPPED budget; mode change visible next frame. |
+| T-TUI-15 | done | `nonblocking::tests`: 20 input events drained in <150 ms while two 800 ms jobs run. |
+| T-TUI-16 | done | `zero-daemon-app` `the_draft_survives_the_handoff_round_trip`. |
+| T-ACT-01 | done | `record::tests::a_schema_test_rejects_a_missing_field`; `deny_unknown_fields`, namespacing, lint. |
+| T-ACT-02 | done | `executor::tests::slash_and_implicit_forms_emit_identical_events`. |
+| T-ACT-03 | done | `palette::tests`: denied actions carry the reason; fuzzy prefix and acronym search; categories grouped. |
+| T-ACT-04 | done | `keys::tests::every_action_is_rebindable`; conflicts typed; per-surface defaults. |
+| T-ACT-05 | done | `executor::tests::a_non_invocable_action_is_unreachable_by_the_agent`; `actions-lint` reports 6 agent-invocable. |
+| T-ACT-06 | done | `executor::tests::replaying_a_request_applies_one_effect`. |
+| T-ACT-07 | done | `executor::tests::rm_through_the_shell_prefix_is_blocked_by_the_deletion_guard`; `echo` still runs. |
+| T-ACT-08 | done | `zero-daemon-app` worker ops refuse outside the daemon surface; `Ctrl+B` default binding. |
+| T-ACT-09 | done | `cargo run -p zero-actions --bin actions-lint` (17 registered, OK) and the CI step. |
+| T-ACT-10 | done | `executor::tests::a_deterministic_action_makes_no_provider_call`; executor holds no provider. |
+| T-ACT-11 | done | `executor::tests::the_audit_reconstructs_a_session_of_actions`: actor, surface, digest, verdict, outcome. |
+| T-ACT-12 | done | `registry::tests::a_plugin_cannot_shadow_a_core_id`; unnamespaced ids refused. |
+
 ## M4 — Core infrastructure and kernel
 
 - **T-FS-01 Handles and versions.** Content hash, size, mtime, and file ID on

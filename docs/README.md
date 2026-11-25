@@ -20,6 +20,9 @@ Supporting pages in this directory:
 | [`sessions.md`](sessions.md) | Log format, tree, compaction, resume, attach, leases, journal, export. |
 | [`context-files.md`](context-files.md) | `AGENTS.md` / `CLAUDE.md` precedence and size caps. |
 | [`providers.md`](providers.md) | Provider trait, adapters, retry classes, fixtures, live flags. |
+| [`tui.md`](tui.md) | Renderer, Unicode layout, streaming, transcript, input, accessibility, golden frames. |
+| [`themes.md`](themes.md) | The 29 theme tokens, defaults, overriding, accessibility. |
+| [`actions.md`](actions.md) | Action record, forms, policy, idempotency, audit, namespacing, keys, lint. |
 | [`policy.md`](policy.md) | Modes, the matrix, evaluator order, permits, approvals, regulators, transitions. |
 | [`deletion-safety.md`](deletion-safety.md) | Command guards, shims, the Python hook, trash, journal, purge, retention, and stated limits. |
 | [`trust.md`](trust.md) | Trust boundaries, workspace trust, protected files, audit integrity. |

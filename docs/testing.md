@@ -19,6 +19,10 @@ Layers, what each proves, and the command that runs it.
 | File safety | Trash, overwrite journal, purge, retention | `cargo test -p zero-fs` |
 | Audit chain | Hash chain and tamper localisation | `cargo test -p zero-store audit::` |
 | Sandbox spike | Windows job object, Linux Landlock | `cargo test -p zero-policy --test sandbox_windows` (Windows) / `--test sandbox_linux` (Linux) |
+| TUI renderer | Grid invariants, diff bytes, Unicode, streaming, transcript | `cargo test -p zero-tui` |
+| Golden frames | Terminal text and escape sequences per state and size | `cargo test -p zero-tui --test golden` |
+| Actions | Schema, forms, palette, keys, policy, idempotency, audit | `cargo test -p zero-actions` |
+| Actions lint | Implicit controls, namespacing, completeness (CI) | `cargo run -p zero-actions --bin actions-lint` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |

@@ -80,6 +80,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: check docs
         run: cargo run -p xtask --locked -- check-docs
+      - name: actions registry lint
+        run: cargo run -p zero-actions --locked --bin actions-lint
       - name: docs index is current
         run: |
           cargo run -p xtask --locked -- docs-index --write

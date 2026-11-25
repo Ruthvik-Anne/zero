@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "zero-tui"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,8 @@ license.workspace = true
 zero-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -1,0 +1,64 @@
+# transcript-60x12 60x12
+TEXT
+ you
+ add a bounded retry to the provider call
+
+ assistant
+ I will edit the retry policy, then run the tests.
+
+ tool: edit  acked (2 files)
+ tool: bash  ok (cargo test)
+
+
+
+mode: auto  │  model: scripted-1  │  budget: 250/1000  │  qu
+ESCAPES
+\x1b[?2026h
+\x1b[1;2H
+\x1b[0;38;5;117;49;1m
+\x1b[2;2H
+\x1b[0;39;49m
+\x1b[2;6H
+\x1b[0;39;49m
+\x1b[2;8H
+\x1b[0;39;49m
+\x1b[2;16H
+\x1b[0;39;49m
+\x1b[2;22H
+\x1b[0;39;49m
+\x1b[2;25H
+\x1b[0;39;49m
+\x1b[2;29H
+\x1b[0;39;49m
+\x1b[2;38H
+\x1b[0;39;49m
+\x1b[4;2H
+\x1b[0;38;5;252;49m
+\x1b[5;2H
+\x1b[0;39;49m
+\x1b[5;4H
+\x1b[0;39;49m
+\x1b[5;9H
+\x1b[0;39;49m
+\x1b[5;14H
+\x1b[0;39;49m
+\x1b[5;18H
+\x1b[0;39;49m
+\x1b[5;24H
+\x1b[0;39;49m
+\x1b[5;32H
+\x1b[0;39;49m
+\x1b[5;37H
+\x1b[0;39;49m
+\x1b[5;41H
+\x1b[0;39;49m
+\x1b[5;45H
+\x1b[0;39;49m
+\x1b[7;2H
+\x1b[0;38;5;246;49;2m
+\x1b[8;2H
+\x1b[0;38;5;246;49;2m
+\x1b[12;1H
+\x1b[0;38;5;78;49m
+\x1b[0m
+\x1b[?2026l

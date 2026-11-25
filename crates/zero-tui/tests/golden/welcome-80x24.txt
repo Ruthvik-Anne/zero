@@ -1,0 +1,52 @@
+# welcome-80x24 80x24
+TEXT
+
+  ZERO
+
+  Press Enter to start, Shift+Tab to change mode
+
+  tip: /help lists actions · ! runs a guarded shell command
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mode: semi-auto  │  model: scripted-1  │  budget: none  │  queue: 0  │  approval
+ESCAPES
+\x1b[?2026h
+\x1b[2;3H
+\x1b[0;38;5;75;49;1m
+\x1b[4;3H
+\x1b[0;39;49m
+\x1b[4;9H
+\x1b[0;39;49m
+\x1b[4;15H
+\x1b[0;39;49m
+\x1b[4;18H
+\x1b[0;39;49m
+\x1b[4;25H
+\x1b[0;39;49m
+\x1b[4;35H
+\x1b[0;39;49m
+\x1b[4;38H
+\x1b[0;39;49m
+\x1b[4;45H
+\x1b[0;39;49m
+\x1b[6;3H
+\x1b[0;38;5;244;49m
+\x1b[24;1H
+\x1b[0;38;5;114;49m
+\x1b[0m
+\x1b[?2026l

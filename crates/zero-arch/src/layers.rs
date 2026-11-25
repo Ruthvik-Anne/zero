@@ -12,7 +12,11 @@ pub struct Layer {
 pub const LAYERS: &[Layer] = &[
     Layer { name: "zero-types", level: 0, may_depend_on: &[] },
     Layer { name: "zero-store", level: 1, may_depend_on: &["zero-types"] },
-    Layer { name: "zero-actions", level: 1, may_depend_on: &["zero-types"] },
+    Layer {
+        name: "zero-actions",
+        level: 3,
+        may_depend_on: &["zero-types", "zero-store", "zero-policy"],
+    },
     Layer { name: "zero-tui", level: 1, may_depend_on: &["zero-types"] },
     Layer {
         name: "zero-policy",
@@ -41,7 +45,7 @@ pub const LAYERS: &[Layer] = &[
     },
     Layer {
         name: "zero-daemon-app",
-        level: 3,
+        level: 4,
         may_depend_on: &["zero-types", "zero-actions", "zero-tui"],
     },
     Layer {
