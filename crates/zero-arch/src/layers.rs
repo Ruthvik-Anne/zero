@@ -33,7 +33,7 @@ pub const LAYERS: &[Layer] = &[
     Layer {
         name: "zero-secrets",
         level: 3,
-        may_depend_on: &["zero-types", "zero-store", "zero-fs"],
+        may_depend_on: &["zero-types", "zero-store", "zero-fs", "zero-policy"],
     },
     Layer { name: "zero-model", level: 2, may_depend_on: &["zero-types", "zero-store"] },
     Layer { name: "zero-web", level: 2, may_depend_on: &["zero-types", "zero-store"] },

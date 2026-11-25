@@ -125,6 +125,11 @@ impl EncryptedStore {
         Ok(self.contents.secrets.get(provider).and_then(|a| a.get(account)).cloned())
     }
 
+    /// Read without a mutable borrow, for `&self` trait implementations.
+    pub fn get_immutable(&self, provider: &str, account: &str) -> Result<Option<String>> {
+        Ok(self.contents.secrets.get(provider).and_then(|a| a.get(account)).cloned())
+    }
+
     pub fn accounts(&self, provider: &str) -> Vec<String> {
         self.contents.secrets.get(provider).map(|a| a.keys().cloned().collect()).unwrap_or_default()
     }
@@ -151,7 +156,7 @@ impl EncryptedStore {
         self.save()
     }
 
-    pub fn sign_out(&mut self, provider: &str, account: &str) -> Result<()> {
+    pub fn delete(&mut self, provider: &str, account: &str) -> Result<()> {
         if let Some(accounts) = self.contents.secrets.get_mut(provider) {
             accounts.remove(account);
         }
@@ -159,6 +164,10 @@ impl EncryptedStore {
             self.contents.active.remove(provider);
         }
         self.save()
+    }
+
+    pub fn sign_out(&mut self, provider: &str, account: &str) -> Result<()> {
+        self.delete(provider, account)
     }
 
     pub fn set_active_secret(&mut self, provider: &str, secret: &str) -> Result<()> {

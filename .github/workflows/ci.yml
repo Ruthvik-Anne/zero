@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'ci/**']
   pull_request:
   workflow_dispatch:
 
@@ -60,6 +60,54 @@ jobs:
       - name: benchmark gate
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo run -p xtask --locked -- bench --check
+
+  # T-CRT-01: real OS credential round trip per host. The dedicated jobs set
+  # ZERO_REQUIRE_KEYCHAIN=1, so an unavailable store fails instead of skipping.
+  # Linux gets a transient D-Bus session plus an unlocked gnome-keyring, which
+  # is the same Secret Service a desktop provides.
+  keychain:
+    name: keychain (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: keychain-${{ matrix.target }}
+      - name: install Secret Service (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-keyring dbus-x11 libsecret-tools
+      - name: native credential round trip (Linux)
+        if: runner.os == 'Linux'
+        env:
+          ZERO_REQUIRE_KEYCHAIN: '1'
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            export XDG_RUNTIME_DIR="$(mktemp -d)"
+            chmod 700 "$XDG_RUNTIME_DIR"
+            eval "$(printf "zero-ci-pass\n" | gnome-keyring-daemon --daemonize --login --components=secrets)"
+            sleep 2
+            printf "canary" | secret-tool store --label=zero-ci service zero-ci account canary
+            test "$(secret-tool lookup service zero-ci account canary)" = "canary"
+            cargo test -p zero-secrets keychain:: -- --nocapture --test-threads=1
+          '
+      - name: native credential round trip (Windows)
+        if: runner.os == 'Windows'
+        env:
+          ZERO_REQUIRE_KEYCHAIN: '1'
+        run: |
+          cargo test -p zero-secrets keychain:: -- --nocapture --test-threads=1
 
   protocol-readers:
     name: protocol readers (Rust + TypeScript)

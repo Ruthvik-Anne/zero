@@ -600,13 +600,23 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 
 ## M5 progress
 
-M5 is in progress; only the project group is closed. Evidence:
-`docs/m5-evidence.md`; hosted run [45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438) is green on all eight jobs; credentials run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580) is also green; secrets run [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780) is green.
+The project, credential, and secrets slices are implemented. Two secrets tasks
+remain explicitly partial: T-SEC-05 (host model done, surface widgets not
+wired) and T-SEC-11 (documented-flow gate done, live OAuth/device flow not
+implemented). Evidence: `docs/m5-evidence.md`; hosted runs
+[45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438)
+(projects), [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580)
+(credentials), and [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780)
+(secrets) are green.
 
 | Task group | Status | Evidence |
 |---|---|---|
 | T-PRJ-01..T-PRJ-06 | done | `cargo test -p zero-agent project::`: key/identity, creation/gitignore, moves/copies, replaced key, layout migration, mesh bindings. |
-| T-CRT-02..06 | done | `cargo test -p zero-secrets`: encrypted fallback, accounts, scrubbed env/refresh lock, import/trash, machine unlock. |\n| T-CRT-01 | doing | `Keychain` trait exists; real Windows/macOS/libsecret adapters pending. |\n| T-SEC-01..04, 06, 07, 09 | done | `cargo test -p zero-secrets vault::`: vault AAD/tamper, scopes/bindings/expiry, placeholders/transport, audit/env, leakage sinks. |\n| T-SEC-05, 08, 10, 11 | todo/doing | Host prompt (05), history scan (08, rotate done), headless secret queue (10), sign-in terms (11). |
+| T-CRT-01 | done | `cargo test -p zero-secrets keychain::`: native round trip through Windows Credential Manager and Linux Secret Service, with `ZERO_REQUIRE_KEYCHAIN=1` in the dedicated `keychain` CI jobs; encrypted fallback when the OS store is absent. |
+| T-CRT-02..06 | done | `cargo test -p zero-secrets`: encrypted fallback, accounts, scrubbed env/refresh lock, import/trash, machine-bound unattended unlock. |
+| T-SEC-01..04, 06..10 | done | `cargo test -p zero-secrets vault::` and `flows::`: vault AAD/tamper, scopes/bindings/expiry, placeholders/transport, audit, `.env`, file+history scan with rotation offer, leakage sinks, headless queue. |
+| T-SEC-05 | doing | Host-issued masked prompt model passes; TUI/desktop/web/android widgets are not wired to it. |
+| T-SEC-11 | doing | Documented/undocumented sign-in gate passes; live OpenCode Console OAuth and ChatGPT device flow are missing. |
 
 ## M6 — Web, MCP, doctor, monitors, security review
 
