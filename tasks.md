@@ -598,6 +598,16 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
   with the terms gate. **Refs:** SEC-11, PRV-09, PRV-10, CRT-05. **Done:** tokens land in
   the store; an undocumented flow is disabled with the reason.
 
+## M5 progress
+
+M5 is in progress; only the project group is closed. Evidence:
+`docs/m5-evidence.md`.
+
+| Task group | Status | Evidence |
+|---|---|---|
+| T-PRJ-01..T-PRJ-06 | done | `cargo test -p zero-agent project::`: key/identity, creation/gitignore, moves/copies, replaced key, layout migration, mesh bindings. |
+| T-CRT, T-SEC | todo | Not implemented yet. |
+
 ## M6 — Web, MCP, doctor, monitors, security review
 
 - **T-WEB-01 Search engines and fusion.** Parallel adapters, RRF, dedupe.

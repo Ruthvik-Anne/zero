@@ -10,6 +10,7 @@ pub mod compaction;
 pub mod context;
 pub mod export;
 pub mod r#loop;
+pub mod project;
 pub mod queue;
 pub mod tools;
 pub mod tree;
@@ -22,6 +23,11 @@ pub use autonomy::{
     load_goal, next_cron, save_goal, start_goal, AutonomyRun, CancelScope, CronSpec, Goal,
     GoalState, Heartbeat, HeartbeatBook, HeartbeatKind, LimitKind, Limits, Schedule, ScheduleBook,
     ScheduleSpec, TickClaim, GOAL_KEY,
+};
+pub use project::{
+    answer_copy, answer_replaced, find_root, link_action, open as open_project, project_id_for, recovery_actions,
+    BindingRegistry, CopyPrompt, OpenMode, OpenOutcome, Project, ProjectBinding, ProjectFile,
+    ReplaceChoice,
 };
 pub use tools::{
     activate, filter_denied, hygiene, inject_tools, search, stable_prefix_hash, wire_schemas,

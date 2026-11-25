@@ -30,6 +30,7 @@ Layers, what each proves, and the command that runs it.
 | Tools | Metadata/deferral, BM25, activation, injection, filtering, telemetry | `cargo test -p zero-agent` |
 | Kernel | Jupyter round-trip, host gate, restart, limits, preload (needs ipykernel) | `cargo test -p zero-kernel` |
 | Autonomy | Goals/compaction, heartbeats, cron coalescing, limits, cancel cascade | `cargo test -p zero-agent autonomy::` |
+| Projects | Key identity, root detection, moves/copies, migration, mesh bindings | `cargo test -p zero-agent project::` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |
