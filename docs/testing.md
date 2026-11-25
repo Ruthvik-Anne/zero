@@ -26,6 +26,7 @@ Layers, what each proves, and the command that runs it.
 | Tasks | DAG/cycles, CAS journal replay, claims/fencing, limits, plan seeding | `cargo test -p zero-tasks` |
 | Todos | Scopes, ownership confirmation, linking, capture, review | `cargo test -p zero-tasks` |
 | Locks and pools | Banker safety/atomic/aging/preempt, wound-wait, election, degraded | `cargo test -p zero-sched -p zero-fs` |
+| Scheduler | MLFQ/aging/fair share, admission, budgets, backoff, usage windows, durable queue | `cargo test -p zero-sched` and `--test queue_crash` |
 | Supervisor | Kill, bounded restart, adoption, shutdown (SES-08) | `cargo test -p zero-daemon` |
 | Line client | The loop runs without a terminal (SES-12) | `cargo test -p zero-cli --test line` |
 | Protocol conformance | Rust and TypeScript readers agree (FND-10) | `cargo test -p zero-types proto::` and `node protocol/ts/check.mjs` |

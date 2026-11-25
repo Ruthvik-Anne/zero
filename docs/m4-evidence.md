@@ -28,8 +28,8 @@ M4 is not closed. This page records the completed task groups so far.
 
 ## Still open in M4
 
-T-SCH-01..07, T-TOOL-01..06, T-KRN-01..05, T-AUT-01..04. No M4
-task outside FS, EDT, TSK, TODO, and LCK is marked done.
+T-TOOL-01..06, T-KRN-01..05, T-AUT-01..04. No M4
+task outside FS, EDT, TSK, TODO, LCK, and SCH is marked done.
 
 ## Locks and pools — T-LCK-01..04 (done)
 
@@ -39,6 +39,17 @@ task outside FS, EDT, TSK, TODO, and LCK is marked done.
 | T-LCK-02 | `locks::tests::canonical_order_ignores_the_caller_order`, `wound_wait_preempts_lower_priority_and_respects_critical_sections`, `ten_thousand_interleavings_never_deadlock`; optimistic versions are the stale-handle tests; overlays are the isolated workspaces. |
 | T-LCK-03 | `election::tests`: deterministic owner, minority partition denies new leases (`zero.lck.no_quorum`), fenced handoff invalidates the old lease. |
 | T-LCK-04 | `banker::tests::a_worker_without_maxima_is_degraded_with_a_reason` and `a_degraded_worker_uses_ordered_acquisition_with_timeouts`; `degraded_workers()` feeds status. |
+
+## Scheduler — T-SCH-01..06 (done)
+
+| Task | Evidence |
+|---|---|
+| T-SCH-01 | `mlfq::tests`: short-task-first, class round-robin, aging starves no one (served within 10 ticks under a flood), 3:1 weighted fair share, interactive priority. |
+| T-SCH-02 | `admission::tests`: provider and model concurrency defer explicitly; a 429 `Retry-After` blocks the credential until reset. |
+| T-SCH-03 | `budget::tests::over_budget_work_defers_with_a_reason` and reservation/reconciliation with the 80% warning. |
+| T-SCH-04 | `backoff::tests`: capped retries, deterministic jitter, per-provider breakers where one outage does not stall another. |
+| T-SCH-05 | `usage::tests`: pause at zero, reset time, resume without replay, repeated windows. |
+| T-SCH-06 | `queue::tests` plus `tests/queue_crash.rs`: kill a claiming worker, restart, recover marks uncertain, one dispatch across the restart. |
 
 ## Tasks and todos — T-TSK-01..07, T-TODO-01..04 (done)
 

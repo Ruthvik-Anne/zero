@@ -12,5 +12,9 @@ serde_json = { workspace = true }
 blake3 = { workspace = true }
 thiserror = { workspace = true }
 
+[[bin]]
+name = "queue-claim"
+path = "src/bin/queue-claim.rs"
+
 [dev-dependencies]
 tempfile = { workspace = true }

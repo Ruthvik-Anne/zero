@@ -522,7 +522,8 @@ and [45541018098](https://github.com/Ruthvik-Anne/zero/actions/runs/45541018098)
 | T-TSK-01..T-TSK-07 | done | `cargo test -p zero-tasks`: DAG/cycles, CAS journal replay, claims/fencing, limits/fairness, user queue, plan seeding. |
 | T-TODO-01..T-TODO-04 | done | `cargo test -p zero-tasks`: merged scopes, versioned agent tool with confirmation, keyboard-only capture, explicit links, review. |
 | T-LCK-01..T-LCK-04 | done | `cargo test -p zero-sched -p zero-fs`: Banker safety/atomic/aging/preemption, canonical + wound-wait + timeouts, 10,000 no-deadlock interleavings, election/partition/fenced handoff, degraded ordered fallback. |
-| T-SCH, T-TOOL, T-KRN, T-AUT | todo | Not implemented yet. |
+| T-SCH-01..T-SCH-06 | done | `cargo test -p zero-sched`: MLFQ aging/fair share, admission with Retry-After, budgets, backoff/breakers, usage windows, and the kill/restart queue test. |
+| T-TOOL, T-KRN, T-AUT | todo | Not implemented yet. |
 
 ## M5 — Projects, credentials, and secrets
 
