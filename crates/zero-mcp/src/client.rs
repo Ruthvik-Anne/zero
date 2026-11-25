@@ -5,9 +5,9 @@
 //! use the [`Client::current_revision`] default before `initialize`, or
 //! negotiate a revision with [`Client::initialize`] and keep it for later calls.
 //!
-//! Production transports (stdio, Streamable HTTP, legacy HTTP+SSE) are later
-//! tasks; this crate only defines the exchange seam and the routing headers a
-//! transport will need.
+//! The stdio and Streamable HTTP transports live in [`crate::transport`] (T-MCP-02)
+//! and implement the [`Transport`] seam; the legacy HTTP+SSE shim is off by
+//! default.
 
 use std::sync::Arc;
 

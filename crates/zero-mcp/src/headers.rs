@@ -1,9 +1,10 @@
 //! Routing headers stored by the client for a future transport (MCP-02).
 //!
 //! The stateless core routes requests with `MCP-Protocol-Version`,
-//! `Mcp-Method`, and `Mcp-Name`. This crate stores those values so a streamable
-//! HTTP transport (T-MCP-02) can put them on the wire; no transport or
-//! authorization scheme is implemented here.
+//! `Mcp-Method`, and `Mcp-Name`. This crate stores those values so the Streamable
+//! HTTP transport (T-MCP-02) can put them on the wire; the transport also stores
+//! the server-assigned `Mcp-Session-Id`. No authorization scheme is implemented
+//! here.
 
 use std::collections::BTreeMap;
 
@@ -13,6 +14,9 @@ pub const HEADER_PROTOCOL_VERSION: &str = "MCP-Protocol-Version";
 pub const HEADER_METHOD: &str = "Mcp-Method";
 /// Tool name header used for routing and metering (MCP-02).
 pub const HEADER_NAME: &str = "Mcp-Name";
+/// Streamable HTTP session header (MCP-06). The server assigns it; the
+/// transport echoes it on later requests.
+pub const HEADER_SESSION_ID: &str = "Mcp-Session-Id";
 
 /// A case-insensitive header map.
 ///

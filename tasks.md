@@ -713,9 +713,9 @@ security-review tasks are open. Evidence: `docs/m6-evidence.md`; hosted runs [45
 
 | Task group | Status | Evidence |
 |---|---|---|
-| T-WEB-01 | done | `cargo test -p zero-web`: parallel adapters, RRF k=60, URL/title dedupe, per-engine failure isolation, health skip. |`n| T-WEB-02 | done | `cargo test -p zero-web`: 19-case filter matrix (freshness, domains, categories, substrings), fail-closed dates, provenance with source. |
-| T-DOC-01 | done | `cargo test -p zero-doctor`: plugin-free core and binary run with the daemon dead; JSON and version paths. |`n| T-MCP-01 | done | `cargo test -p zero-mcp`: stateless JSON-RPC client, both revisions, `resultType`, TTL cache + invalidation, schema bounds; 14 integration tests over two fixtures. |
-| T-WEB-03..11, T-MCP-02..11, T-DOC-02..06, T-MON-01..04, T-SR-01..08 | todo | Not implemented yet. |
+| T-WEB-01 | done | `cargo test -p zero-web`: parallel adapters, RRF k=60, URL/title dedupe, per-engine failure isolation, health skip. |`n| T-WEB-02 | done | `cargo test -p zero-web`: 19-case filter matrix (freshness, domains, categories, substrings), fail-closed dates, provenance with source. |`n| T-WEB-03 | done | `cargo test -p zero-web`: SQLite FTS5 cache with per-category TTL and cache age, rate limit/backoff/breaker, reserve engine, CAPTCHA benching. |
+| T-DOC-01 | done | `cargo test -p zero-doctor`: plugin-free core and binary run with the daemon dead; JSON and version paths. |`n| T-MCP-01 | done | `cargo test -p zero-mcp`: stateless JSON-RPC client, both revisions, `resultType`, TTL cache + invalidation, schema bounds; 14 integration tests over two fixtures. |`n| T-MCP-02 | done | `cargo test -p zero-mcp`: stdio with a scrubbed child environment and timeouts, loopback JSON/SSE HTTP with session id, legacy shim refused by default. |
+| T-WEB-04..11, T-MCP-03..11, T-DOC-02..06, T-MON-01..04, T-SR-01..08 | todo | Not implemented yet. |
 ## M7 — Halcyon, model pool, usage, auto-resume
 
 - **T-HAL-01 Discovery and trust.** Nearest-file rule, symlink rejection, and

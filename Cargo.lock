@@ -3003,6 +3003,7 @@ dependencies = [
 name = "zero-mcp"
 version = "0.1.0"
 dependencies = [
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -3166,6 +3167,7 @@ dependencies = [
 name = "zero-web"
 version = "0.1.0"
 dependencies = [
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

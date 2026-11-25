@@ -68,6 +68,28 @@ The binary supports `--json`, `--version`, and `--help`, and exits zero.
 Commands: `cargo test -p zero-doctor`, `cargo clippy -p zero-doctor
 --all-targets -- -D warnings`.
 
+## Cache and resilience — T-WEB-03 (done)
+
+`zero-web` now has a SQLite/FTS5 search cache and a resilience layer
+(WEB-05, WEB-06). `SearchCache` stores whole `SearchResponse` payloads under a
+`(query, category)` key with per-category TTLs and an optional tighter
+cache-age limit, mirrors titles/snippets into an FTS5 table for later local
+search, deletes expired entries, treats corrupt payloads as a miss, and
+returns `zero.fnd.unsupported` when the running SQLite lacks FTS5 instead of
+panicking. `ResilientSearch` adds a per-engine rate limit, capped exponential
+backoff, a three-state circuit breaker, a reserve engine used only when no
+primary answers, and CAPTCHA/login benching: a refusal excludes the engine for
+the cooldown, is not reported as a failure, and does not fail the search.
+
+| Test area | Evidence |
+|---|---|
+| Cache | 16 tests: round trip, expiry, per-category TTL, cache-age rejection, category invalidation, FTS5 search, reopen persistence. |
+| Resilience | 17 tests: breaker open/half-open/close, capped backoff, rate window, reserve fallback, panic isolation. |
+| Benching | A "captcha" refusal from one engine still returns the other engine's results, stays out of `failed`, and `benched` clears after the cooldown. |
+
+Commands: `cargo test -p zero-web` (51 tests + 1 doc test), `cargo clippy
+-p zero-web --all-targets -- -D warnings`.
+
 ## MCP core client — T-MCP-01 (done)
 
 `zero-mcp` now has a stateless JSON-RPC 2.0 client over an in-memory
@@ -90,9 +112,33 @@ both revisions.
 Commands: `cargo test -p zero-mcp` (27 tests), `cargo clippy -p zero-mcp
 --all-targets -- -D warnings`.
 
+## MCP transports — T-MCP-02 (done)
+
+`zero-mcp` now ships the stdio and Streamable HTTP transports (MCP-02, MCP-06,
+MCP-17). `StdioTransport` launches a child with a scrubbed environment (the
+`KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`CREDENTIAL` policy, with agent sockets
+exempt), speaks newline-delimited JSON-RPC with an 8 MiB line bound and a
+30 s request timeout, skips notifications and non-JSON log lines while matching
+ids, keeps a bounded redacting stderr tail, and kills/reaps on timeout or drop.
+`HttpTransport` POSTs to an http/https URL with `Content-Type`,
+`Accept: application/json, text/event-stream`, configured routing headers, and
+the server's `Mcp-Session-Id`, then accepts either a JSON body or an SSE body.
+The legacy HTTP+SSE shim is not the default and `connect` refuses it with
+`zero.fnd.unsupported`. The stdio test respawns the test binary as a helper
+child, proving scrubbing and framing without an external runtime.
+
+| Test area | Evidence |
+|---|---|
+| stdio | Helper-process initialize and tool call; a fake secret variable is absent inside the child; timeout returns `zero.fnd.timeout` and kills; drop reaps. |
+| HTTP | Loopback JSON response, SSE `data:` response, session-id propagation, non-2xx status without body echo. |
+| Legacy | `LegacyHttpSse` is refused when selected. |
+
+Commands: `cargo test -p zero-mcp` (43 tests), `cargo clippy -p zero-mcp
+--all-targets -- -D warnings`.
+
 ## Still open in M6
 
-T-WEB-03..11, T-MCP-02..11, T-DOC-02..06, T-MON-01..04, and T-SR-01..08.
+T-WEB-04..11, T-MCP-03..11, T-DOC-02..06, T-MON-01..04, and T-SR-01..08.
 
 Hosted run [45563857571](https://github.com/Ruthvik-Anne/zero/actions/runs/45563857571)
 on `fd1f322d` and [45565878012](https://github.com/Ruthvik-Anne/zero/actions/runs/45565878012)

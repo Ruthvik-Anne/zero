@@ -1,9 +1,11 @@
 # MCP core client
 
 `zero-mcp` currently ships the stateless MCP core client (T-MCP-01, MCP-01 to
-MCP-05): JSON-RPC 2.0 envelopes, revision negotiation, `resultType`
-classification, routing headers, a cached `tools/list`, and bounded tool
-schemas. Production transports, MRTR, tasks, events, apps, auth, security caps,
+MCP-05) and the stdio and Streamable HTTP transports (T-MCP-02, MCP-06 and
+MCP-17): JSON-RPC 2.0 envelopes, revision negotiation, `resultType`
+classification, routing headers, a cached `tools/list`, bounded tool schemas, a
+scrubbed stdio child process, and a POST/SSE HTTP exchange. The legacy HTTP+SSE
+shim is off by default. MRTR, tasks, events, apps, auth, security caps,
 resources, server mode, and the conformance suite are later tasks.
 
 ## Client and transport seam
@@ -17,15 +19,17 @@ pub trait Transport {
 ```
 
 `exchange` takes a complete JSON-RPC request value and returns a complete
-response value. Tests and future transports implement the same seam; this task
-only ships an in-memory script. No production transport, socket, or process is
-opened here.
+response value. `crate::transport` implements the same seam with a stdio child
+process and a Streamable HTTP POST; tests also use in-memory scripts. A
+transport returns the whole response envelope, so id matching and envelope
+validation stay in `expect_result`.
 
 The client keeps a sequential request id per instance (`1`, `2`, ...). It is
-stateless at the protocol level: no `Mcp-Session-Id`, no held-open stream, and
-no required handshake. `tools/list` and `tools/call` may be called before
-`initialize`; they use the requested revision until a server negotiates another
-one.
+stateless at the protocol level: no `Mcp-Session-Id` is required, no stream is
+held open, and no handshake is required. `tools/list` and `tools/call` may be
+called before `initialize`; they use the requested revision until a server
+negotiates another one. When a Streamable HTTP server does assign a session id,
+the transport echoes it (see [Transports](#transports)).
 
 `initialize` sends:
 
@@ -81,10 +85,112 @@ stores:
 - `Mcp-Method` — the JSON-RPC method, added by `Client::request_headers`.
 - `Mcp-Name` — the tool name, added for `tools/call` when requested.
 
-`Client::request_headers(method, name)` returns a copy for a future transport to
-put on the wire. No authorization header or token is invented here; auth is
-T-MCP-07. `Mcp-Name` carries the tool name verbatim; any percent-encoding or
-ASCII restriction is a transport concern and is deferred.
+`Client::request_headers(method, name)` returns a copy of the routing metadata.
+No authorization header or token is invented here; auth is T-MCP-07. `Mcp-Name`
+carries the tool name verbatim; any percent-encoding or ASCII restriction is a
+transport concern and is deferred.
+
+## Transports
+
+T-MCP-02 ships two transports behind the `Transport` seam and a default-off
+switch for the legacy one (MCP-06):
+
+```rust
+pub enum TransportMode { Stdio, StreamableHttp, LegacyHttpSse }
+
+pub enum TransportConfig {
+    Stdio(StdioConfig),
+    StreamableHttp(HttpConfig),
+    LegacyHttpSse { url: String },
+}
+
+pub fn connect(config: TransportConfig) -> Result<Box<dyn Transport>>;
+```
+
+`TransportMode::StreamableHttp` is the default. `connect` opens stdio or
+Streamable HTTP and refuses `LegacyHttpSse` with `zero.fnd.unsupported`; the
+legacy compatibility shim itself is not implemented in this task.
+
+### stdio
+
+`StdioTransport::spawn(StdioConfig)` launches a child with piped stdin, stdout,
+and stderr. `StdioConfig` carries `program`, `args`, `env`, `cwd`, a per-request
+`timeout` (default 30 s), a response-line bound (default 8 MiB), and a stderr
+tail bound (default 8 KiB).
+
+**Environment scrubbing (MCP-17).** Before launch, the inherited environment and
+`StdioConfig::env` are merged, credential-bearing names are removed, and the
+result is applied with `env_clear`. A name is removed when it contains `KEY`,
+`TOKEN`, `SECRET`, `PASSWORD`, or `CREDENTIAL`, except `SSH_AUTH_SOCK` and
+`GPG_AGENT_INFO`. Explicit `env` entries are filtered by the same rule, so a
+configured `OPENAI_API_KEY` cannot bypass the policy. The policy is duplicated
+from `zero-secrets::scrubbed_env` on purpose: `zero-mcp` is below
+`zero-secrets` in the dependency graph and must not depend upward on it; the two
+lists are kept in sync. Non-Unicode variables are dropped rather than forwarded.
+
+**Framing.** Each request is one compact JSON line. A reader thread splits stdout
+on newlines under the line bound, and the caller waits for the envelope whose
+`id` matches the request. Notification lines, plain log lines, and responses for
+other ids are ignored, so a chatty server does not mis-parse. A line above the
+bound, an unreadable stream, or end-of-file before a response is a typed error.
+On timeout the child is killed and reaped, the error is `zero.fnd.timeout`, and
+later calls fail with `zero.fnd.unavailable`.
+
+**stderr.** A bounded tail is kept for diagnostics and exposed as
+`StdioTransport::stderr_tail()`. Values removed by the scrub policy (at least 4
+bytes, at most 4096) are replaced with `[redacted]` if they appear in that tail.
+The tail never enters a `ZeroError` message and is untrusted child output, not
+instructions. A server can still print a secret it obtained by some other route;
+that cannot be detected locally, so treat the tail as untrusted everywhere.
+
+**Lifecycle.** `shutdown()` closes stdin, then kills and waits for the child;
+`Drop` does the same. `is_running()`, `pid()`, and `program()` support
+diagnostics. Windows caveats: `kill` targets only the direct child (a server that
+spawns grandchildren can leak them; a job object is T-MCP-14/TRU-06 work), and a
+console window may flash because no creation flags are set yet.
+
+### Streamable HTTP
+
+`HttpTransport::new(HttpConfig)` validates that the endpoint is `http` or
+`https` and posts each request. `HttpConfig` carries `url`, extra `Headers`
+(`MCP-Protocol-Version`, auth when it lands), a per-request `timeout` (default
+30 s), and a response-body bound (default 8 MiB).
+
+Every request sends:
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `application/json` |
+| `Accept` | `application/json, text/event-stream` |
+| `Mcp-Method` | the JSON-RPC `method`, derived per request |
+| `Mcp-Name` | the `params.name`, for `tools/call` |
+| `Mcp-Session-Id` | the server-assigned id, or a configured preset |
+
+Configured headers are sent as given, except that a configured
+`Mcp-Session-Id` is only a preset: once the server returns one, the transport
+stores it and uses it instead (`session_id()` exposes it). The session is
+in-memory per transport; persisting or sharing it is not implemented.
+
+A response may be `application/json` or `text/event-stream`. For JSON, the
+envelope is selected from an object or a batch array by matching `id`. For SSE,
+`data:` lines are joined with newlines per the SSE rules, events without a
+matching response id are skipped (notifications, comments, malformed events),
+and the matching envelope is returned. All body reads are bounded.
+
+A non-2xx response is `zero.prv.protocol` with the status line in the message
+(for example `MCP HTTP transport returned HTTP 503 Service Unavailable`); the
+body is never read or echoed. A timeout is `zero.fnd.timeout`, an unreachable
+endpoint is `zero.fnd.offline`, and an oversized body is
+`zero.fnd.limit_exceeded`. SSRF, TLS pinning, and replay protection are
+T-MCP-08; this transport does not allow non-HTTP schemes but does not otherwise
+restrict destinations.
+
+### Legacy HTTP+SSE
+
+`TransportMode::LegacyHttpSse` is off by default and not implemented. Requesting
+it returns `zero.fnd.unsupported` with a reason that names the default-off
+switch and points at Streamable HTTP. T-MCP-02 ships only that switch, so no
+legacy stream is opened by accident; the shim is a later compatibility task.
 
 ## Caching
 
@@ -169,6 +275,21 @@ in-memory transport and covers negotiation, stateless calls, caching, TTL,
 invalidation, refresh hashing, `resultType` per revision, malformed envelopes,
 JSON-RPC errors, routing headers, and schema bounds.
 
+`crates/zero-mcp/tests/transports.rs` covers the transports without an external
+runtime or host:
+
+- stdio: this test binary is respawned with `--exact stdio_helper_process` and
+  `ZERO_MCP_STDIO_HELPER=1`; the helper answers JSON-RPC on stdin/stdout and the
+  helper test is a no-op in a normal run. Tests assert `initialize` over stdio,
+  that an inherited `OPENAI_API_KEY` and a configured secret variable are absent
+  in the child while `SSH_AUTH_SOCK` survives, that notifications and log lines
+  are skipped, that a timeout returns `zero.fnd.timeout` and stops the child, and
+  that shutdown is idempotent.
+- HTTP: a loopback `TcpListener` serves scripted JSON and SSE responses. Tests
+  assert the POST headers and request body, multi-line SSE `data:` joining and
+  id matching, `Mcp-Session-Id` capture and propagation, status-only errors for
+  non-2xx, non-HTTP URL rejection, and the default-off legacy switch.
+
 ```powershell
 $env:CARGO_INCREMENTAL='0'; cargo test -p zero-mcp
 $env:CARGO_INCREMENTAL='0'; cargo clippy -p zero-mcp --all-targets -- -D warnings
@@ -176,7 +297,8 @@ $env:CARGO_INCREMENTAL='0'; cargo clippy -p zero-mcp --all-targets -- -D warning
 
 ## Deferred
 
-- stdio and Streamable HTTP transports, and the legacy HTTP+SSE shim (T-MCP-02).
+- The legacy HTTP+SSE compatibility shim itself; T-MCP-02 ships only the
+  default-off switch.
 - MRTR `input_required` retry and elicitation (T-MCP-03).
 - Tasks and events (T-MCP-04, T-MCP-05).
 - Apps and extension negotiation (T-MCP-06).
