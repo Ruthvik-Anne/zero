@@ -255,7 +255,7 @@ fixtures run the real adapters over loopback HTTP instead.
 Run on 2026-11-25 from the repository root, plus the Linux-only tests in WSL
 Ubuntu (`CARGO_TARGET_DIR=/tmp/zero-target cargo test -p zero-policy -p zero-fs`).
 Hosted matrix run [45532483220](https://github.com/Ruthvik-Anne/zero/actions/runs/45532483220)
-is green on all eight jobs; credentials run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580) is also green; secrets run [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780) is green. Detailed output is in `docs/m2-evidence.md`.
+is green on all eight jobs. Detailed output is in `docs/m2-evidence.md`.
 
 | Task | Status | Evidence |
 |---|---|---|
@@ -606,8 +606,9 @@ wired) and T-SEC-11 (documented-flow gate done, live OAuth/device flow not
 implemented). Evidence: `docs/m5-evidence.md`; hosted runs
 [45552439438](https://github.com/Ruthvik-Anne/zero/actions/runs/45552439438)
 (projects), [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580)
-(credentials), and [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780)
-(secrets) are green.
+(credentials), [45555110780](https://github.com/Ruthvik-Anne/zero/actions/runs/45555110780)
+(secrets), and [45559701189](https://github.com/Ruthvik-Anne/zero/actions/runs/45559701189)
+(native keychain on Windows and Linux, 10/10 jobs) are green.
 
 | Task group | Status | Evidence |
 |---|---|---|

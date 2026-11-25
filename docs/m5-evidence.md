@@ -41,6 +41,13 @@ Platform coverage for T-CRT-01:
 Hosted run [45553755580](https://github.com/Ruthvik-Anne/zero/actions/runs/45553755580)
 on `6a154c75`: all jobs successful.
 
+Keychain job run [45559701189](https://github.com/Ruthvik-Anne/zero/actions/runs/45559701189)
+on `5c47b410`: all ten jobs successful. `keychain (ubuntu-latest)` ran under
+`dbus-run-session` with an unlocked gnome-keyring and `keychain
+(windows-latest)` ran natively, both with `ZERO_REQUIRE_KEYCHAIN=1`; the Linux
+log shows `native_store_round_trips_on_windows_and_linux ... ok` (4 keychain
+tests, 0 failed).
+
 ## Secrets — T-SEC-01..11
 
 | Task | Status | Evidence |
